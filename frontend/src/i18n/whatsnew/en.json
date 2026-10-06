@@ -1,0 +1,19 @@
+{
+  "0.1.0": {
+    "lead": "The first version of nexdiary: accounts for the family and a safe sign-in.",
+    "sections": [
+      {
+        "title": "Accounts for the family",
+        "where": "Settings, Server, Accounts",
+        "body": "The operator invites by link; every person makes an account of their own. The operator never sees entries."
+      },
+      {
+        "title": "Second factor",
+        "where": "My account, Security",
+        "body": "Besides the password, a code from an app on your phone, with recovery codes on paper."
+      }
+    ],
+    "smallTitle": "Also",
+    "small": ["Light or dark applies to your account, on every device."]
+  }
+}

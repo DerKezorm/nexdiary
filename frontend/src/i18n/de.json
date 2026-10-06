@@ -1,0 +1,566 @@
+{
+  "app": {
+    "mainMenu": "Hauptmenü"
+  },
+  "nav": {
+    "today": "Heute",
+    "journal": "Tagebuch",
+    "stats": "Statistik",
+    "shared": "Geteilt"
+  },
+  "today": {
+    "greeting": {
+      "morning": "Guten Morgen, {{name}}",
+      "day": "Hallo, {{name}}",
+      "evening": "Guten Abend, {{name}}"
+    }
+  },
+  "journal": {
+    "title": "Dein Tagebuch"
+  },
+  "stats": {
+    "title": "Statistik"
+  },
+  "shared": {
+    "title": "Geteilt"
+  },
+  "theme": {
+    "system": "Wie das System",
+    "light": "Hell",
+    "dark": "Dunkel",
+    "group": "Hell oder dunkel"
+  },
+  "common": {
+    "cancel": "Abbrechen",
+    "close": "Schließen",
+    "copy": "Kopieren",
+    "copied": "Kopiert",
+    "save": "Speichern",
+    "done": "Fertig"
+  },
+  "account": {
+    "menu": "Kontomenü von {{name}}",
+    "mine": "Mein Konto",
+    "signOut": "Abmelden"
+  },
+  "settings": {
+    "title": "Einstellungen",
+    "saved": "Gespeichert.",
+    "ownPassword": "Dein eigenes Passwort",
+    "tabs": {
+      "general": "Allgemein",
+      "looks": "Aussehen",
+      "server": "Server"
+    },
+    "parts": {
+      "accounts": "Konten",
+      "signin": "Anmeldung",
+      "mail": "Mail",
+      "api": "API",
+      "backups": "Sicherung",
+      "languages": "Sprachen",
+      "log": "Log"
+    },
+    "language": {
+      "title": "Sprache",
+      "text": "Gilt für dein Konto. Die anderen in der Familie wählen ihre eigene."
+    },
+    "looks": {
+      "title": "Hell oder dunkel",
+      "text": "Gilt für dein Konto, auf jedem Gerät."
+    }
+  },
+  "auth": {
+    "name": "Name",
+    "nameHint": "Damit meldest du dich an: 2 bis 64 Buchstaben ohne Umlaute, Ziffern, Punkt, Bindestrich oder Unterstrich.",
+    "password": "Passwort",
+    "passwordHint": "Mindestens 12 Zeichen.",
+    "or": "oder",
+    "backToLogin": "Zur Anmeldung",
+    "setup": {
+      "title": "nexdiary einrichten",
+      "text": "Das erste Konto betreibt diesen Server: Es lädt die Familie ein und darf jede Einstellung ändern. Die Tagebücher der anderen sieht es nie.",
+      "code": "Einrichtungscode",
+      "codeHint": "Er steht im Log des Servers (docker logs nexdiary), oder NEXDIARY_SETUP_TOKEN setzen.",
+      "submit": "Konto anlegen"
+    },
+    "login": {
+      "title": "Anmelden",
+      "text": "Willkommen zurück bei nexdiary.",
+      "submit": "Anmelden",
+      "passwordOff": "Die Anmeldung mit Passwort ist hier abgeschaltet. Nur der Betreiber kann es noch.",
+      "oidc": "Mit {{name}} anmelden"
+    },
+    "code": {
+      "title": "Zweiter Faktor",
+      "text": "Der Code aus deiner App oder ein Wiederherstellungscode.",
+      "label": "Code aus der App",
+      "hint": "Sechs Ziffern. Oder einer deiner Wiederherstellungscodes.",
+      "back": "Mit dem Passwort neu anfangen"
+    },
+    "invite": {
+      "title": "Einladung",
+      "text": "Du bist zu nexdiary eingeladen. Leg dir ein Konto an; dein Tagebuch sieht nur, wer du es zeigst.",
+      "submit": "Konto anlegen",
+      "invalidTitle": "Einladung nicht gültig",
+      "invalidText": "Diese Einladung gilt nicht mehr: Sie ist benutzt, abgelaufen oder zurückgezogen. Frag nach einer neuen.",
+      "withProvider": "Mit {{name}} annehmen",
+      "noWay": "Die Anmeldung mit Passwort ist abgeschaltet und kein Anmeldeanbieter eingerichtet. Frag den Betreiber.",
+      "haveAccount": "Dieser Link ist für ein neues Konto. Du bist schon als {{name}} angemeldet und brauchst ihn nicht.",
+      "toApp": "Zu nexdiary"
+    }
+  },
+  "whatsNew": {
+    "title": "Neu in nexdiary {{version}}",
+    "banner": "nexdiary {{version}} ist da.",
+    "show": "Was ist neu?",
+    "putAway": "Wegklicken",
+    "where": "Wo:",
+    "done": "Verstanden"
+  },
+  "about": {
+    "menu": "Über nexdiary",
+    "subtitle": "Ein Tagebuch für die Familie: tagsüber sammeln, abends aufschreiben.",
+    "version": "Version",
+    "whatsNew": "Was ist neu",
+    "newer": "Version {{version}} ist erschienen",
+    "licence": "Lizenz",
+    "source": "Quelltext",
+    "releases": "Veröffentlichungen",
+    "releasesLink": "Alle Versionen und was sich geändert hat",
+    "project": "Projektseite",
+    "report": "Einen Fehler gefunden?",
+    "reportLink": "Auf GitHub melden",
+    "builtWith": "Gebaut mit",
+    "fonts": "Schriften im Abbild",
+    "fontsText": "nexdiary bringt seine Schriften mit, damit beim Öffnen kein anderer Server gefragt wird.",
+    "updates": {
+      "title": "Aktualisierungen",
+      "text": "Ob es eine neuere Version von nexdiary gibt.",
+      "daily": "Einmal am Tag nachsehen",
+      "dailyHint": "Fragt GitHub nach der neuesten Veröffentlichung. Aus: nur, wenn du den Knopf drückst.",
+      "now": "Jetzt nachsehen",
+      "current": "Das ist die neueste Version.",
+      "none": "Noch keine Veröffentlichung gefunden.",
+      "notYet": "Noch nicht nachgesehen.",
+      "off": "Das tägliche Nachsehen ist aus.",
+      "toRelease": "Was neu ist",
+      "checkedAt": "zuletzt nachgesehen {{when}}",
+      "whatGoesOut": "Hinaus geht nur die Frage: eine Anfrage an api.github.com nach der neuesten Veröffentlichung von nexdiary, ohne Namen, Einträge oder Einstellungen. Es ist der einzige Ruf, den nexdiary von sich aus macht."
+    }
+  },
+  "me": {
+    "title": "Mein Konto",
+    "tabs": {
+      "profile": "Profil",
+      "security": "Sicherheit",
+      "connections": "Verbindungen"
+    },
+    "profile": {
+      "text": "So sehen dich die anderen in der Familie, wenn du einen Tag mit ihnen teilst.",
+      "displayName": "Anzeigename",
+      "displayHint": "Leer zeigt deinen Benutzernamen {{name}}.",
+      "displayHintPassword": "Leer zeigt deinen Benutzernamen {{name}}; mit ihm meldest du dich weiter an.",
+      "displaySaved": "Anzeigename gespeichert.",
+      "name": "Name",
+      "role": "Rolle",
+      "email": "E-Mail",
+      "upload": "Bild hochladen",
+      "change": "Anderes Bild",
+      "remove": "Entfernen",
+      "saved": "Bild gespeichert.",
+      "removed": "Bild entfernt.",
+      "hint": "Ein Foto vom Handy oder von der Kamera. Es wird quadratisch zugeschnitten, und von der Datei bleibt nur das Bild: kein Ort, kein Gerät."
+    },
+    "password": {
+      "title": "Passwort",
+      "text": "Mindestens 12 Zeichen.",
+      "current": "Jetziges Passwort",
+      "new": "Neues Passwort",
+      "again": "Noch einmal",
+      "submit": "Passwort ändern",
+      "done": "Passwort geändert. Alle anderen Geräte sind abgemeldet."
+    },
+    "oidc": {
+      "title": "Anmeldeanbieter",
+      "text": "Über {{name}} anmelden, zusätzlich zum Passwort.",
+      "only": "Dieses Konto meldet sich über {{name}} an.",
+      "linked": "Verknüpft: Du kannst dich über {{name}} und mit deinem Passwort anmelden.",
+      "linkedNow": "Dein Konto ist mit dem Anbieter verknüpft.",
+      "unlink": "Verknüpfung lösen",
+      "unlinked": "Nicht mehr verknüpft.",
+      "how": "Verknüpfe dein Konto mit {{name}}, dann geht beides. Dein Passwort bestätigt, dass du es bist; danach geht es kurz zu {{name}} und zurück. Dort gilt dessen eigener zweiter Faktor.",
+      "link": "Mit {{name}} verknüpfen"
+    },
+    "role": {
+      "operator": "Betreiber",
+      "member": "Mitglied"
+    },
+    "setupFirst": "Der Betreiber verlangt einen zweiten Faktor. Richte ihn hier ein, dann geht es weiter."
+  },
+  "twofactor": {
+    "title": "Zweiter Faktor",
+    "lead": "Neben dem Passwort ein Code aus einer App auf dem Handy. Wiederherstellungscodes auf Papier bringen dich hinein, wenn das Handy weg ist.",
+    "provider": "Du meldest dich über den Anbieter an; dort gilt sein zweiter Faktor.",
+    "off": "Aus.",
+    "on_one": "An. Noch {{count}} Wiederherstellungscode.",
+    "on_other": "An. Noch {{count}} Wiederherstellungscodes.",
+    "enable": "Einrichten",
+    "scan": "Scanne diesen Code mit der App oder tippe den Schlüssel darunter ein. Dann gib den Code ein, den die App zeigt, und dein Passwort.",
+    "qr": "QR-Code für die Authenticator-App",
+    "code": "Code aus der App",
+    "passwordHint": "Zeigt, dass du selbst an der Tastatur sitzt.",
+    "confirm": "Einschalten",
+    "codesLead": "Jeder Code meldet dich einmal an, wenn das Handy nicht zur Hand ist. Sie werden nur jetzt gezeigt.",
+    "codesDownload": "Als Datei speichern",
+    "codesDone": "Ich habe sie",
+    "renew": "Neue Wiederherstellungscodes",
+    "renewText": "Die alten Wiederherstellungscodes gelten dann nicht mehr. Gib dein Passwort ein, um neue zu erzeugen.",
+    "disable": "Ausschalten",
+    "disableText": "Danach meldet dich das Passwort allein an. Gib es ein, um den zweiten Faktor auszuschalten.",
+    "lowCodes": "Nur noch wenige Wiederherstellungscodes. Erzeuge neue, solange du dich noch anmelden kannst."
+  },
+  "invite": {
+    "valid": "Gültig für",
+    "days_one": "{{count}} Tag",
+    "days_other": "{{count}} Tage",
+    "email": "Mailadresse (freiwillig)",
+    "noMail": "Ohne Mailserver verschickt nexdiary nichts: Kopiere den Link und gib ihn selbst weiter.",
+    "send": "Link per Mail schicken",
+    "create": "Einladungslink erstellen",
+    "copy": "Einladungslink",
+    "sent": "An {{email}} geschickt.",
+    "once": "Der Link gilt einmal. Er wird nur jetzt gezeigt.",
+    "until": "gilt bis {{when}}",
+    "withdraw": "Zurückziehen",
+    "noEmail": "Einladungslink ohne Adresse"
+  },
+  "apiTokens": {
+    "title": "API-Token",
+    "text": "Für Programme wie eine Karte in nexdeck. Ein Token liest, was du lesen darfst, und nie mehr. Ändern kann ein Token nichts.",
+    "none": "Noch keine Token.",
+    "new": "Neues Token",
+    "name": "Name, damit du es wiedererkennst",
+    "lifetime": "Läuft ab",
+    "lifetimeDays": {
+      "30": "in 30 Tagen",
+      "90": "in 90 Tagen",
+      "365": "in einem Jahr"
+    },
+    "lifetimeNever": "nie",
+    "make": "Anlegen",
+    "shownOnce": "Token „{{name}}“ angelegt. Es steht nur jetzt hier. Kopier es in dein Programm; nexdiary speichert nur eine Prüfsumme.",
+    "token": "Token",
+    "header": "Als Kopfzeile im Programm",
+    "tryIt": "Zum Ausprobieren",
+    "never": "läuft nie ab",
+    "runsOut": "läuft am {{day}} ab",
+    "ranOut": "abgelaufen am {{day}}",
+    "blocked": "vom Betreiber gesperrt",
+    "deleteNamed": "Token {{name}} löschen",
+    "off": "Der Betreiber hat API-Token nicht eingeschaltet. Frag ihn, wenn du nexdiary mit einem Programm verbinden willst.",
+    "offForOperator": "API-Token sind ausgeschaltet.",
+    "offOperator": "Einschalten unter Einstellungen, Server, API.",
+    "whatItDoes": "Was die API kann",
+    "whatItDoesText": "Jede Anfrage trägt das Token in der Kopfzeile Authorization: Bearer, die Antworten sind JSON. Alles Weitere steht in docs/api.md.",
+    "readOnly": "Ein Token liest nur.",
+    "copyNamed": "Kopieren: {{what}}",
+    "done": "Habe ich",
+    "used": "zuletzt {{when}}",
+    "unused": "nie benutzt"
+  },
+  "authentik": {
+    "step": {
+      "reached": "authentik erreicht",
+      "signingKey": "Schlüssel zum Signieren",
+      "mapping": "Zuordnung für die Adresse",
+      "provider": "Anbieter",
+      "application": "Anwendung",
+      "fill": "Einstellungen hier"
+    }
+  },
+  "server": {
+    "accounts": "Konten",
+    "accountsHint": "Wer in eurer Familie nexdiary nutzt. Als Betreiber verwaltest du Konten, aber du siehst keine Einträge: Jedes Tagebuch gehört nur seinem Menschen.",
+    "invite": "Jemanden einladen",
+    "inviteText": "Wer dem Link folgt, legt sich ein eigenes Konto an. Ohne Mailserver kopierst du den Link und gibst ihn selbst weiter.",
+    "signInBy": {
+      "password": "Passwort",
+      "oidc": "über den Anbieter"
+    },
+    "withTwoFactor": "zweiter Faktor an",
+    "locked": "eine Weile gesperrt",
+    "blocked": "gesperrt",
+    "makeOperator": "Zum Betreiber machen",
+    "makeMember": "Zum Mitglied machen",
+    "newPassword": "Passwort zurücksetzen",
+    "givePassword": "Passwort geben",
+    "resetTwoFactor": "Zweiten Faktor entfernen",
+    "signOutEverywhere": "Überall abmelden",
+    "block": "Sperren",
+    "unblock": "Entsperren",
+    "deleteAccount": "Konto löschen",
+    "more": "Mehr für {{name}}",
+    "passwordGiven": "Das neue Passwort für {{name}}, einmal weiterzugeben:",
+    "confirm": {
+      "role": {
+        "title": "Rolle von {{name}} ändern?",
+        "button": "Rolle ändern"
+      },
+      "promote": {
+        "text": "{{name}} darf dann jede Einstellung dieses Servers ändern. Die Tagebücher der anderen sieht auch ein Betreiber nie."
+      },
+      "demote": {
+        "text": "{{name}} wird Mitglied und kommt nicht mehr an die Einstellungen des Servers."
+      },
+      "delete": {
+        "title": "{{name}} löschen?",
+        "text": "Das Konto wird mit allem gelöscht, was dazugehört, und lässt sich nicht zurückholen.",
+        "button": "Konto löschen"
+      },
+      "password": {
+        "title": "Passwort von {{name}} zurücksetzen?",
+        "text": "Ein zufälliges neues wird erzeugt und einmal gezeigt; jede Anmeldung des Kontos endet.",
+        "button": "Zurücksetzen"
+      },
+      "reset": {
+        "title": "Zweiten Faktor von {{name}} entfernen?",
+        "text": "Für ein verlorenes Handy: Das Konto meldet sich nur mit Passwort an, bis es einen neuen einrichtet.",
+        "button": "Entfernen"
+      },
+      "signout": {
+        "title": "{{name}} überall abmelden?",
+        "text": "Jedes Gerät des Kontos muss sich neu anmelden.",
+        "button": "Abmelden"
+      },
+      "block": {
+        "title": "{{name}} sperren?",
+        "text": "{{name}} kommt danach nicht mehr herein, offene Sitzungen enden sofort. Entsperren geht jederzeit.",
+        "button": "Sperren"
+      },
+      "unblock": {
+        "title": "{{name}} entsperren?",
+        "text": "{{name}} kann sich danach wieder anmelden, mit dem eigenen Passwort oder über den Anmeldeanbieter.",
+        "button": "Entsperren"
+      },
+      "backup_restore": {
+        "title": "Diese Sicherung wiederherstellen?",
+        "text": "Der jetzige Stand wird vorher gesichert. nexdiary startet neu, alle melden sich neu an.",
+        "button": "Wiederherstellen"
+      },
+      "backup_download": {
+        "title": "Diese Sicherung herunterladen?",
+        "text": "Sie enthält jedes Konto und alles, was geschrieben wurde. Sie ist nicht verschlüsselt.",
+        "button": "Herunterladen"
+      },
+      "backup_delete": {
+        "title": "Diese Sicherung löschen?",
+        "text": "Sie lässt sich nicht zurückholen.",
+        "button": "Löschen"
+      },
+      "backup_upload": {
+        "title": "Sicherung hochladen?",
+        "text": "Die Datei kommt in die Liste der Sicherungen. Wiederhergestellt wird erst, wenn du es dort bestätigst.",
+        "button": "Hochladen"
+      }
+    },
+    "signin": "Anmeldung",
+    "signinText": "Wie man hereinkommt.",
+    "passwordLogin": "Anmeldung mit Passwort",
+    "passwordLoginHint": "Aus: Mitglieder kommen nur über den Anbieter herein. Du als Betreiber kannst dein Passwort immer nutzen.",
+    "twoFactorRequired": "Zweiten Faktor verlangen",
+    "twoFactorRequiredHint": "Jedes Konto, das sich mit Passwort anmeldet, muss ihn einrichten, bevor es weiterkommt. Konten vom Anbieter bringen dessen eigenen mit.",
+    "ownSecondFactorFirst": "Richte zuerst deinen eigenen zweiten Faktor ein (Mein Konto, Sicherheit), sonst wärst du der Erste, der nicht mehr weiterkommt.",
+    "publicUrl": "Öffentliche Adresse",
+    "publicUrlHint": "Die Adresse, unter der man nexdiary erreicht. Einladungen und der Anbieter nutzen sie.",
+    "oidc": "OpenID Connect",
+    "oidcOn": "Eingerichtet mit {{issuer}}.",
+    "oidcOff": "Nicht eingerichtet.",
+    "redirect": "Weiterleitungsadresse für den Anbieter",
+    "oidcIssuer": "Aussteller (Issuer)",
+    "clientId": "Client-ID",
+    "clientSecret": "Client-Geheimnis",
+    "secretKept": "gespeichert, leer lassen zum Behalten",
+    "oidcName": "Name auf dem Knopf",
+    "oidcAutoCreate": "Neue Personen bekommen ein Konto",
+    "oidcAutoCreateHint": "Aus: Nur eingeladene oder verknüpfte Konten kommen über den Anbieter herein.",
+    "oidcRemove": "Entfernen",
+    "authentik": {
+      "title": "authentik in einem Schritt",
+      "text": "Mit einem API-Token, das Anwendungen anlegen darf, richtet nexdiary Anbieter und Anwendung in authentik selbst ein. Das Token wird nur dafür benutzt und nicht gespeichert.",
+      "url": "Adresse von authentik",
+      "token": "API-Token",
+      "run": "Einrichten",
+      "blueprint": "Stattdessen Blueprint herunterladen"
+    },
+    "apiTokens": {
+      "title": "API-Token",
+      "text": "Konten verbinden nexdiary mit Programmen wie nexdeck. Ein Token liest nur und nie mehr als sein Konto. Ab Werk aus.",
+      "allow": "Konten dürfen API-Token anlegen",
+      "allowHint": "Jedes Konto legt eigene Token unter Mein Konto, Verbindungen an.",
+      "blocked": "gesperrt",
+      "block": "Sperren",
+      "blockNamed": "Token {{name}} von {{account}} sperren",
+      "blockTitle": "Token „{{name}}“ von {{account}} sperren?",
+      "blockText": "Das Token antwortet danach wie keines, für immer. Das Konto sieht es als „vom Betreiber gesperrt“ und kann ein neues anlegen, solange API-Token eingeschaltet sind.",
+      "offHint": "Schaltest du API-Token ab, antwortet jedes Token mit 401. Die Token bleiben stehen und gehen wieder, wenn du einschaltest."
+    },
+    "mail": "Mail",
+    "mailHint": "Nur für Einladungen. Ohne Server reicht der Link zum Kopieren.",
+    "smtpHost": "Server",
+    "smtpPort": "Port",
+    "smtpSecurity": "Verschlüsselung",
+    "smtpUser": "Benutzer",
+    "smtpFrom": "Absender",
+    "none": "keine",
+    "mailTestTitle": "Ausprobieren",
+    "mailTest": "Testmail an",
+    "send": "Senden",
+    "mailSent": "Die Testmail ist raus.",
+    "backups": "Sicherung",
+    "backupsHint": "Eine Datei mit allem: Konten, Einstellungen und alles, was ihr schreibt. Wiederherstellen zeigt zuerst einen Probelauf.",
+    "schedule": "Automatisch",
+    "off": "aus",
+    "daily": "jede Nacht",
+    "weekly": "jede Woche",
+    "keep": "Behalten",
+    "backupNow": "Jetzt sichern",
+    "backupMade": "Sicherung erstellt.",
+    "uploadBackup": "Sicherung hochladen",
+    "uploaded": "hochgeladen",
+    "uploadedHint": "Hochgeladen. Sie steht jetzt in der Liste: erst prüfen, dann wiederherstellen.",
+    "noBackups": "Noch keine Sicherungen.",
+    "kinds": {
+      "manual": "von Hand",
+      "scheduled": "geplant",
+      "update": "vor einer Änderung"
+    },
+    "backupContent": "{{accounts}}, {{files}}",
+    "countAccounts_one": "{{count}} Konto",
+    "countAccounts_other": "{{count}} Konten",
+    "countFiles_one": "{{count}} Datei",
+    "countFiles_other": "{{count}} Dateien",
+    "check": "Prüfen",
+    "checkOk": "Vollständig: {{accounts}}, {{files}}. Wiederherstellen würde {{add}} hinzufügen und {{remove}} entfernen.",
+    "checkBad": "Beschädigt: Diese Sicherung lässt sich nicht wiederherstellen.",
+    "download": "Herunterladen",
+    "restore": "Wiederherstellen",
+    "deleteBackup": "Löschen",
+    "restarting": "nexdiary startet mit der Sicherung neu. Die Seite lädt gleich neu.",
+    "languages": "Sprachen",
+    "languagesHint": "Deutsch und Englisch sind eingebaut. Weitere als JSON-Datei hinzufügen, fehlende Texte fallen auf Englisch zurück.",
+    "builtIn": "eingebaut",
+    "texts_one": "ein Text",
+    "texts_other": "{{count}} Texte",
+    "removeLanguage": "{{name}} entfernen",
+    "template": "Vorlage herunterladen",
+    "languageCode": "Sprachcode",
+    "upload": "Sprache hochladen",
+    "languageAdded": "Sprache hinzugefügt. Sie erscheint unter Einstellungen, Allgemein.",
+    "log": "Log",
+    "logHint": "Was der Server getan hat. Ohne Inhalte von Einträgen.",
+    "level": "Stufe",
+    "allLevels": "Alle Stufen",
+    "logSearch": "Enthält …",
+    "refresh": "Aktualisieren",
+    "logEmpty": "Nichts im Log.",
+    "detail": "Ausführlichkeit",
+    "levels": {
+      "quiet": "Ruhig",
+      "normal": "Normal",
+      "detailed": "Ausführlich (1 Stunde)",
+      "trace": "Alles (1 Stunde)"
+    },
+    "logClear": "Leeren",
+    "logClearText": "Jede Zeile geht. Neue kommen wie bisher.",
+    "logUntil": "Um {{time}} zurück auf normal.",
+    "checkNewer": "Diese Sicherung stammt aus einer neueren Version von nexdiary. Erst nexdiary aktualisieren, dann wiederherstellen."
+  },
+  "errors": {
+    "account_blocked": "Dieses Konto ist gesperrt.",
+    "account_locked": "Zu viele falsche Versuche. Das Konto wartet eine Viertelstunde.",
+    "already_set_up": "nexdiary ist schon eingerichtet.",
+    "api_off": "Der Betreiber hat API-Token nicht eingeschaltet.",
+    "avatar_not_a_picture": "Das ist kein Bild, das nexdiary annimmt (JPEG, PNG, WebP, GIF, HEIC oder AVIF).",
+    "avatar_too_large": "Das Bild ist zu groß, höchstens {{max_mb}} MB.",
+    "backup_damaged": "Die Sicherung ist beschädigt. Nichts wurde geändert.",
+    "backup_invalid": "Das ist keine nexdiary-Sicherung.",
+    "backup_too_large": "Die Sicherung entpackt sich zu mehr, als eine Sicherung enthalten darf. Nichts wurde geändert.",
+    "backup_too_new": "Die Sicherung stammt aus einer neueren Version von nexdiary. Nichts wurde geändert.",
+    "bad_preference": "Diesen Wert bietet nexdiary nicht an.",
+    "busy": "nexdiary ist gerade beschäftigt. Versuch es gleich noch einmal.",
+    "cannot_block_self": "Dich selbst kannst du nicht sperren.",
+    "cannot_delete_self": "Das eigene Konto kannst du nicht löschen.",
+    "cannot_demote_self": "Die Betreiberrolle kannst du dir nicht selbst nehmen.",
+    "client_required": "Die Anfrage sagte nicht, aus welchem Tab sie kam. Lade die Seite neu.",
+    "current_password_missing": "Gib dein jetziges Passwort ein.",
+    "display_name_invalid": "Ein Anzeigename darf keine Steuer- oder unsichtbaren Zeichen enthalten.",
+    "display_name_taken": "Ein anderes Konto heißt schon so.",
+    "display_name_too_long": "Der Anzeigename ist zu lang, höchstens 80 Zeichen.",
+    "duration_not_allowed": "Diese Dauer geht hier nicht.",
+    "empty": "Die Datei ist leer.",
+    "internal_error": "Auf dem Server ist etwas schiefgegangen.",
+    "invalid_account_name": "Ein Anmeldename hat 2 bis 64 Zeichen: Buchstaben ohne Umlaute, Ziffern, Punkt, Bindestrich oder Unterstrich, keine Leerzeichen.",
+    "invalid_days": "Bitte eine der angebotenen Laufzeiten wählen.",
+    "invalid_email": "Das ist keine Mailadresse.",
+    "invalid_input": "Die Eingabe ist nicht gültig.",
+    "invalid_role": "Unbekannte Rolle.",
+    "invalid_url": "Eine Adresse wie https://diary.example.com angeben.",
+    "invite_invalid": "Diese Einladung gilt nicht mehr.",
+    "issuer_invalid": "Das ist kein OpenID-Connect-Anbieter.",
+    "issuer_unreachable": "Unter dieser Adresse ist der Anbieter nicht erreichbar.",
+    "locale_unusable": "Diese Sprachdatei lässt sich nicht verwenden.",
+    "log_level_from_environment": "Die Stufe ist in der Umgebung festgelegt (NEXDIARY_LOG_LEVEL).",
+    "mail_failed": "Der Mailserver hat die Mail nicht angenommen.",
+    "mail_off": "Es ist kein Mailserver eingetragen.",
+    "name_missing": "Gib einen Namen an.",
+    "name_taken": "Dieser Name ist vergeben.",
+    "network": "Der Server ist nicht erreichbar.",
+    "not_found": "Nicht gefunden, oder für dich nicht offen.",
+    "oidc_account": "Dieses Konto meldet sich über den Anbieter an.",
+    "oidc_denied": "Der Anbieter hat dich nicht hereingelassen.",
+    "oidc_email_taken": "Deine Mailadresse gehört zu einem anderen Konto.",
+    "oidc_email_unverified": "Der Anbieter hat deine Mailadresse nicht bestätigt.",
+    "oidc_exchange_failed": "Der Anbieter hat die Anmeldung nicht bestätigt.",
+    "oidc_issuer_mismatch": "Der Anbieter meldet sich unter einer anderen Adresse.",
+    "oidc_link_mismatch": "Diese Verknüpfung gehört zu einem anderen Konto.",
+    "oidc_no_account": "Für dich gibt es hier kein Konto. Bitte um eine Einladung.",
+    "oidc_not_configured": "Es ist kein Anmeldeanbieter eingerichtet.",
+    "oidc_only_account": "Dieses Konto meldet sich nur über den Anbieter an.",
+    "oidc_provider_invalid": "Der Anbieter antwortet nicht wie ein OpenID-Connect-Anbieter.",
+    "oidc_provider_unreachable": "Der Anbieter ist nicht erreichbar.",
+    "oidc_state_mismatch": "Die Anmeldung ist abgelaufen oder kam von woanders. Noch einmal versuchen.",
+    "oidc_subject_taken": "Diese Identität ist schon mit einem anderen Konto verknüpft.",
+    "oidc_token_invalid": "Die Antwort des Anbieters war ungültig.",
+    "operator_network": "Die Einstellungen des Betreibers sind nur aus dem Heimnetz erreichbar.",
+    "operator_only": "Das darf nur der Betreiber.",
+    "origin_refused": "Die API ist für Programme, nicht für Webseiten.",
+    "own_second_factor_first": "Richte zuerst deinen eigenen zweiten Faktor ein, auf deiner Kontoseite.",
+    "password_login_off": "Die Anmeldung mit Passwort ist abgeschaltet.",
+    "password_mismatch": "Die beiden neuen Passwörter sind nicht gleich.",
+    "password_missing": "Gib das Passwort an.",
+    "password_too_short": "Das Passwort ist zu kurz, mindestens 12 Zeichen.",
+    "provider_first": "Richte zuerst einen Anmeldeanbieter ein, sonst kommt außer dir niemand mehr herein.",
+    "public_url_missing": "Für Mails braucht nexdiary seine öffentliche Adresse; der Betreiber trägt sie unter Einstellungen ein.",
+    "second_factor_expired": "Zu viele falsche Codes oder zu lange gewartet. Fang mit dem Passwort neu an.",
+    "second_factor_setup_required": "Richte zuerst deinen zweiten Faktor ein.",
+    "second_factor_unavailable": "Der zweite Faktor lässt sich auf dieser Installation nicht prüfen. Bitte den Betreiber, ihn zurückzusetzen.",
+    "secret_required": "Bitte das Client-Geheimnis eintragen.",
+    "setup_code_wrong": "Der Einrichtungscode stimmt nicht. Er steht im Log des Servers.",
+    "sign_in_required": "Bitte erst anmelden.",
+    "slow_down": "Zu viele Anfragen mit diesem Token. Eine Minute warten.",
+    "token_invalid": "Kein gültiges API-Token.",
+    "too_large": "Die Datei ist größer als erlaubt, höchstens {{max_mb}} MB.",
+    "too_many_attempts": "Zu viele Versuche. Kurz warten und noch einmal.",
+    "too_many_tokens": "Ein Konto hat höchstens 20 Token.",
+    "totp_code_wrong": "Der Code stimmt nicht. Ein Code aus der App: Uhrzeit auf dem Handy prüfen. Ein Wiederherstellungscode gilt nur einmal.",
+    "totp_enabled": "Der zweite Faktor ist schon an.",
+    "totp_enrolment_expired": "Das Einrichten hat zu lange gedauert. Fang neu an.",
+    "totp_not_enabled": "Der zweite Faktor ist nicht an.",
+    "unknown_language": "Diese Sprache hat nexdiary nicht.",
+    "url_invalid": "Die Adresse muss mit http:// oder https:// beginnen.",
+    "use_disable": "Schalte deinen eigenen zweiten Faktor auf deiner Kontoseite aus.",
+    "wrong_credentials": "Name oder Passwort stimmt nicht.",
+    "wrong_password": "Das Passwort stimmt nicht."
+  }
+}

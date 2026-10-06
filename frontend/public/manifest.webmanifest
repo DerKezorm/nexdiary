@@ -1,0 +1,15 @@
+{
+  "name": "nexdiary",
+  "short_name": "nexdiary",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#faf5ec",
+  "theme_color": "#faf5ec",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

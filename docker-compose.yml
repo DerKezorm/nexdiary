@@ -1,0 +1,37 @@
+# nexdiary, start with:  docker compose up -d --build
+#
+# Then open http://<your-host>:8550. The first account you create there is the operator; it needs the setup code
+# from the log (docker logs nexdiary) or the one you set below.
+
+services:
+  nexdiary:
+    build: .
+    container_name: nexdiary
+    restart: unless-stopped
+
+    ports:
+      # Host port on the left, container port on the right.
+      - "8550:8000"
+
+    volumes:
+      # Database, logs, backups and the operator's own languages.
+      # A local disk, never an SMB or NFS share: SQLite's locking does not work reliably over network filesystems.
+      - ./data:/data
+
+    environment:
+      # Who should own the files in the data directory. The container fixes the permissions itself on startup.
+      PUID: 1000
+      PGID: 1000
+
+      TZ: Europe/Berlin
+
+      # The address people use to reach nexdiary, for invitation links and the OIDC redirect. Can also be set in the
+      # interface.
+      # NEXDIARY_PUBLIC_URL: https://diary.example.com
+
+      # Behind a reverse proxy: its address, so that the brake against password guessing sees the real sender.
+      # NEXDIARY_TRUSTED_PROXIES: 172.16.0.0/12
+
+      # The code the first account needs. Without it nexdiary makes one at every start until it is set up and
+      # writes it to the log: docker logs nexdiary
+      # NEXDIARY_SETUP_TOKEN: choose-a-long-one

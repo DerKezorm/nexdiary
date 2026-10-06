@@ -1,0 +1,19 @@
+{
+  "0.1.0": {
+    "lead": "Die erste Version von nexdiary: Konten für die Familie und eine sichere Anmeldung.",
+    "sections": [
+      {
+        "title": "Konten für die Familie",
+        "where": "Einstellungen, Server, Konten",
+        "body": "Der Betreiber lädt per Link ein; jede Person legt ihr eigenes Konto an. Einträge sieht der Betreiber nie."
+      },
+      {
+        "title": "Zweiter Faktor",
+        "where": "Mein Konto, Sicherheit",
+        "body": "Neben dem Passwort ein Code aus einer App auf dem Handy, dazu Wiederherstellungscodes auf Papier."
+      }
+    ],
+    "smallTitle": "Außerdem",
+    "small": ["Hell oder dunkel gilt für dein Konto, auf jedem Gerät."]
+  }
+}

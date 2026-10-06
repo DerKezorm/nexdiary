@@ -1,0 +1,207 @@
+@import 'tailwindcss';
+
+/* nexdiary: warm paper by day, candlelight by night. Five accents, each light and dark; Salbei is nexdiary's own. */
+:root {
+  --paper: #faf5ec; /* page */
+  --sheet: #fffdf8; /* cards */
+  --sheet-2: #f4ece0; /* quiet fields */
+  --line: #e8dccb;
+  --ink: #3b2f27; /* text */
+  --ink-2: #6b5a4c; /* secondary text */
+  --muted: #8a7867; /* small text, 4.5:1 on paper */
+  --accent: #5a7a52;
+  --accent-soft: #e2ecdc;
+  --accent-ink: #fffaf4;
+  --shadow: 0 1px 2px rgb(80 50 20 / 0.06), 0 8px 24px -12px rgb(80 50 20 / 0.18);
+  --scrim: rgb(40 28 18 / 0.45);
+  --bad: #b42318; /* what went wrong, what cannot be taken back */
+  --warn: #9a5b00;
+}
+:root[data-palette='terrakotta'] {
+  --accent: #b8562f;
+  --accent-soft: #f6e2d6;
+}
+:root[data-palette='pflaume'] {
+  --accent: #8e4a72;
+  --accent-soft: #f1e0ea;
+}
+:root[data-palette='salbei'] {
+  --accent: #5a7a52;
+  --accent-soft: #e2ecdc;
+}
+:root[data-palette='altrosa'] {
+  --accent: #b05a5e;
+  --accent-soft: #f5e1e0;
+}
+:root[data-palette='tinte'] {
+  --accent: #3d5a8f;
+  --accent-soft: #e1e7f2;
+}
+
+:root[data-theme='dark'] {
+  --paper: #1b1613;
+  --sheet: #241d19;
+  --sheet-2: #2d2520;
+  --line: #3b312a;
+  --ink: #f2e7da;
+  --ink-2: #cbbba9;
+  --muted: #a5927f;
+  --accent: #98bb8e;
+  --accent-soft: #26331f;
+  --accent-ink: #1b1613;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 10px 28px -14px rgb(0 0 0 / 0.7);
+  --scrim: rgb(0 0 0 / 0.6);
+  --bad: #f4a199;
+  --warn: #f0c068;
+}
+:root[data-theme='dark'][data-palette='terrakotta'] {
+  --accent: #e0835b;
+  --accent-soft: #43281c;
+}
+:root[data-theme='dark'][data-palette='pflaume'] {
+  --accent: #cf8bb2;
+  --accent-soft: #3d2433;
+}
+:root[data-theme='dark'][data-palette='salbei'] {
+  --accent: #98bb8e;
+  --accent-soft: #26331f;
+}
+:root[data-theme='dark'][data-palette='altrosa'] {
+  --accent: #df9497;
+  --accent-soft: #3f2526;
+}
+:root[data-theme='dark'][data-palette='tinte'] {
+  --accent: #93acdc;
+  --accent-ink: #141a26;
+  --accent-soft: #232c40;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-sheet: var(--sheet);
+  --color-sheet-2: var(--sheet-2);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
+  --color-scrim: var(--scrim);
+  --color-bad: var(--bad);
+  --color-warn: var(--warn);
+  --font-sans: 'Nunito Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Fraunces Variable', Georgia, serif;
+  --font-serif: 'Lora Variable', Georgia, serif;
+  --shadow-soft: var(--shadow);
+}
+
+html,
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+body {
+  min-height: 100dvh;
+}
+/* In the base layer, so a field's own focus look (border instead of ring) still wins. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+::selection {
+  background: var(--accent-soft);
+}
+
+@layer components {
+  /* Every page has the same width and gutters, so the content does not jump when switching pages. */
+  .page {
+    margin-inline: auto;
+    width: 100%;
+    max-width: 64rem;
+    padding-inline: 1rem;
+  }
+  @media (min-width: 640px) {
+    .page {
+      padding-inline: 1.5rem;
+    }
+  }
+  @media (min-width: 1024px) {
+    .page {
+      padding-inline: 2rem;
+    }
+  }
+  .card {
+    background: var(--sheet);
+    border: 1px solid var(--line);
+    border-radius: 1.25rem;
+    box-shadow: var(--shadow);
+  }
+  .prose-diary {
+    font-family: var(--font-serif);
+    font-size: 1.075rem;
+    line-height: 1.8;
+    color: var(--ink);
+  }
+  .prose-diary p {
+    margin: 0 0 1em;
+  }
+  .prose-diary h2 {
+    font-family: var(--font-display);
+    font-size: 1.35rem;
+    font-weight: 600;
+    margin: 1.4em 0 0.5em;
+  }
+  .prose-diary blockquote {
+    border-left: 3px solid var(--accent);
+    padding-left: 1em;
+    color: var(--ink-2);
+    font-style: italic;
+    margin: 1em 0;
+  }
+  .prose-diary ul {
+    list-style: disc;
+    padding-left: 1.4em;
+    margin: 0 0 1em;
+  }
+  .prose-diary:focus {
+    outline: none;
+  }
+  .scroll-x {
+    scrollbar-width: none;
+  }
+  .scroll-x::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.rise {
+  animation: rise 0.35s ease-out both;
+}
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+.shimmer {
+  background: linear-gradient(90deg, var(--sheet-2) 25%, var(--accent-soft) 50%, var(--sheet-2) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
