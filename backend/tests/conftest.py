@@ -36,7 +36,7 @@ from app.db import SessionLocal, init_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import MEMBER, OPERATOR, Account, Base, Setting  # noqa: E402
 from app.security import SESSION_COOKIE, brake, hash_password, start_session  # noqa: E402
-from app.services import totp, updates  # noqa: E402
+from app.services import diary, totp, updates  # noqa: E402
 
 DATA_DIR = _DATA
 MEDIA = Path(_DATA) / "media"
@@ -61,6 +61,7 @@ def clean_db(schema: None) -> Iterator[None]:
     brake.forget()
     totp.forget()
     updates.forget()
+    diary.forget_searches()
     yield
     app.dependency_overrides.clear()
 

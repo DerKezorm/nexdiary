@@ -21,7 +21,7 @@ from .config import get_settings
 from .db import SessionLocal, init_db
 from .errors import detail
 from .middleware import GuardMiddleware, RequestContextMiddleware, unhandled_error
-from .routers import about, apitokens, auth, health, invites, oidc
+from .routers import about, apitokens, auth, diary, health, invites, oidc
 from .routers import avatars as avatars_router
 from .routers import backups as backups_router
 from .routers import locales as locales_router
@@ -30,13 +30,13 @@ from .routers import settings as settings_router
 from .routers import totp as totp_router
 from .routers import v1 as v1_router
 from .security import HashingBusy, purge_sessions
-from .services import accounts, backups, locales, logs, settings_service, totp
+from .services import accounts, backups, locales, logs, settings_service, totp, vault
 
 logger = logging.getLogger("nexdiary")
 
 ROUTERS = [
     health, about, locales_router, logs_router, auth, totp_router, oidc, invites, settings_router, backups_router,
-    avatars_router, apitokens, v1_router,
+    avatars_router, apitokens, v1_router, diary,
 ]
 
 
@@ -74,6 +74,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     logs.setup()
     backups.apply_pending()
     init_db()
+    # The master key is there and fits the database, or the start stops here with the reason.
+    vault.startup()
     private.tighten_all()
     logs.attach_store(_read_log_mode, _write_log_mode)
     logs.apply_stored_mode()
@@ -150,6 +152,15 @@ async def _plain_http_error(request: Request, exc: StarletteHTTPException) -> JS
     if exc.status_code == 400 and isinstance(exc.detail, str):
         return JSONResponse(status_code=400, content={"detail": detail("invalid_input", "The input is not valid.")})
     return await http_exception_handler(request, exc)
+
+
+@app.exception_handler(vault.SealError)
+async def _sealed_value_unreadable(request: Request, exc: vault.SealError) -> JSONResponse:
+    # A sealed value that does not open was damaged or moved in the database. Never show something else instead.
+    request_id = getattr(request.state, "request_id", None) or "-"
+    logger.error("A sealed value did not open on %s %s: %s", request.method, request.url.path, exc)
+    return JSONResponse(status_code=500, content={"detail": detail(
+        "internal_error", f"Something went wrong on the server. Request id: {request_id}", request_id=request_id)})
 
 
 app.add_exception_handler(Exception, unhandled_error)

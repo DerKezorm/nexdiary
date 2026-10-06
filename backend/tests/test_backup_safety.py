@@ -187,3 +187,41 @@ def test_check_reads_a_database_it_was_handed_whole(client: TestClient, operator
     """The control for the tests above: the archive as made is usable."""
     brief = backups.check(write_archive(made_here()))
     assert brief.usable and brief.schema == database.SCHEMA_VERSION
+
+
+def test_a_backup_sealed_with_another_master_key_is_not_restored(client: TestClient, operator: Account) -> None:
+    """A backup of another server: its data keys do not open with this server's master key. Restored, nexdiary would
+    not start any more; the check says so and the restore refuses."""
+    import os
+    import uuid
+
+    from app.services import vault
+
+    assert client.post("/api/notes", json={"id": str(uuid.uuid4()), "text": "vom alten server"}).status_code == 201
+    name = backups.create(kind=backups.MANUAL).name
+    assert backups.check(name).usable, "on its own server it fits"
+    kept = vault._master
+    vault._master = os.urandom(vault.KEY_BYTES)
+    try:
+        brief = client.post(f"/api/backups/{name}/check").json()
+        assert brief["other_master_key"] is True and brief["usable"] is False and brief["database_ok"] is True
+        refused = client.post(f"/api/backups/{name}/restore", json={"password": PASSWORD})
+        assert refused.status_code == 400 and refused.json()["detail"]["code"] == "backup_other_master_key"
+        assert not backups.pending_folder().exists(), "nothing laid out for the next start"
+    finally:
+        vault._master = kept
+
+
+def test_a_backup_without_any_data_key_fits_every_server(client: TestClient, operator: Account) -> None:
+    import os
+
+    from app.services import vault
+
+    name = backups.create(kind=backups.MANUAL).name
+    kept = vault._master
+    vault._master = os.urandom(vault.KEY_BYTES)
+    try:
+        brief = backups.check(name)
+        assert brief.usable and not brief.other_master_key
+    finally:
+        vault._master = kept

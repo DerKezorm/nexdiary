@@ -10,3 +10,4 @@ cryptography==50.0.1
 pyjwt==2.15.1
 httpx==0.28.1
 segno==1.6.6
+tzdata==2026.1

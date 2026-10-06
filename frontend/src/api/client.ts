@@ -104,8 +104,18 @@ async function once<T>(path: string, options: Options): Promise<T> {
 
 // ---- Types ----------------------------------------------------------------------------------------------------------
 
+export type Layout = 'page' | 'columns' | 'chat'
+
 export type Profile = {
   mode: 'system' | 'light' | 'dark'
+  /** How "Today" is laid out. */
+  layout: Layout
+  /** A phone opens on the quick note. */
+  quick_start: boolean
+  /** The time zone; what "today" means for the server. */
+  timezone: string
+  /** Reported by a browser, or chosen by the person (then no browser changes it). */
+  timezone_source: 'browser' | 'manual'
 }
 
 export type Me = {
@@ -179,4 +189,54 @@ export function passwordHeader(password: string): string {
 
 export function avatarUrl(person: { id: number; avatar: string | null }): string | null {
   return person.avatar ? `/api/avatars/${person.id}?v=${encodeURIComponent(person.avatar)}` : null
+}
+
+// ---- The diary ------------------------------------------------------------------------------------------------------
+
+export type Note = {
+  id: string
+  date: string
+  text: string
+  /** The sealed text did not open (damaged in the database); the note can only be deleted. */
+  unreadable: boolean
+  prompt: string | null
+  photo_id: string | null
+  created_at: string
+  updated_at: string | null
+}
+
+export type ValueDef = { id: string; name: string; low: string; high: string; hint: string; active: boolean; position: number; unreadable?: boolean }
+
+export type DayPage = {
+  date: string
+  title: string
+  text: string
+  tags: string[]
+  values: Record<string, number>
+  cover: unknown
+  written_by: 'ai' | 'self' | null
+  words: number
+  created_at: string
+  updated_at: string
+}
+
+export type TodayData = { date: string; notes: Note[]; day: DayPage | null; values: ValueDef[]; streak: number }
+
+export type DayChange = { title?: string; text?: string; tags?: string[]; values?: Record<string, number | null>; written_by?: 'ai' | 'self' | null }
+
+export const diaryApi = {
+  today: () => api<TodayData>('/api/today'),
+  notes: (date: string) => api<Note[]>('/api/notes', { query: { date } }),
+  addNote: (id: string, text: string, date?: string) => api<Note>('/api/notes', { method: 'POST', body: date ? { id, text, date } : { id, text } }),
+  changeNote: (id: string, text: string) => api<Note>(`/api/notes/${encodeURIComponent(id)}`, { method: 'PUT', body: { text } }),
+  deleteNote: (id: string) => api<void>(`/api/notes/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  day: (date: string) => api<DayPage>(`/api/days/${encodeURIComponent(date)}`),
+  changeDay: (date: string, change: DayChange) => api<DayPage>(`/api/days/${encodeURIComponent(date)}`, { method: 'PUT', body: change }),
+  rate: (date: string, values: Record<string, number | null>) => api<DayPage>(`/api/days/${encodeURIComponent(date)}/values`, { method: 'PUT', body: { values } }),
+  values: () => api<ValueDef[]>('/api/values'),
+  addValue: (value: { name: string; low: string; high: string; hint?: string }) => api<ValueDef>('/api/values', { method: 'POST', body: value }),
+  changeValue: (id: string, change: Partial<Pick<ValueDef, 'name' | 'low' | 'high' | 'hint' | 'active'>>) =>
+    api<ValueDef>(`/api/values/${encodeURIComponent(id)}`, { method: 'PUT', body: change }),
+  orderValues: (ids: string[]) => api<ValueDef[]>('/api/values/order', { method: 'PUT', body: { ids } }),
+  deleteValue: (id: string) => api<void>(`/api/values/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 }

@@ -3,17 +3,19 @@
  * the operator with a second row for its parts. The tab is in the address (`?tab=server&sub=backups`), so a link can
  * point at one; a tab someone may not see falls back to General. The own account is `AccountPage.tsx`.
  */
-import { Eye, Globe, HardDrive, KeyRound, Languages, Mail, Palette, Plug, ScrollText, Shield, Users } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { Eye, Globe, HardDrive, KeyRound, Languages, ListChecks, Mail, Palette, Plug, ScrollText, Shield, Smartphone, Users } from 'lucide-react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
 
-import { authApi, type Me } from '../api/client'
+import { authApi, type Layout, type Me, type Profile } from '../api/client'
+import { LayoutWire } from '../components/Wires'
 import { changeLanguage, languageOptions, type LanguageOption } from '../i18n'
 import { applyMode, storedMode, type Mode } from '../lib/theme'
 import { useAuth } from '../state/auth'
 import { AccountsCard, ApiTokensCard, BackupsCard, LanguagesCard, LogCard, MailCard, SignInCard, useServerSettings } from './settings/ServerCards'
-import { Card, Feedback, Segment, TabRow, useAction, type Tab } from './settings/ui'
+import { Card, Feedback, Segment, TabRow, Toggle, useAction, type Tab } from './settings/ui'
+import { ValuesCard } from './settings/ValuesCard'
 
 type Top = 'general' | 'looks' | 'server'
 type Part = 'accounts' | 'signin' | 'mail' | 'api' | 'backups' | 'languages' | 'log'
@@ -42,8 +44,19 @@ export function SettingsPage() {
       <TabRow tabs={tops} active={top} onChange={(value) => go(value)} label={t('settings.title')} />
       {top === 'server' && <TabRow under tabs={parts} active={part} onChange={(value) => go('server', value)} label={t('settings.tabs.server')} />}
       <div className="space-y-6 pt-1">
-        {top === 'general' && <LanguageCard />}
-        {top === 'looks' && <LooksCard />}
+        {top === 'general' && (
+          <>
+            <LanguageCard />
+            <ValuesCard />
+          </>
+        )}
+        {top === 'looks' && (
+          <>
+            <LooksCard />
+            <PhoneCard />
+            <LayoutCard />
+          </>
+        )}
         {top === 'server' && <ServerPart part={part} />}
       </div>
     </div>
@@ -132,5 +145,64 @@ function LooksCard() {
       />
       <Feedback problem={action.problem} />
     </Card>
+  )
+}
+
+/** Saves a profile choice with the account (never only in this browser) and shows it at once. */
+function useProfileChoice() {
+  const { me, setMe } = useAuth()
+  const action = useAction()
+  const choose = (change: Partial<Profile>) => {
+    if (!me) return
+    setMe({ ...me, profile: { ...me.profile, ...change } })
+    void action.run(async () => {
+      const profile = await authApi.preferences(change)
+      setMe({ ...me, profile })
+    }).then((worked) => worked || void authApi.me().then(setMe, () => undefined))
+  }
+  return { profile: me?.profile, choose, problem: action.problem }
+}
+
+/** Where a phone starts: on the quick note, or in the whole app. */
+function PhoneCard() {
+  const { t } = useTranslation()
+  const { profile, choose, problem } = useProfileChoice()
+  return (
+    <Card icon={Smartphone} title={t('settings.phone.title')} text={t('settings.phone.text')}>
+      <Toggle label={t('settings.phone.quickStart')} hint={t('settings.phone.quickStartHint')} checked={profile?.quick_start ?? true} onChange={(quick_start) => choose({ quick_start })} />
+      <Feedback problem={problem} />
+    </Card>
+  )
+}
+
+const LAYOUTS: Layout[] = ['page', 'columns', 'chat']
+
+/** The layout of "Today", chosen from three sketches. */
+function LayoutCard() {
+  const { t } = useTranslation()
+  const { profile, choose, problem } = useProfileChoice()
+  return (
+    <Card icon={ListChecks} title={t('settings.layout.title')} text={t('settings.layout.text')}>
+      <div className="grid gap-3 sm:grid-cols-3">
+        {LAYOUTS.map((layout) => (
+          <Choice key={layout} on={(profile?.layout ?? 'page') === layout} onClick={() => choose({ layout })} title={t(`settings.layout.${layout}.name`)} text={t(`settings.layout.${layout}.idea`)}>
+            <LayoutWire kind={layout} />
+          </Choice>
+        ))}
+      </div>
+      <Feedback problem={problem} />
+    </Card>
+  )
+}
+
+function Choice({ on, onClick, title, text, children }: { on: boolean; onClick: () => void; title: string; text: string; children: ReactNode }) {
+  return (
+    <button type="button" onClick={onClick} aria-pressed={on} className={`overflow-hidden rounded-2xl border text-left transition ${on ? 'border-accent ring-2 ring-accent' : 'border-line hover:border-accent/50'}`}>
+      <span className="block bg-sheet-2/60 px-5 py-5">{children}</span>
+      <span className="block border-t border-line px-4 py-3">
+        <span className="font-semibold">{title}</span>
+        <span className="mt-0.5 block text-xs leading-snug text-muted">{text}</span>
+      </span>
+    </button>
   )
 }

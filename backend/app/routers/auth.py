@@ -43,7 +43,7 @@ from ..security import (
     session_account,
     start_session,
 )
-from ..services import accounts, locales, mailer, settings_service, totp
+from ..services import accounts, diary, locales, mailer, settings_service, totp, vault
 from ..services.accounts import AccountError
 
 logger = logging.getLogger("nexdiary.auth")
@@ -358,16 +358,28 @@ def set_language(payload: LanguageIn, account: Account, db: DbSession) -> dict[s
 
 
 #: What a person may set for themselves, with the values allowed; the first one is the default. The rest of the
-#: profile (palette, the layout of "Today", the journal, the quick note) comes with the blocks that use it.
+#: profile (palette, the journal) comes with the blocks that use it.
 PROFILE: dict[str, tuple[Any, ...]] = {
     #: Light, dark, or as the system is set.
     "mode": ("system", "light", "dark"),
+    #: How "Today" is laid out: one page, two columns, or like a chat.
+    "layout": ("page", "columns", "chat"),
+    #: A phone opens on the quick note.
+    "quick_start": (True, False),
+    #: Where the time zone came from: the browser in use, or the person's own choice, which no browser overrides.
+    "timezone_source": ("browser", "manual"),
 }
 
 
 def profile_of(stored: Any) -> dict[str, Any]:
     stored = stored if isinstance(stored, dict) else {}
-    return {key: stored[key] if stored.get(key) in allowed else allowed[0] for key, allowed in PROFILE.items()}
+    out = {
+        key: stored[key] if stored.get(key) in allowed and type(stored.get(key)) is type(allowed[0]) else allowed[0]
+        for key, allowed in PROFILE.items()
+    }
+    # The time zone the browser reported ("Europe/Berlin"): what "today" means for this person. Empty until then.
+    out["timezone"] = stored.get("timezone") if diary.valid_time_zone(stored.get("timezone")) else ""
+    return out
 
 
 @router.put("/me/preferences", summary="The own profile choices; only the values sent change")
@@ -375,7 +387,15 @@ def set_preferences(payload: dict[str, Any], account: Account, db: DbSession) ->
     row = db.get(AccountRow, account.id)
     assert row is not None
     current = profile_of(row.profile)
+    # A zone the browser reports does not overrule one the person chose: the rest of the change still counts.
+    if payload.get("timezone_source") == "browser" and current["timezone_source"] == "manual":
+        payload = {key: value for key, value in payload.items() if key not in ("timezone", "timezone_source")}
     for key, value in payload.items():
+        if key == "timezone":
+            if not diary.valid_time_zone(value):
+                raise error("bad_preference", "This value is not one nexdiary offers.", 422, field=key)
+            current[key] = value
+            continue
         allowed = PROFILE.get(key)
         if allowed is None or value not in allowed or type(value) is not type(allowed[0]):
             raise error("bad_preference", "This value is not one nexdiary offers.", 422, field=key)
@@ -429,8 +449,11 @@ def delete_account(
         raise error("cannot_delete_self", "You cannot delete your own account.", 409)
     row = _row(db, account_id)
     name = row.name
+    # The database takes the days, notes, values and the data key with it (ON DELETE CASCADE): without the key, any
+    # copy of what the person wrote is unreadable for good.
     db.delete(row)
     db.commit()
+    vault.shred_leftovers()
     totp.forget_account(account_id)
     logger.warning("Account deleted name=%s by=%s", name, operator.name)
 

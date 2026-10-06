@@ -1,6 +1,9 @@
-import { BarChart3, BookOpen, Heart, PenLine } from 'lucide-react'
+import { BarChart3, BookOpen, Heart, PenLine, SquarePen } from 'lucide-react'
+import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { NavLink, Outlet } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+
+import { useAuth } from '../state/auth'
 
 import { AccountMenu } from './AccountMenu'
 import { Wordmark } from './Logo'
@@ -14,8 +17,44 @@ const NAV = [
 ]
 
 /** The frame of the mock: a sidebar on a large screen, a header and a bar at the bottom on a phone. */
+/** Below this width nexdiary counts as on a phone (the breakpoint of the mock, `md`). */
+const PHONE_WIDTH = 768
+const QUICK_SHOWN = 'nexdiary.quickShown'
+
+/**
+ * On a phone nexdiary opens on the quick note, once per visit (as the mock): "Alles" from there stays in the whole app.
+ * Off when the person switched it off under Settings, Look.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function shouldOpenQuick(pathname: string, quickStart: boolean, width: number, shownBefore: boolean): boolean {
+  return pathname === '/' && quickStart && width < PHONE_WIDTH && !shownBefore
+}
+
+function useQuickStart() {
+  const { me } = useAuth()
+  const { pathname } = useLocation()
+  const navigate = useNavigate()
+  const quickStart = me?.profile?.quick_start ?? false
+  useEffect(() => {
+    let shown = false
+    try {
+      shown = sessionStorage.getItem(QUICK_SHOWN) === '1'
+    } catch {
+      // Private mode: then every time.
+    }
+    if (!shouldOpenQuick(pathname, quickStart, window.innerWidth, shown)) return
+    try {
+      sessionStorage.setItem(QUICK_SHOWN, '1')
+    } catch {
+      // As above.
+    }
+    navigate('/schnell', { replace: true })
+  }, [pathname, quickStart, navigate])
+}
+
 export function AppShell() {
   const { t } = useTranslation()
+  useQuickStart()
   return (
     <div className="lg:flex">
       <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r border-line px-4 py-6 lg:flex">
@@ -42,7 +81,12 @@ export function AppShell() {
       <main className="min-w-0 flex-1">
         <div className="flex items-center justify-between px-4 pt-4 lg:hidden">
           <Wordmark size={30} />
-          <AccountMenu />
+          <div className="flex items-center gap-2">
+            <Link to="/schnell" className="rounded-full bg-accent p-2 text-accent-ink" aria-label={t('quick.open')}>
+              <SquarePen size={18} aria-hidden />
+            </Link>
+            <AccountMenu />
+          </div>
         </div>
         <WhatsNewBanner />
         <Outlet />

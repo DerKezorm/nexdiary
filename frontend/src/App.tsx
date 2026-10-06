@@ -5,8 +5,10 @@ import { AppShell } from './components/AppShell'
 import { AboutPage } from './pages/AboutPage'
 import { AccountPage } from './pages/AccountPage'
 import { InvitePage, LoginPage, SetupPage } from './pages/AuthPages'
-import { JournalPage, SharedPage, StatsPage, TodayPage } from './pages/Pages'
+import { JournalPage, SharedPage, StatsPage } from './pages/Pages'
+import { QuickPage } from './pages/QuickPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { TodayPage } from './pages/TodayPage'
 import { useAuth } from './state/auth'
 
 /** Everything behind the sign-in: without an account the page goes to the sign-in, and comes back after. An account
@@ -27,6 +29,15 @@ export default function App() {
       <Route path="setup" element={<SetupPage />} />
       <Route path="login" element={<LoginPage />} />
       <Route path="invite/:token" element={<InvitePage />} />
+      {/* The quick note stands alone, without the menus of the app. */}
+      <Route
+        path="schnell"
+        element={
+          <SignedIn>
+            <QuickPage />
+          </SignedIn>
+        }
+      />
       <Route
         element={
           <SignedIn>

@@ -9,7 +9,19 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, LargeBinary, String, Text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    LargeBinary,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator
 
@@ -91,6 +103,9 @@ class Account(Base):
     #: The profile picture (``services/avatars.py``): a square WebP drawn anew, loaded only when asked for.
     avatar: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True, deferred=True)
     avatar_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    #: Whether the values the app starts with were laid out for this person (``services/diary.py``). Set once, so
+    #: that values a person deleted do not come back.
+    values_seeded: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
 
 
 class AuthSession(Base):
@@ -139,6 +154,76 @@ class ApiToken(Base):
     blocked_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
 
 
+# --- The diary -------------------------------------------------------------------------------------------------------
+#
+# What a person writes is sealed with their own data key (``services/vault.py``): AES-256-GCM per field, bound to the
+# person, the table, the column and the row. In the clear stays only what sorting needs: dates, times, positions.
+
+
+class UserKey(Base):
+    """A person's data key, wrapped with the master key. Deleting it makes everything the person wrote unreadable."""
+
+    __tablename__ = "user_keys"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    wrapped_dek: Mapped[bytes] = mapped_column(LargeBinary)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+
+class Day(Base):
+    """The page of one day: title, text, tags, values and how it came about, sealed in one field."""
+
+    __tablename__ = "days"
+    __table_args__ = (UniqueConstraint("user_id", "date", name="uq_days_user_date"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    #: ``YYYY-MM-DD`` in the person's own time zone.
+    date: Mapped[str] = mapped_column(String(10))
+    content_enc: Mapped[bytes] = mapped_column(LargeBinary)
+    #: Counts every change: a change is written only onto the revision it was read from (no lost update).
+    revision: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+
+class Note(Base):
+    """A note thrown down during the day. ``uid`` comes from the browser, so sending the same note twice keeps one."""
+
+    __tablename__ = "notes"
+    __table_args__ = (
+        UniqueConstraint("user_id", "uid", name="uq_notes_user_uid"),
+        Index("ix_notes_user_date", "user_id", "date"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    uid: Mapped[str] = mapped_column(String(36))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    date: Mapped[str] = mapped_column(String(10))
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    text_enc: Mapped[bytes] = mapped_column(LargeBinary)
+    #: The question a note answers (writing prompts).
+    prompt_enc: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    #: A photo that came with the note.
+    photo_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
+
+class ValueDef(Base):
+    """One of the things a person rates from 1 to 10 each day. Its name says something about the person: sealed."""
+
+    __tablename__ = "value_defs"
+    __table_args__ = (UniqueConstraint("user_id", "uid", name="uq_value_defs_user_uid"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    uid: Mapped[str] = mapped_column(String(32))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    #: Name, the words for 1 and for 10, a hint, whether it is asked.
+    data_enc: Mapped[bytes] = mapped_column(LargeBinary)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+
 __all__ = [
     "MEMBER",
     "OPERATOR",
@@ -149,7 +234,11 @@ __all__ = [
     "ApiToken",
     "AuthSession",
     "Base",
+    "Day",
     "Invite",
+    "Note",
     "Setting",
+    "UserKey",
+    "ValueDef",
     "utcnow",
 ]

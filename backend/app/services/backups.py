@@ -14,8 +14,11 @@ Built after nextrmnl's and nexlore's backup service:
   again and ``apply_pending`` swaps the files before anything opens the database. A pending folder without its
   manifest is a half-written one and is thrown away, never applied.
 
-The archive is not encrypted: it lies in the data folder next to the database it copies. Downloading it asks for
-the operator's password once more.
+What people write is sealed in the database already (``services/vault.py``), so the archive holds it only as
+ciphertext. The master key that opens it is **never** part of a backup: it lies in ``keys/`` (or wherever
+``NEXDIARY_MASTER_KEY_FILE`` points), outside the database and the media folder, and nothing here reads it. Without
+it, a backup cannot be read, not even by the operator. Downloading an archive asks for the operator's password once
+more.
 """
 
 from __future__ import annotations
@@ -130,10 +133,13 @@ class Brief:
     would_add: int
     would_change: int
     would_remove: int
+    #: The diaries inside were sealed under another master key (a backup of another server): restored here, nexdiary
+    #: would not start. The old server's ``keys/master.key`` has to come along first.
+    other_master_key: bool = False
 
     @property
     def usable(self) -> bool:
-        return self.database_ok and self.files_ok
+        return self.database_ok and self.files_ok and not self.other_master_key
 
 
 def folder() -> Path:
@@ -171,14 +177,42 @@ def _hash_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _master_key_file() -> Path | None:
+    from . import vault
+
+    try:
+        return vault.master_key_path().resolve()
+    except OSError:
+        return None
+
+
 def _media_files(root: Path) -> list[tuple[str, Path]]:
-    """Every media file, by name; nothing else that may lie there (temporary files of an upload, links)."""
+    """Every media file, by name; nothing else that may lie there (temporary files of an upload, links), and never
+    the master key, wherever it was put."""
     if not root.is_dir():
         return []
+    master = _master_key_file()
     return sorted(
         (entry.name, entry) for entry in root.iterdir()
-        if MEDIA_NAME.match(entry.name) and entry.is_file() and not entry.is_symlink()
+        if MEDIA_NAME.match(entry.name) and entry.is_file() and not entry.is_symlink() and entry.resolve() != master
     )
+
+
+def _fits_master_key(connection: sqlite3.Connection) -> bool:
+    """Whether the data keys in a database open with this server's master key. A database without any fits."""
+    from . import vault
+
+    try:
+        row = connection.execute("SELECT user_id, wrapped_dek FROM user_keys LIMIT 1").fetchone()
+    except sqlite3.DatabaseError:
+        return True
+    if row is None:
+        return True
+    try:
+        vault._unwrap(vault.master(), int(row[0]), bytes(row[1]))
+    except (vault.SealError, TypeError, ValueError):
+        return False
+    return True
 
 
 def _database_copy(target: Path) -> int:
@@ -398,6 +432,7 @@ def check(name: str) -> Brief:
 
         budget = _Budget(RESTORE_MAX)
         database_ok = False
+        fits = True
         schema = 0
         if DATABASE_ENTRY in members:
             scratch = folder() / f".check-{os.getpid()}-{time.time_ns()}.db"
@@ -411,6 +446,7 @@ def check(name: str) -> Brief:
                     try:
                         whole = connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
                         schema = int(connection.execute("PRAGMA user_version").fetchone()[0])
+                        fits = _fits_master_key(connection)
                     finally:
                         connection.close()
                     # A database this nexdiary cannot open would stop every start after the restore: one from a newer
@@ -448,7 +484,7 @@ def check(name: str) -> Brief:
         name=name, version=manifest.version, created=manifest.created, kind=manifest.kind, accounts=manifest.accounts,
         files=manifest.files, database_ok=database_ok, files_ok=not damaged, damaged=sorted(damaged)[:20],
         schema=schema, too_new=schema > db.SCHEMA_VERSION,
-        would_add=len(add), would_change=len(change), would_remove=len(remove_),
+        would_add=len(add), would_change=len(change), would_remove=len(remove_), other_master_key=not fits,
     )
 
 
@@ -460,6 +496,9 @@ def stage_restore(name: str) -> Brief:
 
         if brief.schema > db.SCHEMA_VERSION:
             raise BackupError("backup_too_new", "the archive comes from a newer nexdiary; nothing was changed")
+        if brief.other_master_key:
+            raise BackupError("backup_other_master_key", "the archive was sealed with another master key; put the "
+                              "old server's keys/master.key in place first; nothing was changed")
         if not brief.usable:
             raise BackupError("backup_damaged", "the archive is damaged; nothing was changed")
         create(kind=UPDATE, note=f"before restoring {name}")

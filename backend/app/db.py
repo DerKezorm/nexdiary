@@ -15,6 +15,8 @@ Whoever changes a table in ``models.py`` raises ``SCHEMA_VERSION``, writes the s
 from __future__ import annotations
 
 import logging
+import sqlite3
+import time
 from collections.abc import Callable, Iterator
 from typing import Any
 
@@ -35,10 +37,46 @@ _settings.data_dir.mkdir(parents=True, exist_ok=True)
 BUSY_SECONDS = 15
 
 #: The version of the schema the models describe.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+
+
+def _v2_diary(connection: Connection) -> None:
+    """Version 2: the diary. Data keys per person, days, notes and values, all sealed; a mark on each account whether
+    its first values were laid out. Written out as it stood then, not taken from the models, which move on."""
+    for statement in (
+        "ALTER TABLE users ADD COLUMN values_seeded BOOLEAN DEFAULT 0 NOT NULL",
+        (
+            "CREATE TABLE user_keys ( user_id INTEGER NOT NULL, wrapped_dek BLOB NOT NULL, "
+            "created_at DATETIME NOT NULL, PRIMARY KEY (user_id), "
+            "FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE )"
+        ),
+        (
+            "CREATE TABLE days ( id INTEGER NOT NULL, user_id INTEGER NOT NULL, date VARCHAR(10) NOT NULL, "
+            "content_enc BLOB NOT NULL, revision INTEGER NOT NULL, created_at DATETIME NOT NULL, "
+            "updated_at DATETIME NOT NULL, PRIMARY KEY (id), CONSTRAINT uq_days_user_date UNIQUE (user_id, date), "
+            "FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE )"
+        ),
+        (
+            "CREATE TABLE notes ( id INTEGER NOT NULL, uid VARCHAR(36) NOT NULL, user_id INTEGER NOT NULL, "
+            "date VARCHAR(10) NOT NULL, created_at DATETIME NOT NULL, updated_at DATETIME, text_enc BLOB NOT NULL, "
+            "prompt_enc BLOB, photo_id VARCHAR(40), PRIMARY KEY (id), "
+            "CONSTRAINT uq_notes_user_uid UNIQUE (user_id, uid), "
+            "FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE )"
+        ),
+        (
+            "CREATE TABLE value_defs ( id INTEGER NOT NULL, uid VARCHAR(32) NOT NULL, user_id INTEGER NOT NULL, "
+            "position INTEGER NOT NULL, data_enc BLOB NOT NULL, created_at DATETIME NOT NULL, PRIMARY KEY (id), "
+            "CONSTRAINT uq_value_defs_user_uid UNIQUE (user_id, uid), "
+            "FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE )"
+        ),
+        "CREATE INDEX ix_notes_user_date ON notes (user_id, date)",
+        "CREATE INDEX ix_value_defs_user_id ON value_defs (user_id)",
+    ):
+        connection.exec_driver_sql(statement)
+
 
 #: ``MIGRATIONS[n]`` brings a database from version ``n - 1`` to ``n``. Version 1 is the first schema; it has no step.
-MIGRATIONS: dict[int, Callable[[Connection], None]] = {}
+MIGRATIONS: dict[int, Callable[[Connection], None]] = {2: _v2_diary}
 
 # No pool with an upper bound: with the default pool the sixteenth concurrent request would block the event
 # loop waiting for a connection. Opening a SQLite connection costs a fraction of a millisecond.
@@ -51,13 +89,32 @@ engine = create_engine(
 )
 
 
+def _wal(cursor: Any) -> None:
+    """WAL mode, tried again while another connection holds the database: SQLite does not always wait by itself for
+    a change of the journal mode."""
+    deadline = time.monotonic() + BUSY_SECONDS
+    while True:
+        try:
+            cursor.execute("PRAGMA journal_mode=WAL")
+            return
+        except sqlite3.OperationalError as exc:
+            if ("locked" not in str(exc) and "busy" not in str(exc)) or time.monotonic() > deadline:
+                raise
+            time.sleep(0.05)
+
+
 @event.listens_for(engine, "connect")
 def _pragmas(dbapi_connection: Any, _record: Any) -> None:
     cursor = dbapi_connection.cursor()
-    cursor.execute("PRAGMA journal_mode=WAL")
-    cursor.execute("PRAGMA foreign_keys=ON")
+    # The wait first: switching to WAL needs the database to itself for a moment, and two first starts on an empty
+    # folder asked at the same time (one of them broke off with "database is locked").
     cursor.execute(f"PRAGMA busy_timeout={BUSY_SECONDS * 1000}")
+    _wal(cursor)
+    cursor.execute("PRAGMA foreign_keys=ON")
     cursor.execute("PRAGMA synchronous=NORMAL")
+    # What is deleted is overwritten, not left in free pages: a deleted data key must be gone from the file, or the
+    # diary it sealed could be read again with the master key (``services/vault.py``).
+    cursor.execute("PRAGMA secure_delete=ON")
     cursor.close()
 
 
@@ -93,6 +150,7 @@ def _schema_engine() -> Engine:
     def _no_driver_transactions(dbapi_connection: Any, _record: Any) -> None:
         dbapi_connection.isolation_level = None
         dbapi_connection.execute("PRAGMA foreign_keys=ON")
+        dbapi_connection.execute("PRAGMA secure_delete=ON")
         dbapi_connection.execute(f"PRAGMA busy_timeout={BUSY_SECONDS * 1000}")
 
     @event.listens_for(schema, "begin")

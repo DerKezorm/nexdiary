@@ -205,3 +205,77 @@ def test_two_starts_at_once_take_a_step_once(scratch: Path, monkeypatch: pytest.
     assert failed == []
     assert ran == [1]
     assert version_of(scratch) == database.SCHEMA_VERSION
+
+
+def test_a_v1_database_with_an_account_comes_to_v2_and_the_account_can_keep_a_diary(scratch: Path) -> None:
+    """The database of a running B0 instance: an operator with a password and a second factor, a session. After the
+    step everything is still there, and the account can have a data key, notes, a day and values."""
+    from datetime import UTC, datetime
+
+    from sqlalchemy.orm import Session
+
+    from app.models import Day, Note, UserKey, ValueDef
+
+    with sqlite3.connect(scratch) as connection:
+        connection.executescript((RECORDS / "v1.sql").read_text(encoding="utf-8"))
+        connection.execute("PRAGMA user_version = 1")
+        connection.execute(
+            "INSERT INTO users (id, name, display_name, whats_new_seen, role, sign_in, password_hash, email, "
+            "oidc_subject, language, profile, created_at, failed_logins, totp_secret_enc, totp_recovery, "
+            "totp_last_step) VALUES (1, 'jule', 'Jule', '', 'operator', 'password', 'hash', 'jule@example.com', '', "
+            "'de', '{\"mode\": \"dark\"}', '2026-10-06 10:00:00.000000', 0, 'sealed', '[]', 0)"
+        )
+        connection.execute(
+            "INSERT INTO auth_sessions (token_hash, account_id, created_at, expires_at, last_seen_at, ip, user_agent) "
+            "VALUES ('h', 1, '2026-10-06 10:00:00', '2026-11-06 10:00:00', '2026-10-06 10:00:00', '127.0.0.1', 'x')"
+        )
+        connection.execute("INSERT INTO settings (key, value) VALUES ('two_factor_required', 'true')")
+    connection.close()
+    database.init_db()
+    assert version_of(scratch) == database.SCHEMA_VERSION
+    assert made == [f"before schema {database.SCHEMA_VERSION}"], "a backup before the step"
+    with sqlite3.connect(scratch) as connection:
+        assert connection.execute("SELECT name, role, profile, values_seeded FROM users").fetchall() == [
+            ("jule", "operator", '{"mode": "dark"}', 0)]
+        assert connection.execute("SELECT count(*) FROM auth_sessions").fetchone() == (1,)
+        assert connection.execute("SELECT value FROM settings").fetchall() == [("true",)]
+    connection.close()
+    now = datetime(2026, 10, 6, 12, tzinfo=UTC)
+    with Session(database.engine) as db:
+        db.add(UserKey(user_id=1, wrapped_dek=b"k", created_at=now))
+        db.add(Note(uid="u", user_id=1, date="2026-10-06", created_at=now, text_enc=b"t"))
+        db.add(Day(user_id=1, date="2026-10-06", content_enc=b"c", revision=0, created_at=now, updated_at=now))
+        db.add(ValueDef(uid="v", user_id=1, position=0, data_enc=b"d", created_at=now))
+        db.commit()
+    with sqlite3.connect(scratch) as connection:
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("DELETE FROM users WHERE id = 1")
+        for table in ("user_keys", "notes", "days", "value_defs"):
+            assert connection.execute(f"SELECT count(*) FROM {table}").fetchone() == (0,), table  # noqa: S608
+    connection.close()
+
+
+def test_switching_to_wal_waits_for_a_start_that_holds_the_database(tmp_path: Path) -> None:
+    """Another start is inside its first transaction (``BEGIN IMMEDIATE`` while it makes the tables): SQLite refuses
+    the switch to WAL at once instead of waiting, and a start that took that answer broke off with "database is
+    locked". The connection setup tries again until the other one is done."""
+    import threading
+    import time
+
+    path = tmp_path / "busy.db"
+    holder = sqlite3.connect(path, isolation_level=None, check_same_thread=False)
+    holder.execute("CREATE TABLE probe (id INTEGER)")
+    holder.execute("BEGIN IMMEDIATE")
+    holder.execute("INSERT INTO probe VALUES (1)")
+    release = threading.Timer(0.6, lambda: holder.execute("COMMIT"))
+    release.start()
+    waiting = sqlite3.connect(path, isolation_level=None, check_same_thread=False, timeout=0.1)
+    try:
+        started = time.monotonic()
+        database._pragmas(waiting, None)
+        assert time.monotonic() - started >= 0.4, "it waited for the other start"
+        assert waiting.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+    finally:
+        release.join()
+        waiting.close()
+        holder.close()

@@ -26,10 +26,13 @@ def test_a_display_name_is_not_too_long_and_has_no_control_characters(client: Te
     assert client.get("/api/auth/me").json()["display_name"] == "x" * 80
 
 
+DEFAULTS = {"mode": "system", "layout": "page", "quick_start": True, "timezone_source": "browser", "timezone": ""}
+
+
 def test_light_or_dark_is_kept_with_the_account(client: TestClient, account: Account) -> None:
-    assert client.get("/api/auth/me").json()["profile"] == {"mode": "system"}
+    assert client.get("/api/auth/me").json()["profile"] == DEFAULTS
     saved = client.put("/api/me/preferences", json={"mode": "dark"})
-    assert saved.status_code == 200 and saved.json() == {"mode": "dark"}
+    assert saved.status_code == 200 and saved.json() == {**DEFAULTS, "mode": "dark"}
     assert client.get("/api/auth/me").json()["profile"]["mode"] == "dark"
     for wrong in ({"mode": "sepia"}, {"mode": True}, {"palette": "salbei"}, {"mode": ["dark"]}):
         answer = client.put("/api/me/preferences", json=wrong)
@@ -43,3 +46,31 @@ def test_the_profile_is_the_own_account_s_only(client: TestClient, account: Acco
     with person("mia") as mia:
         assert mia.put("/api/me/preferences", json={"mode": "light"}).status_code == 200
     assert client.get("/api/auth/me").json()["profile"]["mode"] == "system"
+
+
+def test_the_layout_of_today_the_quick_start_and_the_time_zone_are_kept_with_the_account(
+    client: TestClient, account: Account
+) -> None:
+    saved = client.put("/api/me/preferences", json={"layout": "chat", "quick_start": False, "timezone": "Asia/Tokyo"})
+    assert saved.status_code == 200
+    assert client.get("/api/auth/me").json()["profile"] == {
+        "mode": "system", "layout": "chat", "quick_start": False, "timezone_source": "browser", "timezone": "Asia/Tokyo"}
+    for wrong in ({"layout": "seite"}, {"layout": 1}, {"quick_start": 1}, {"quick_start": "yes"},
+                  {"timezone": "Mars/Olympus"}, {"timezone": "../../etc/passwd"}, {"timezone": 7}, {"timezone": ""},
+                  {"timezone": "x" * 300}):
+        answer = client.put("/api/me/preferences", json=wrong)
+        assert answer.status_code == 422 and answer.json()["detail"]["code"] == "bad_preference", wrong
+    assert client.get("/api/auth/me").json()["profile"]["timezone"] == "Asia/Tokyo"
+    assert client.get("/api/auth/me").json()["profile"]["quick_start"] is False
+
+
+def test_a_browser_does_not_overrule_a_time_zone_the_person_chose(client: TestClient, account: Account) -> None:
+    chosen = client.put("/api/me/preferences", json={"timezone": "Asia/Tokyo", "timezone_source": "manual"})
+    assert chosen.status_code == 200
+    reported = client.put("/api/me/preferences", json={"timezone": "Europe/Berlin", "timezone_source": "browser"})
+    assert reported.status_code == 200 and reported.json()["timezone"] == "Asia/Tokyo"
+    assert reported.json()["timezone_source"] == "manual"
+    # The person may go back to the browser's zone.
+    back = client.put("/api/me/preferences", json={"timezone": "Europe/Berlin", "timezone_source": "manual"})
+    assert back.json()["timezone"] == "Europe/Berlin"
+    assert client.put("/api/me/preferences", json={"timezone_source": "phone"}).status_code == 422

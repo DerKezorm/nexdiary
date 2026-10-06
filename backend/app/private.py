@@ -34,12 +34,12 @@ def new_file(path: Path) -> None:
 
 
 def tighten_all() -> None:
-    """At start: the key, the database with its journal, the backups and the log."""
+    """At start: the keys, the database with its journal, the backups and the log."""
     data = get_settings().data_dir
     for name in ("secret.key", "nexdiary.db", "nexdiary.db-wal", "nexdiary.db-shm"):
         if (data / name).exists():
             tighten(data / name)
-    for folder in (data / "backups", data / "logs"):
+    for folder in (data / "backups", data / "logs", data / "keys"):
         if not folder.is_dir():
             continue
         tighten(folder)

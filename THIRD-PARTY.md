@@ -22,6 +22,7 @@ nexdiary loads no font, icon or script from another host.
 | uvicorn, httpx, segno | BSD-3-Clause |
 | Pillow | MIT-CMU |
 | cryptography | Apache-2.0 **or** BSD-3-Clause |
+| tzdata (the IANA time zone database for Python) | Apache-2.0; the data itself is in the public domain |
 | pillow-heif | BSD-3-Clause for its own code; the binary wheels are **GPLv2** as a whole, see below |
 
 ### HEIC photos: pillow-heif and the libraries it brings

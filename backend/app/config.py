@@ -65,8 +65,11 @@ class Settings(BaseSettings):
     #: Addresses or networks the operator's settings may be changed from, comma separated (e.g. 192.168.0.0/16).
     #: Empty: from anywhere. Behind a reverse proxy only with ``trusted_proxies`` set.
     operator_networks: str = ""
+    #: The master key that wraps every person's data key (``services/vault.py``). Empty: ``<data_dir>/keys/master.key``,
+    #: made at the first start. It is never in the database, never in the log and never in a backup.
+    master_key_file: Path | None = None
 
-    @field_validator("data_dir", "frontend_dist", "media_dir", "locales_dir")
+    @field_validator("data_dir", "frontend_dist", "media_dir", "locales_dir", "master_key_file")
     @classmethod
     def _relative_to_project(cls, value: Path | None) -> Path | None:
         # A relative path means the project, not whatever directory the process was started from.

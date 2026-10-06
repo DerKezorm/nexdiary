@@ -516,7 +516,7 @@ export function MailCard({ server }: { server: Server }) {
 }
 
 type Backup = { name: string; size: number; created: string; kind: string; note: string; accounts: number; files: number; version: string; uploaded?: boolean }
-type Brief = { usable: boolean; too_new: boolean; accounts: number; files: number; would_add: number; would_change: number; would_remove: number; damaged: string[]; created: string }
+type Brief = { usable: boolean; too_new: boolean; other_master_key: boolean; accounts: number; files: number; would_add: number; would_change: number; would_remove: number; damaged: string[]; created: string }
 
 export function BackupsCard({ server }: { server: Server }) {
   const { t, i18n } = useTranslation()
@@ -626,7 +626,9 @@ export function BackupsCard({ server }: { server: Server }) {
             ? t('server.checkOk', { accounts: t('server.countAccounts', { count: brief.accounts }), files: t('server.countFiles', { count: brief.files }), add: t('server.countFiles', { count: brief.would_add }), remove: t('server.countFiles', { count: brief.would_remove }) })
             : brief.too_new
               ? t('server.checkNewer')
-              : t('server.checkBad')}
+              : brief.other_master_key
+                ? t('server.checkOtherKey')
+                : t('server.checkBad')}
         </p>
       )}
       {uploaded && <p className="rounded-xl border border-accent/40 bg-accent-soft/50 px-4 py-3 text-sm">{t('server.uploadedHint')}</p>}

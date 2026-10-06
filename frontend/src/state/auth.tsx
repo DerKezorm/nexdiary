@@ -6,9 +6,39 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 
 import { ApiError, authApi, SIGNED_OUT_EVENT, type Me } from '../api/client'
 import i18n, { changeLanguage } from '../i18n'
+import { browserTimeZone } from '../lib/dates'
 import { applyMode, isMode, storedMode } from '../lib/theme'
 
 type Status = 'loading' | 'setup' | 'signedOut' | 'signedIn'
+
+const REPORTED_ZONE = 'nexdiary.reportedZone'
+
+function reportedZone(): string | null {
+  try {
+    return localStorage.getItem(REPORTED_ZONE)
+  } catch {
+    return null
+  }
+}
+
+function rememberReportedZone(zone: string): void {
+  try {
+    localStorage.setItem(REPORTED_ZONE, zone)
+  } catch {
+    // Then this browser reports again next time; no harm.
+  }
+}
+
+/**
+ * Whether this browser tells the server its time zone: never over a zone the person chose; always while the server
+ * knows none; else only when this browser's zone changed since it last reported (a journey), not on every page load.
+ * Two devices in two zones therefore do not switch the account back and forth: the last one that changed wins.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function shouldReportZone(zone: string, serverZone: string, source: string, reported: string | null): boolean {
+  if (!zone || source === 'manual' || zone === serverZone) return false
+  return !serverZone || zone !== reported
+}
 
 type Auth = {
   status: Status
@@ -31,6 +61,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (next.language && next.language !== i18n.language) void changeLanguage(next.language)
     const mode = next.profile?.mode
     if (isMode(mode) && mode !== storedMode()) applyMode(mode)
+    // "Today" is the date in the person's own time zone; the server learns it from the browser in use.
+    const zone = browserTimeZone()
+    if (next.profile && !next.second_factor_setup_required && shouldReportZone(zone, next.profile.timezone, next.profile.timezone_source, reportedZone())) {
+      void authApi.preferences({ timezone: zone, timezone_source: 'browser' }).then(
+        (profile) => {
+          rememberReportedZone(zone)
+          setMeState((current) => (current && current.id === next.id ? { ...current, profile } : current))
+        },
+        () => undefined,
+      )
+    }
   }, [])
 
   const refresh = useCallback(async () => {
