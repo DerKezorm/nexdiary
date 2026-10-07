@@ -68,6 +68,9 @@ class Settings(BaseSettings):
     #: The master key that wraps every person's data key (``services/vault.py``). Empty: ``<data_dir>/keys/master.key``,
     #: made at the first start. It is never in the database, never in the log and never in a backup.
     master_key_file: Path | None = None
+    #: How many pictures are unpacked at the same moment (photos, profile pictures). Each one may take some 150 MB
+    #: while it is open; one is enough for a family, a larger server may give more.
+    decode_slots: int = 1
 
     @field_validator("data_dir", "frontend_dist", "media_dir", "locales_dir", "master_key_file")
     @classmethod

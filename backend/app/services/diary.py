@@ -33,8 +33,8 @@ from sqlalchemy.orm import Session
 
 from .. import clock
 from ..errors import error
-from ..models import Account, Day, Note, UtcDateTime, ValueDef
-from . import vault
+from ..models import Account, Day, Draft, Note, Photo, UtcDateTime, ValueDef
+from . import covers, quota, vault
 
 logger = logging.getLogger("nexdiary.diary")
 
@@ -60,6 +60,7 @@ DAYS_LIST_MAX = 1000
 #: How often a change of a day is tried again when another change came in between.
 CHANGE_TRIES = 8
 WRITTEN_BY = ("ai", "self")
+COVER_MAX = 80
 DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 NOTE_ID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 VALUE_ID = re.compile(r"^[0-9a-f]{16,32}$")
@@ -390,26 +391,39 @@ def check_new_note_id(uid: str) -> str:
     return uid
 
 
+def check_own_photo(db: Session, account_id: int, uid: str | None) -> str | None:
+    """A photo the person may put on a note or a day: one of their own. Any other answers like one that is not
+    there."""
+    if uid is None:
+        return None
+    uid = uid.lower() if isinstance(uid, str) else ""
+    if not covers.PHOTO_ID.match(uid) or db.scalar(
+            select(Photo.id).where(Photo.user_id == account_id, Photo.uid == uid)) is None:
+        raise error("not_found", "Not found.", 404)
+    return uid
+
+
 def add_note(db: Session, account_id: int, dek: bytes, uid: str, day: str, note_text: str,
-             prompt: str | None) -> tuple[dict[str, Any], bool]:
+             prompt: str | None, photo_id: str | None = None) -> tuple[dict[str, Any], bool]:
     """The note, and whether it is new. The same id with the same text again returns the note that stands (a double
     click, a retry after a lost answer); the same id with another text is refused (``note_id_taken``): returning the
-    old note would let the browser think the new text was kept."""
+    old note would let the browser think the new text was kept. A note with a photo may be without words."""
     note_text = clean_text(note_text, NOTE_MAX, "note_too_long")
-    if not note_text:
+    photo_id = check_own_photo(db, account_id, photo_id)
+    if not note_text and photo_id is None:
         raise error("note_empty", "A note needs a text.", 422)
     prompt = clean_line(prompt, PROMPT_MAX, "prompt_too_long") if prompt else None
     existing = _note_row(db, account_id, uid)
     if existing is not None:
-        return _same_note(account_id, dek, existing, note_text), False
+        return _same_note(account_id, dek, existing, note_text, photo_id), False
     inserted = db.execute(
         text(
-            "INSERT INTO notes (uid, user_id, date, created_at, text_enc, prompt_enc) "
-            "SELECT :uid, :user, :date, :now, :text, :prompt "
+            "INSERT INTO notes (uid, user_id, date, created_at, text_enc, prompt_enc, photo_id) "
+            "SELECT :uid, :user, :date, :now, :text, :prompt, :photo "
             "WHERE (SELECT count(*) FROM notes WHERE user_id = :user AND date = :date) < :limit "
             "ON CONFLICT (user_id, uid) DO NOTHING"
         ).bindparams(bindparam("now", type_=UtcDateTime())),
-        {"uid": uid, "user": account_id, "date": day, "now": now(), "limit": NOTES_PER_DAY,
+        {"uid": uid, "user": account_id, "date": day, "now": now(), "limit": NOTES_PER_DAY, "photo": photo_id,
          "text": vault.seal_text(dek, note_text, _note_aad(account_id, uid, day, "text")),
          "prompt": vault.seal_text(dek, prompt, _note_aad(account_id, uid, day, "prompt")) if prompt else None},
     )
@@ -419,27 +433,33 @@ def add_note(db: Session, account_id: int, dek: bytes, uid: str, day: str, note_
         raise error("too_many_notes", "There are as many notes on this day as there may be.", 409,
                     max=NOTES_PER_DAY)
     if inserted.rowcount != 1:
-        return _same_note(account_id, dek, row, note_text), False
+        return _same_note(account_id, dek, row, note_text, photo_id), False
     return _note_view(account_id, dek, row), True
 
 
-def _same_note(account_id: int, dek: bytes, row: Any, note_text: str) -> dict[str, Any]:
+def _same_note(account_id: int, dek: bytes, row: Any, note_text: str, photo_id: str | None) -> dict[str, Any]:
     view = _note_view(account_id, dek, row)
-    if view["unreadable"] or view["text"] != note_text:
+    if view["unreadable"] or view["text"] != note_text or view["photo_id"] != photo_id:
         raise error("note_id_taken", "A note with this id holds another text.", 409)
     return view
 
 
-def change_note(db: Session, account_id: int, dek: bytes, uid: str, note_text: str) -> dict[str, Any]:
+_KEEP: Any = object()
+
+
+def change_note(db: Session, account_id: int, dek: bytes, uid: str, note_text: str,
+                photo_id: Any = _KEEP) -> dict[str, Any]:
+    """A new text for a note, and with ``photo_id`` another photo (or None: none). A note keeps words or a photo."""
     note_text = clean_text(note_text, NOTE_MAX, "note_too_long")
-    if not note_text:
-        raise error("note_empty", "A note needs a text.", 422)
     row = _note_row(db, account_id, uid)
     if row is None:
         raise error("not_found", "Not found.", 404)
+    photo = row.photo_id if photo_id is _KEEP else check_own_photo(db, account_id, photo_id)
+    if not note_text and photo is None:
+        raise error("note_empty", "A note needs a text.", 422)
     changed = db.execute(update(Note).where(Note.user_id == account_id, Note.uid == uid, Note.date == row.date).values(
         text_enc=vault.seal_text(dek, note_text, _note_aad(account_id, uid, row.date, "text")),
-        updated_at=now()))
+        photo_id=photo, updated_at=now()))
     db.commit()
     # Deleted in between (another tab): gone, like any note that is not there.
     found = _note_row(db, account_id, uid) if changed.rowcount == 1 else None
@@ -466,6 +486,22 @@ def empty_day() -> dict[str, Any]:
     return {"title": "", "text": "", "tags": [], "values": {}, "cover": None, "written_by": None}
 
 
+def effective_cover(day: str, content: dict[str, Any], photo_ids: set[str] | None) -> tuple[str, bool]:
+    """The cover a day shows, and whether it is the one chosen: the chosen illustration, the chosen photo while it
+    exists, else the suggestion. Never empty."""
+    chosen = content.get("cover")
+    if covers.is_illustration(chosen):
+        return chosen, True
+    photo = covers.photo_of(chosen)
+    if photo is not None and photo_ids is not None and photo in photo_ids:
+        return chosen, True
+    return covers.suggested_cover(day, content.get("tags") or []), False
+
+
+def photo_ids_of(db: Session, account_id: int) -> set[str]:
+    return set(db.scalars(select(Photo.uid).where(Photo.user_id == account_id)))
+
+
 def _content(account_id: int, dek: bytes, day: str, sealed: bytes) -> dict[str, Any]:
     return {**empty_day(), **vault.open_json(dek, sealed, _day_aad(account_id, day))}
 
@@ -478,19 +514,23 @@ def _readable_content(account_id: int, dek: bytes, day: str, sealed: bytes) -> d
         return None
 
 
-def _day_view(day: str, content: dict[str, Any] | None, created: datetime, updated: datetime) -> dict[str, Any]:
+def _day_view(day: str, content: dict[str, Any] | None, created: datetime, updated: datetime, revision: int,
+              photo_ids: set[str]) -> dict[str, Any]:
     broken = content is None
     content = content or empty_day()
+    cover, chosen = effective_cover(day, content, photo_ids)
     return {
         "date": day,
         "title": content["title"],
         "text": content["text"],
         "tags": content["tags"],
         "values": content["values"],
-        "cover": content["cover"],
+        "cover": cover,
+        "cover_chosen": chosen,
         "written_by": content["written_by"],
         "words": words_in(content["text"]),
         "unreadable": broken,
+        "revision": revision,
         "created_at": created.isoformat(),
         "updated_at": updated.isoformat(),
     }
@@ -499,20 +539,34 @@ def _day_view(day: str, content: dict[str, Any] | None, created: datetime, updat
 _DAY_COLUMNS = (Day.id, Day.date, Day.content_enc, Day.revision, Day.created_at, Day.updated_at)
 
 
+def day_exists(db: Session, account_id: int, day: str) -> bool:
+    return db.scalar(select(Day.id).where(Day.user_id == account_id, Day.date == day)) is not None
+
+
 def get_day(db: Session, account_id: int, dek: bytes, day: str) -> dict[str, Any] | None:
     row = db.execute(select(*_DAY_COLUMNS).where(Day.user_id == account_id, Day.date == day)).first()
     if row is None:
         return None
-    return _day_view(day, _readable_content(account_id, dek, day, row.content_enc), row.created_at, row.updated_at)
+    return _day_view(day, _readable_content(account_id, dek, day, row.content_enc), row.created_at, row.updated_at,
+                     row.revision, photo_ids_of(db, account_id))
 
 
 def change_day(db: Session, account_id: int, dek: bytes, day: str,
-               apply: Callable[[dict[str, Any]], dict[str, Any]]) -> dict[str, Any]:
+               apply: Callable[[dict[str, Any]], dict[str, Any]], *, base_revision: int | None = None,
+               discard_draft: bool = False) -> dict[str, Any]:
     """Reads the day (or an empty one), lets ``apply`` change it and writes it back, atomically: a day that does not
     exist yet is inserted only if no other save inserted it first, one that exists is written only onto the revision
-    it was read from. Otherwise it is read again and ``apply`` runs on what stands now."""
+    it was read from. Otherwise it is read again and ``apply`` runs on what stands now.
+
+    With ``base_revision`` (the revision the writer started from, -1 for "there was no page") the change is made only
+    onto exactly that: a page saved meanwhile on another device is not overwritten unseen (``day_changed``, with the
+    revision that stands). ``discard_draft`` deletes the day's draft in the same transaction."""
     for _ in range(CHANGE_TRIES):
         row = db.execute(select(*_DAY_COLUMNS).where(Day.user_id == account_id, Day.date == day)).first()
+        if base_revision is not None:
+            standing_revision = row.revision if row is not None else -1
+            if standing_revision != base_revision:
+                raise error("day_changed", "This day was changed meanwhile.", 409, revision=standing_revision)
         moment = now()
         if row is None:
             content = apply(empty_day())
@@ -534,6 +588,8 @@ def change_day(db: Session, account_id: int, dek: bytes, day: str,
                 .values(content_enc=vault.seal_json(dek, content, _day_aad(account_id, day)),
                         revision=row.revision + 1, updated_at=moment)
             )
+        if written.rowcount == 1 and discard_draft:
+            db.execute(delete(Draft).where(Draft.user_id == account_id, Draft.date == day))
         db.commit()
         if written.rowcount == 1:
             found = get_day(db, account_id, dek, day)
@@ -560,7 +616,7 @@ def check_values(db: Session, account_id: int, values: dict[str, Any]) -> dict[s
 def merge(content: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
     """The day with the fields of ``patch`` changed; ``values`` is merged one by one, null takes a value back."""
     out = {**content}
-    for key in ("title", "text", "tags", "written_by"):
+    for key in ("title", "text", "tags", "written_by", "cover"):
         if key in patch:
             out[key] = patch[key]
     if "values" in patch:
@@ -588,7 +644,24 @@ def clean_day_patch(db: Session, account_id: int, fields: dict[str, Any]) -> dic
         patch["written_by"] = fields["written_by"]
     if fields.get("values") is not None:
         patch["values"] = check_values(db, account_id, fields["values"])
+    if "cover" in fields:
+        patch["cover"] = check_cover(db, account_id, fields["cover"])
     return patch
+
+
+def check_cover(db: Session, account_id: int, cover: Any) -> str | None:
+    """A cover a day may store: a known illustration, or one of the person's own photos (any other photo answers
+    like one that is not there). None: the suggestion again."""
+    if cover is None:
+        return None
+    if not isinstance(cover, str) or len(cover) > COVER_MAX:
+        raise error("cover_unknown", "There is no such cover.", 422)
+    if covers.is_illustration(cover):
+        return cover
+    if cover.startswith(covers.PHOTO_PREFIX):
+        uid = check_own_photo(db, account_id, cover[len(covers.PHOTO_PREFIX):])
+        return covers.PHOTO_PREFIX + str(uid)
+    raise error("cover_unknown", "There is no such cover.", 422)
 
 
 def delete_day(db: Session, account_id: int, day: str) -> None:
@@ -604,12 +677,14 @@ def list_days(db: Session, account_id: int, dek: bytes, *, before: str | None, l
     if before:
         query = query.where(Day.date < before)
     rows = db.execute(query.order_by(Day.date.desc()).limit(min(max(limit, 1), DAYS_LIST_MAX))).all()
+    photo_ids = photo_ids_of(db, account_id)
     out = []
     for row in rows:
         content = _readable_content(account_id, dek, row.date, row.content_enc)
         shown = content or empty_day()
         out.append({"date": row.date, "title": shown["title"], "tags": shown["tags"],
                     "words": words_in(shown["text"]), "values": shown["values"],
+                    "cover": effective_cover(row.date, shown, photo_ids)[0],
                     "written_by": shown["written_by"], "unreadable": content is None})
     return out
 
@@ -632,6 +707,76 @@ def streak(db: Session, account_id: int, dek: bytes, today: date) -> int:
         count += 1
         cursor -= timedelta(days=1)
     return count
+
+
+# --- Drafts ---------------------------------------------------------------------------------------------------------
+
+
+def _draft_aad(account_id: int, day: str) -> bytes:
+    return vault.aad(account_id, "drafts", "content", day)
+
+
+def clean_draft(db: Session, account_id: int, fields: dict[str, Any]) -> dict[str, Any]:
+    """What a draft holds: title, text, tags and cover, cleaned and limited like the page itself."""
+    draft: dict[str, Any] = {"title": "", "text": "", "tags": [], "cover": None}
+    if fields.get("title") is not None:
+        draft["title"] = clean_line(fields["title"], TITLE_MAX, "title_too_long")
+    if fields.get("text") is not None:
+        draft["text"] = clean_text(fields["text"], TEXT_MAX, "text_too_long")
+    if fields.get("tags") is not None:
+        draft["tags"] = clean_tags(fields["tags"])
+    if fields.get("cover") is not None:
+        draft["cover"] = check_cover(db, account_id, fields["cover"])
+    return draft
+
+
+def save_draft(db: Session, account_id: int, dek: bytes, day: str, draft: dict[str, Any],
+               base_revision: int) -> dict[str, Any]:
+    """Keeps the draft of a day, replacing the one before (one statement: two tabs typing at once leave one), while
+    the person's storage has room for it (``quota``; the draft it replaces does not count)."""
+    moment = now()
+    sealed = vault.seal_json(dek, draft, _draft_aad(account_id, day))
+    limit = quota.limit_bytes(db)
+    written = db.execute(
+        text(
+            "INSERT INTO drafts (user_id, date, content_enc, base_revision, updated_at) "  # noqa: S608 - constants
+            "SELECT :user, :date, :content, :base, :now "
+            f"WHERE (:quota IS NULL OR {quota.USED} - coalesce((SELECT length(content_enc) FROM drafts "
+            "WHERE user_id = :user AND date = :date), 0) + length(:content) <= :quota) "
+            "ON CONFLICT (user_id, date) DO UPDATE SET content_enc = excluded.content_enc, "
+            "base_revision = excluded.base_revision, updated_at = excluded.updated_at"
+        ).bindparams(bindparam("now", type_=UtcDateTime())),
+        {"user": account_id, "date": day, "content": sealed, "base": base_revision, "now": moment, "quota": limit},
+    )
+    db.commit()
+    if written.rowcount != 1:
+        raise quota.full(db)
+    return {**draft, "base_revision": base_revision, "updated_at": moment.isoformat()}
+
+
+def get_draft(db: Session, account_id: int, dek: bytes, day: str) -> dict[str, Any] | None:
+    row = db.execute(select(Draft.content_enc, Draft.base_revision, Draft.updated_at)
+                     .where(Draft.user_id == account_id, Draft.date == day)).first()
+    if row is None:
+        return None
+    try:
+        content = vault.open_json(dek, row.content_enc, _draft_aad(account_id, day))
+    except vault.SealError:
+        unreadable("drafts")
+        return None
+    cover = content.get("cover")
+    photo = covers.photo_of(cover)
+    if photo is not None and photo not in photo_ids_of(db, account_id):
+        # The photo was deleted since: the draft falls back to the suggestion, it never names a photo that is gone.
+        cover = None
+    return {"title": content.get("title", ""), "text": content.get("text", ""), "tags": content.get("tags", []),
+            "cover": cover, "base_revision": row.base_revision,
+            "updated_at": row.updated_at.isoformat()}
+
+
+def delete_draft(db: Session, account_id: int, day: str) -> None:
+    db.execute(delete(Draft).where(Draft.user_id == account_id, Draft.date == day))
+    db.commit()
 
 
 # --- Search ---------------------------------------------------------------------------------------------------------

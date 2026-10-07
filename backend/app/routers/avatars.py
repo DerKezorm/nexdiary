@@ -7,12 +7,13 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Request, Response
+from starlette.concurrency import run_in_threadpool
 
 from ..deps import Account, DbSession
 from ..errors import error
 from ..models import Account as AccountRow
 from ..models import utcnow
-from ..services import avatars
+from ..services import avatars, pictures
 from .auth import account_view
 
 logger = logging.getLogger("nexdiary.accounts")
@@ -21,9 +22,13 @@ router = APIRouter(prefix="/api", tags=["accounts"])
 
 @router.put("/auth/avatar", summary="Set the own profile picture (the picture itself as the body)")
 async def set_avatar(request: Request, account: Account, db: DbSession) -> dict[str, Any]:
-    data = await request.body()
     try:
-        picture = avatars.make(data)
+        # A place first, then the body (``pictures.admitted``); unpacked away from the event loop.
+        with pictures.admitted():
+            data = await pictures.read_body(request)
+            picture = await run_in_threadpool(avatars.make, data)
+    except pictures.PictureError as exc:
+        raise error("avatar_too_large", "avatar too large", 422, max_mb=avatars.MAX_BYTES // (1024 * 1024)) from exc
     except avatars.AvatarError as exc:
         raise error(exc.code, exc.code.replace("_", " "), 422, max_mb=avatars.MAX_BYTES // (1024 * 1024)) from exc
     row = db.get(AccountRow, account.id)

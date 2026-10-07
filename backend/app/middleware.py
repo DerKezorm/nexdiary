@@ -14,7 +14,7 @@ from typing import Any
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
-from .services import avatars, logs
+from .services import logs, pictures
 
 logger = logging.getLogger("nexdiary.api")
 
@@ -106,11 +106,15 @@ CLIENT_HEADER = b"x-nexdiary-client"
 CLIENT_PATTERN = re.compile(rb"^[A-Za-z0-9_-]{8,64}$")
 #: The API for programs: a token in ``Authorization``, no tab, an ``Origin`` refused (``routers/v1.py``).
 API_PREFIX = "/api/v1/"
-#: Largest body an ordinary request may carry, a profile picture included (``services/avatars.py``).
+#: Largest body an ordinary request may carry (a day's page is the largest).
 MAX_BODY = 16 * 1024 * 1024
-#: Where another limit holds, checked while streaming: a backup brought in from elsewhere, and a profile picture,
-#: whose route says the same number (``avatars.MAX_BYTES``).
-LARGE_BODIES = {"/api/backups/upload": 64 * 1024**3, "/api/auth/avatar": avatars.MAX_BYTES}
+#: Where another limit holds, checked while streaming: a backup brought in from elsewhere, and every route that takes
+#: a picture, whose decoder says the same number (``pictures.MAX_BYTES``).
+LARGE_BODIES = {
+    "/api/backups/upload": 64 * 1024**3,
+    "/api/auth/avatar": pictures.MAX_BYTES,
+    "/api/photos": pictures.MAX_BYTES,
+}
 
 
 def _too_large(limit: int) -> tuple[dict, dict]:

@@ -37,7 +37,7 @@ _settings.data_dir.mkdir(parents=True, exist_ok=True)
 BUSY_SECONDS = 15
 
 #: The version of the schema the models describe.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def _v2_diary(connection: Connection) -> None:
@@ -75,8 +75,31 @@ def _v2_diary(connection: Connection) -> None:
         connection.exec_driver_sql(statement)
 
 
+def _v3_photos_and_drafts(connection: Connection) -> None:
+    """Version 3: photos (the pictures themselves lie sealed in the media folder) and drafts of the day being written.
+    Written out as it stood then, not taken from the models."""
+    for statement in (
+        (
+            "CREATE TABLE photos ( id INTEGER NOT NULL, uid VARCHAR(32) NOT NULL, user_id INTEGER NOT NULL, "
+            "date VARCHAR(10) NOT NULL, source VARCHAR(8) NOT NULL, asset_id VARCHAR(64), upload_id VARCHAR(36), "
+            "width INTEGER NOT NULL, height INTEGER NOT NULL, size INTEGER NOT NULL, preview_size INTEGER NOT NULL, "
+            "created_at DATETIME NOT NULL, PRIMARY KEY (id), CONSTRAINT uq_photos_uid UNIQUE (uid), "
+            "CONSTRAINT uq_photos_user_upload UNIQUE (user_id, upload_id), "
+            "FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE )"
+        ),
+        "CREATE INDEX ix_photos_user_date ON photos (user_id, date)",
+        (
+            "CREATE TABLE drafts ( id INTEGER NOT NULL, user_id INTEGER NOT NULL, date VARCHAR(10) NOT NULL, "
+            "content_enc BLOB NOT NULL, base_revision INTEGER NOT NULL, updated_at DATETIME NOT NULL, "
+            "PRIMARY KEY (id), CONSTRAINT uq_drafts_user_date UNIQUE (user_id, date), "
+            "FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE )"
+        ),
+    ):
+        connection.exec_driver_sql(statement)
+
+
 #: ``MIGRATIONS[n]`` brings a database from version ``n - 1`` to ``n``. Version 1 is the first schema; it has no step.
-MIGRATIONS: dict[int, Callable[[Connection], None]] = {2: _v2_diary}
+MIGRATIONS: dict[int, Callable[[Connection], None]] = {2: _v2_diary, 3: _v3_photos_and_drafts}
 
 # No pool with an upper bound: with the default pool the sixteenth concurrent request would block the event
 # loop waiting for a connection. Opening a SQLite connection costs a fraction of a millisecond.

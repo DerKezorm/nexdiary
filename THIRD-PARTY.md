@@ -27,7 +27,7 @@ nexdiary loads no font, icon or script from another host.
 
 ### HEIC photos: pillow-heif and the libraries it brings
 
-To read iPhone photos (HEIC) as a profile picture, nexdiary uses pillow-heif. Its binary wheels, and so the container
+To read iPhone photos (HEIC), as a profile picture or a photo of a day, nexdiary uses pillow-heif. Its binary wheels, and so the container
 image, contain:
 
 | Library | Licence |
@@ -45,6 +45,7 @@ with an AGPL-3.0 work, and the source of every part is public.
 |---|---|
 | React, React DOM, React Router, i18next, react-i18next | MIT |
 | lucide-react | ISC |
+| Milkdown (`@milkdown/kit`), ProseMirror, remark, unified, micromark (the editor and what it brings) | MIT |
 | Fontsource packages | MIT (the fonts themselves OFL-1.1, see above) |
 
 Build and test tools (Vite, TypeScript, Tailwind CSS, Vitest, ruff, pytest) are not part of the image.

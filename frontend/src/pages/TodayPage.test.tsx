@@ -227,3 +227,39 @@ describe('today', () => {
     expect(six.getAttribute('aria-pressed')).toBe('false')
   })
 })
+
+describe('writing the day up', () => {
+  afterEach(() => {
+    ;(TODAY as { day: unknown }).day = null
+    TODAY.notes[1] = { ...TODAY.notes[1], photo_id: null }
+  })
+
+  it('leads from the notes to the writing page of the day, and says how many notes go into it', async () => {
+    await show('page')
+    const card = box.querySelector('#aufschreiben')!
+    expect(card.textContent).toContain('Den Tag aufschreiben')
+    expect(card.textContent).toContain('Aus deinen 2 Notizen wird eine Seite.')
+    const link = card.querySelector('a')!
+    expect(link.textContent).toContain('Selbst schreiben')
+    expect(link.getAttribute('href')).toBe('/tag/2026-10-06/schreiben')
+  })
+
+  it.each(['page', 'columns', 'chat'] as const)('offers to go on writing a day that has a page, in the layout %s', async (layout) => {
+    ;(TODAY as { day: unknown }).day = { date: '2026-10-06', title: 'Kastanien', text: 'Ein Tag.', tags: [], values: {}, cover: 'illu:baum.abend.herbst', cover_chosen: false, written_by: 'self', words: 2, revision: 0, created_at: '', updated_at: '' }
+    await show(layout)
+    const link = box.querySelector('#aufschreiben a')!
+    expect(link.textContent).toContain('Weiterschreiben')
+    expect(box.querySelector('#aufschreiben')!.textContent).toContain('Heute steht schon eine Seite.')
+  })
+
+  it('shows the photo of a note with it, from the server, and keeps it out of the photos of the day', async () => {
+    const photo = 'b'.repeat(32)
+    ;(TODAY.notes[1] as { photo_id: string | null }).photo_id = photo
+    ;(TODAY as { photos?: unknown[] }).photos = [{ id: photo, date: '2026-10-06', source: 'upload', width: 10, height: 10, created_at: '2026-10-06T16:50:00+00:00' }]
+    await show('page')
+    const images = [...box.querySelectorAll('img')].map((image) => image.getAttribute('src'))
+    expect(images).toEqual([`/api/photos/${photo}/preview`])
+    expect(box.textContent).toContain('0 Fotos')
+    delete (TODAY as { photos?: unknown[] }).photos
+  })
+})

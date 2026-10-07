@@ -3,7 +3,7 @@
  * factor, public address, OIDC and authentik), mail, API tokens, backups, languages and the log. Everything here is the
  * server's; it applies to all. The operator manages accounts and never sees what is written in them.
  */
-import { Download, HardDrive, Languages, Mail, MoreHorizontal, Plug, Plus, RotateCcw, ScrollText, Shield, ShieldCheck, Trash2, Upload, Users } from 'lucide-react'
+import { Database, Download, HardDrive, Languages, Mail, MoreHorizontal, Plug, Plus, RotateCcw, ScrollText, Shield, ShieldCheck, Trash2, Upload, Users } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -28,6 +28,7 @@ export type ServerSettings = {
   smtp_from: string
   api_tokens_allowed: boolean
   update_check: boolean
+  storage_per_person_gb: number
 }
 
 type Change = Partial<ServerSettings> & { smtp_password?: string }
@@ -395,6 +396,33 @@ export function SignInCard({ server }: { server: Server }) {
         </ol>
       )}
       <Feedback problem={problem} done={done} />
+    </Card>
+  )
+}
+
+/** How much each person may keep in photos and drafts; 0 is no limit. */
+export function StorageCard({ server }: { server: Server }) {
+  const { t } = useTranslation()
+  const [value, setValue] = useState<string | null>(null)
+  const s = server.settings
+  if (!s) return null
+  return (
+    <Card id="storage" icon={Database} title={t('server.storage')} text={t('server.storageHint')}>
+      <form
+        className="flex items-end gap-2"
+        onSubmit={(event) => {
+          event.preventDefault()
+          const gb = Math.max(0, Math.min(10000, Number((value ?? String(s.storage_per_person_gb)).replace(',', '.')) || 0))
+          void server.save({ storage_per_person_gb: gb }, t('settings.saved'))
+          setValue(null)
+        }}
+      >
+        <Input label={t('server.storageGb')} type="number" min={0} max={10000} value={value ?? String(s.storage_per_person_gb)} onChange={setValue} className="w-32" />
+        <Button type="submit" busy={server.busy}>
+          {t('common.save')}
+        </Button>
+      </form>
+      <Feedback problem={server.problem} done={server.done} />
     </Card>
   )
 }

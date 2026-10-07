@@ -76,6 +76,26 @@ def write_everywhere(client: TestClient, word: str) -> None:
     note = client.post("/api/notes", json={"id": str(uuid.uuid4()), "text": f"kurz {word}"}).json()
     client.put(f"/api/notes/{note['id']}", json={"text": f"geändert {word}"})
     client.delete(f"/api/notes/{note['id']}")
+    # A draft of the day, and a photo whose metadata carries the word, on a note.
+    assert client.put("/api/days/2026-10-04/draft", json={"title": f"Entwurf {word}", "text": f"Halb {word}",
+                                                          "tags": [f"t{word}"], "base_revision": -1}).status_code == 200
+    photo = client.post("/api/photos", params={"upload_id": str(uuid.uuid4())}, content=photo_with(word))
+    assert photo.status_code == 201
+    assert client.post("/api/notes", json={"id": str(uuid.uuid4()), "text": "", "photo_id": photo.json()["id"]}
+                       ).status_code == 201
+
+
+def photo_with(word: str) -> bytes:
+    from PIL import Image
+
+    image = Image.new("RGB", (80, 60), (120, 160, 90))
+    exif = Image.Exif()
+    exif[0x010E] = f"Bild {word}"
+    out = io.BytesIO()
+    image.save(out, "JPEG", exif=exif.tobytes(), xmp=f"<x>{word}</x>".encode())
+    data = out.getvalue()
+    assert word.encode() in data
+    return data
 
 
 def every_file(folder: Path) -> Iterator[Path]:
@@ -157,7 +177,10 @@ def test_a_backup_cannot_be_read_without_the_master_key_and_comes_back_on_the_sa
     vault.startup()
     sign_in(client, account)
     restored = client.get("/api/notes", params={"date": day}).json()
-    assert [item["text"] for item in restored] == [f"heute {word} gesehen"]
+    assert [item["text"] for item in restored if item["text"]] == [f"heute {word} gesehen"]
+    with_photo = [item for item in restored if item["photo_id"]]
+    assert len(with_photo) == 1
+    assert client.get(f"/api/photos/{with_photo[0]['photo_id']}").headers["content-type"] == "image/webp"
     assert client.get("/api/days/2026-10-05").json()["title"] == f"Titel {word}"
 
 

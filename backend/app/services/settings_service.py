@@ -44,6 +44,8 @@ DEFAULTS: dict[str, Any] = {
     "smtp_user": "",
     "smtp_password_enc": "",
     "smtp_from": "",
+    #: What one person may keep in photos and drafts, in GB; 0: no limit.
+    "storage_per_person_gb": 5,
 }
 
 

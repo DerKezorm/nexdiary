@@ -2,19 +2,23 @@
  * "Today", as the mock's `Today.tsx`, in the three layouts a person chooses under Settings, Look: one page, two columns,
  * or like a chat. Notes are thrown down here, changed and deleted; the values of the day are rated.
  *
- * What comes with later blocks has its place in every layout already and stays empty until then: the question of the
- * day (`PromptSlot`), the photos (`PhotosSlot`) and writing the day up (`FinishSlot`).
+ * Photos are taken or picked with the camera button beside the field (they go with the next note) and under "Fotos
+ * von heute"; "Den Tag aufschreiben" leads to the writing page. What comes with later blocks has its place already and
+ * stays empty until then: the question of the day (`PromptSlot`) and the photos from Immich.
  */
-import { ArrowUp, Flame, Plus, Tag, Trash2, X } from 'lucide-react'
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { ArrowUp, Camera, Flame, ImagePlus, Loader2, PenLine, Trash2, X } from 'lucide-react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Link, useSearchParams } from 'react-router-dom'
 
-import type { Note, TodayData, ValueDef } from '../api/client'
-import { Chip } from '../components/Chip'
+import { photoUrl, type Note, type TodayData, type ValueDef } from '../api/client'
 import { Dialog } from '../components/Dialog'
 import { Scale } from '../components/Scale'
+import { TagPicker } from '../components/TagPicker'
 import { longDate, timeOf } from '../lib/dates'
 import { errorText } from '../lib/errors'
+import { PHOTO_ACCEPT } from '../lib/upload'
+import { PendingPhoto, usePendingPhoto } from '../components/PendingPhoto'
 import { useAuth } from '../state/auth'
 import { useToday, type TodayState } from '../state/today'
 
@@ -30,7 +34,16 @@ export function TodayPage({ now }: { now?: Date }) {
   const [drawer, setDrawer] = useState(false)
   const { t } = useTranslation()
   const layout = me?.profile?.layout ?? 'page'
-  const problem = today.problem && <Problem code={today.problem} />
+  const problem = today.problem && <Problem code={today.problem} values={today.problemValues} />
+  const [params] = useSearchParams()
+  const toFinish = params.get('aufschreiben') === '1'
+  const ready = Boolean(today.data)
+  // From the quick note ("Den Tag aufschreiben"): straight to where the day is written up.
+  useEffect(() => {
+    if (!toFinish || !ready) return
+    const timer = window.setTimeout(() => document.getElementById('aufschreiben')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100)
+    return () => window.clearTimeout(timer)
+  }, [toFinish, ready])
 
   if (!today.data)
     return (
@@ -44,7 +57,9 @@ export function TodayPage({ now }: { now?: Date }) {
     return (
       <div className="page flex min-h-[calc(100dvh-5rem)] flex-col lg:min-h-dvh">
         <Header now={now} today={today} onDay={() => setDrawer(true)} />
-        <FinishSlot />
+        <div className="mb-3">
+          <FinishCard today={today} />
+        </div>
         <div className="flex-1 pb-4">
           <Bubbles today={today} />
           <PromptSlot />
@@ -57,7 +72,7 @@ export function TodayPage({ now }: { now?: Date }) {
           <Dialog title={t('today.yourDay')} onClose={() => setDrawer(false)}>
             <div className="space-y-6">
               <ValuesBlock today={today} bare />
-              <PhotosSlot />
+              <PhotosBlock today={today} bare />
               <TagsBlock today={today} bare />
             </div>
           </Dialog>
@@ -77,9 +92,9 @@ export function TodayPage({ now }: { now?: Date }) {
             <Timeline today={today} />
           </div>
           <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
-            <FinishSlot />
+            <FinishCard today={today} />
             <ValuesBlock today={today} />
-            <PhotosSlot />
+            <PhotosBlock today={today} />
             <TagsBlock today={today} />
           </aside>
         </div>
@@ -93,10 +108,10 @@ export function TodayPage({ now }: { now?: Date }) {
       {problem}
       <PromptSlot />
       <Timeline today={today} />
-      <PhotosSlot />
+      <PhotosBlock today={today} />
       <ValuesBlock today={today} />
       <TagsBlock today={today} />
-      <FinishSlot />
+      <FinishCard today={today} />
     </div>
   )
 }
@@ -106,20 +121,94 @@ function PromptSlot() {
   return null
 }
 
-/** The photos of the day: come with photos and Immich. */
-function PhotosSlot() {
-  return null
+/** "Den Tag aufschreiben", as the mock's finish card. The button "Ausformulieren" of the assistant comes here before
+ * "Selbst schreiben" with the AI; a day that has a page already is written on ("Weiterschreiben"). */
+function FinishCard({ today }: { today: TodayState }) {
+  const { t } = useTranslation()
+  const data = today.data as TodayData
+  const count = data.notes.length
+  const written = Boolean(data.day?.text.trim())
+  const text = written ? t('write.finishExisting') : count > 0 ? t('write.finishText', { count }) : t('write.finishNoNotes')
+  return (
+    <section id="aufschreiben" className="card scroll-mt-6 overflow-hidden">
+      <div className="bg-accent-soft/70 px-5 pt-5 pb-4">
+        <h2 className="font-display text-lg font-semibold">{t('write.finishTitle')}</h2>
+        <p className="mt-1 text-sm text-ink-2">{text}</p>
+      </div>
+      <div className="space-y-3 p-5">
+        <Link
+          to={`/tag/${data.date}/schreiben`}
+          className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-accent px-5 text-[0.95rem] font-semibold text-accent-ink shadow-soft transition hover:brightness-105"
+        >
+          <PenLine size={18} aria-hidden /> {written ? t('write.continue') : t('write.self')}
+        </Link>
+      </div>
+    </section>
+  )
 }
 
-/** "Write the day up": comes with writing. */
-function FinishSlot() {
-  return null
+/** The photos of today, as the mock's photo strip: the own uploads, each with its time, and a tile to add one. The
+ * photos from Immich join them in their block. */
+function PhotosBlock({ today, bare = false }: { today: TodayState; bare?: boolean }) {
+  const { t } = useTranslation()
+  const { me } = useAuth()
+  const [busy, setBusy] = useState(false)
+  const file = useRef<HTMLInputElement>(null)
+  // The photos of the day itself; a photo that came with a note stands with its note.
+  const onNotes = new Set((today.data?.notes ?? []).map((note) => note.photo_id).filter(Boolean))
+  const photos = (today.data?.photos ?? []).filter((photo) => !onNotes.has(photo.id))
+  const add = async (picked: File) => {
+    setBusy(true)
+    await today.addPhoto(picked)
+    setBusy(false)
+  }
+  return (
+    <Block title={t('photos.title')} bare={bare} extra={<span className="text-sm text-muted">{t('photos.count', { count: photos.length })}</span>}>
+      <div className="scroll-x -mx-1 flex gap-2.5 overflow-x-auto px-1 pb-1">
+        {photos.map((photo) => (
+          <div key={photo.id} className="group relative shrink-0 overflow-hidden rounded-xl">
+            <img src={photoUrl(photo.id, true)} alt={t('photos.alt')} className="h-24 w-32 object-cover" draggable={false} />
+            <span className="absolute bottom-1 left-1.5 rounded bg-black/35 px-1 text-[0.68rem] font-bold text-white">{timeOf(photo.created_at, me?.profile?.timezone)}</span>
+            <button
+              type="button"
+              onClick={() => void today.deletePhoto(photo.id)}
+              className="absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-black/35 text-white opacity-0 group-hover:opacity-100 focus:opacity-100 [@media(hover:none)]:opacity-100"
+              aria-label={t('photos.delete')}
+            >
+              <X size={13} strokeWidth={3} />
+            </button>
+          </div>
+        ))}
+        <button
+          type="button"
+          onClick={() => file.current?.click()}
+          disabled={busy}
+          className="flex h-24 w-32 shrink-0 flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-line text-sm font-semibold text-muted hover:border-accent hover:text-accent disabled:opacity-60"
+        >
+          {busy ? <Loader2 size={20} className="animate-spin" aria-hidden /> : <ImagePlus size={20} aria-hidden />}
+          {busy ? t('photos.uploading') : t('photos.upload')}
+        </button>
+        <input
+          ref={file}
+          type="file"
+          accept={PHOTO_ACCEPT}
+          className="hidden"
+          aria-label={t('photos.upload')}
+          onChange={(e) => {
+            const picked = e.target.files?.[0]
+            e.target.value = ''
+            if (picked) void add(picked)
+          }}
+        />
+      </div>
+    </Block>
+  )
 }
 
-function Problem({ code }: { code: string }) {
+function Problem({ code, values }: { code: string; values?: Record<string, unknown> }) {
   return (
     <p role="alert" className="rounded-xl border border-bad/40 bg-bad/10 px-3 py-2 text-sm text-bad">
-      {errorText(code)}
+      {errorText(code, values)}
     </p>
   )
 }
@@ -159,13 +248,35 @@ function Capture({ today, chat = false }: { today: TodayState; chat?: boolean })
   const { t } = useTranslation()
   const [text, setText] = useState('')
   const field = useRef<HTMLTextAreaElement>(null)
+  const file = useRef<HTMLInputElement>(null)
+  const pending = usePendingPhoto(today)
   const add = async () => {
-    if (!text.trim()) return
-    if (await today.addNote(text)) setText('')
+    if (!text.trim() && !pending.photo) return
+    if (await today.addNote(text, pending.photo?.id ?? null)) {
+      setText('')
+      pending.sent()
+    }
     field.current?.focus()
   }
   return (
-    <div className={`card flex items-end gap-2 p-2 ${chat ? 'rounded-[1.6rem]' : ''}`}>
+    <div className={`card p-2 ${chat ? 'rounded-[1.6rem]' : ''}`}>
+      <PendingPhoto photo={pending.photo} busy={pending.busy} onDrop={pending.drop} />
+      <div className="flex items-end gap-2">
+      <button type="button" onClick={() => file.current?.click()} disabled={pending.busy} className="rounded-full p-2.5 text-muted hover:bg-sheet-2 hover:text-accent" title={t('photos.alt')} aria-label={t('photos.attach')}>
+        <Camera size={20} />
+      </button>
+      <input
+        ref={file}
+        type="file"
+        accept={PHOTO_ACCEPT}
+        className="hidden"
+        aria-label={t('photos.attach')}
+        onChange={(e) => {
+          const picked = e.target.files?.[0]
+          e.target.value = ''
+          if (picked) void pending.pick(picked)
+        }}
+      />
       <textarea
         ref={field}
         value={text}
@@ -180,11 +291,12 @@ function Capture({ today, chat = false }: { today: TodayState; chat?: boolean })
           }
         }}
         placeholder={t('today.capture')}
-        className="max-h-40 min-h-11 flex-1 resize-none bg-transparent px-3 py-2.5 text-[1.02rem] text-ink placeholder:text-muted focus:outline-none"
+        className="max-h-40 min-h-11 flex-1 resize-none bg-transparent px-1 py-2.5 text-[1.02rem] text-ink placeholder:text-muted focus:outline-none"
       />
-      <button type="button" onClick={() => void add()} disabled={!text.trim()} className="rounded-full bg-accent p-2.5 text-accent-ink transition disabled:opacity-30" aria-label={t('today.add')}>
+      <button type="button" onClick={() => void add()} disabled={!text.trim() && !pending.photo} className="rounded-full bg-accent p-2.5 text-accent-ink transition disabled:opacity-30" aria-label={t('today.add')}>
         <ArrowUp size={20} />
       </button>
+      </div>
     </div>
   )
 }
@@ -235,7 +347,7 @@ function NoteRow({ note, today }: { note: Note; today: TodayState }) {
         {note.prompt && <p className="mb-0.5 font-serif text-sm text-accent italic">{note.prompt}</p>}
         {note.unreadable ? (
           <p className="leading-relaxed text-muted italic">{t('today.unreadable')}</p>
-        ) : (
+        ) : !note.text && note.photo_id ? null : (
         <p
           ref={box}
           contentEditable="plaintext-only"
@@ -255,6 +367,7 @@ function NoteRow({ note, today }: { note: Note; today: TodayState }) {
           className="leading-relaxed break-words whitespace-pre-wrap text-ink focus:outline-none"
         />
         )}
+        {note.photo_id && <img src={photoUrl(note.photo_id, true)} alt={t('photos.alt')} className="mt-2 h-24 w-36 rounded-lg object-cover" draggable={false} />}
       </div>
       <button
         type="button"
@@ -292,7 +405,8 @@ function Bubbles({ today }: { today: TodayState }) {
               <Trash2 size={14} />
             </button>
             <div className="max-w-[85%] rounded-[1.3rem] rounded-br-md bg-accent-soft px-4 py-2.5 text-ink">
-              {note.unreadable ? <p className="text-muted italic">{t('today.unreadable')}</p> : <p className="leading-relaxed break-words whitespace-pre-wrap">{note.text}</p>}
+              {note.photo_id && <img src={photoUrl(note.photo_id, true)} alt={t('photos.alt')} className="mb-2 aspect-[16/10] w-56 max-w-full rounded-xl object-cover" draggable={false} />}
+              {note.unreadable ? <p className="text-muted italic">{t('today.unreadable')}</p> : note.text && <p className="leading-relaxed break-words whitespace-pre-wrap">{note.text}</p>}
               <p className="mt-0.5 text-right text-[0.7rem] font-bold text-muted tabular-nums">{timeOf(note.created_at, me?.profile?.timezone)}</p>
             </div>
           </div>
@@ -338,58 +452,10 @@ function ValuesBlock({ today, bare = false }: { today: TodayState; bare?: boolea
 
 function TagsBlock({ today, bare = false }: { today: TodayState; bare?: boolean }) {
   const { t } = useTranslation()
-  const [open, setOpen] = useState(false)
-  const [own, setOwn] = useState('')
   const tags = today.data?.day?.tags ?? []
-  const toggle = (tag: string) => void today.setTags(tags.includes(tag) ? tags.filter((x) => x !== tag) : [...tags, tag])
-  const suggestions = t('today.tagSuggestions')
-    .split(',')
-    .map((tag) => tag.trim())
-    .filter((tag) => tag && !tags.includes(tag))
   return (
     <Block title={t('today.tags')} bare={bare}>
-      <div className="flex flex-wrap gap-2">
-        {tags.map((tag) => (
-          <Chip key={tag} active onClick={() => toggle(tag)} label={t('today.removeTag', { tag })}>
-            <Tag size={13} aria-hidden /> {tag} <X size={13} aria-hidden />
-          </Chip>
-        ))}
-        <Chip onClick={() => setOpen(!open)} label={t('today.addTag')}>
-          <Plus size={14} aria-hidden /> {t('today.tag')}
-        </Chip>
-      </div>
-      {open && (
-        <div className="mt-3 border-t border-line pt-3">
-          <div className="flex flex-wrap gap-2">
-            {suggestions.map((tag) => (
-              <Chip key={tag} onClick={() => toggle(tag)}>
-                {tag}
-              </Chip>
-            ))}
-          </div>
-          <form
-            className="mt-3 flex gap-2"
-            onSubmit={(e) => {
-              e.preventDefault()
-              const tag = own.trim().replace(/^#/, '').toLowerCase()
-              if (tag && !tags.includes(tag)) void today.setTags([...tags, tag])
-              setOwn('')
-            }}
-          >
-            <input
-              value={own}
-              maxLength={40}
-              onChange={(e) => setOwn(e.target.value)}
-              placeholder={t('today.ownTag')}
-              aria-label={t('today.ownTag')}
-              className="h-8 min-w-0 flex-1 rounded-full border border-line bg-sheet px-3 text-sm text-ink outline-none placeholder:text-muted/70 focus:border-accent"
-            />
-            <button type="submit" disabled={!own.trim()} className="inline-flex h-8 items-center rounded-full border border-line px-3 text-sm font-semibold text-ink-2 hover:bg-sheet-2 disabled:opacity-50">
-              {t('today.addTagButton')}
-            </button>
-          </form>
-        </div>
-      )}
+      <TagPicker tags={tags} onChange={(next) => void today.setTags(next)} />
     </Block>
   )
 }

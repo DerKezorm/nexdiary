@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..deps import Account, DbSession
 from ..errors import error
-from ..services import diary, vault
+from ..services import brakes, diary, photos, vault
 
 router = APIRouter(prefix="/api", tags=["diary"])
 
@@ -29,10 +29,14 @@ class NoteIn(Strict):
     #: Empty: today in the person's time zone.
     date: str = Field(default="", max_length=10)
     prompt: str | None = Field(default=None, max_length=diary.PROMPT_MAX * 4)
+    #: One of the person's own photos (``POST /api/photos``); with a photo the text may be empty.
+    photo_id: str | None = Field(default=None, max_length=32)
 
 
 class NoteChangeIn(Strict):
     text: str = Field(max_length=diary.NOTE_MAX * 4)
+    #: Sent: the photo of the note changes (null: none). Not sent: it stays.
+    photo_id: str | None = Field(default=None, max_length=32)
 
 
 class DayIn(Strict):
@@ -44,6 +48,20 @@ class DayIn(Strict):
     values: dict[Annotated[str, Field(max_length=32)], Any] | None = Field(default=None,
                                                                           max_length=diary.VALUE_DEFS_MAX * 2)
     written_by: Literal["ai", "self"] | None = None
+    #: ``illu:<motif>.<time>.<season>`` or ``photo:<id>`` of an own photo; null: the suggestion again.
+    cover: str | None = Field(default=None, max_length=diary.COVER_MAX)
+    #: The revision the writer started from (-1: there was no page). Sent, the page is changed only onto exactly
+    #: that, else ``day_changed``; and a saved text ends the day's draft.
+    base_revision: int | None = Field(default=None, ge=-1)
+
+
+class DraftIn(Strict):
+    title: str | None = Field(default=None, max_length=diary.TITLE_MAX * 4)
+    text: str | None = Field(default=None, max_length=diary.TEXT_MAX * 2)
+    tags: list[Annotated[str, Field(max_length=diary.TAG_MAX * 4)]] | None = Field(default=None,
+                                                                                  max_length=diary.TAGS_MAX * 2)
+    cover: str | None = Field(default=None, max_length=diary.COVER_MAX)
+    base_revision: int = Field(ge=-1)
 
 
 class ValuesOfDayIn(Strict):
@@ -76,11 +94,12 @@ class SearchIn(Strict):
 
 
 def _language(account: Any, request: Request) -> str:
-    """The language the starting values are written in: the account's, else the browser's first."""
-    if account.language:
-        return account.language.split("-")[0].lower()
-    accepted = request.headers.get("accept-language", "")
-    return accepted.split(",")[0].split(";")[0].strip().split("-")[0].lower()
+    """The language the starting values are written in: the account's, else the one the page is shown in, else the
+    browser's."""
+    from .auth import interface_language
+
+    chosen = account.language or interface_language(request)
+    return chosen.split("-")[0].lower()
 
 
 def _values_ready(db: DbSession, account: Any, request: Request) -> bytes:
@@ -103,6 +122,7 @@ def today(request: Request, account: Account, db: DbSession) -> dict[str, Any]:
         "day": diary.get_day(db, account.id, dek, key),
         "values": diary.list_values(db, account.id, dek),
         "streak": diary.streak(db, account.id, dek, day),
+        "photos": photos.list_of_day(db, account.id, key),
     }
 
 
@@ -118,8 +138,10 @@ def notes(account: Account, db: DbSession, date: Annotated[str, Query(max_length
 @router.post("/notes", summary="Keep a note; the same id twice keeps one")
 def add_note(payload: NoteIn, response: Response, account: Account, db: DbSession) -> dict[str, Any]:
     uid = diary.check_new_note_id(payload.id)
+    brakes.take("new_note", account.id)
     day = diary.check_date(account, payload.date) if payload.date else diary.today_of(account).isoformat()
-    note, new = diary.add_note(db, account.id, vault.dek_for(account.id), uid, day, payload.text, payload.prompt)
+    note, new = diary.add_note(db, account.id, vault.dek_for(account.id), uid, day, payload.text, payload.prompt,
+                               payload.photo_id)
     response.status_code = 201 if new else 200
     return note
 
@@ -127,7 +149,10 @@ def add_note(payload: NoteIn, response: Response, account: Account, db: DbSessio
 @router.put("/notes/{note_id}", summary="Change the text of a note")
 def change_note(note_id: str, payload: NoteChangeIn, account: Account, db: DbSession) -> dict[str, Any]:
     uid = diary.check_note_id(note_id)
-    return diary.change_note(db, account.id, vault.dek_for(account.id), uid, payload.text)
+    dek = vault.dek_for(account.id)
+    if "photo_id" in payload.model_fields_set:
+        return diary.change_note(db, account.id, dek, uid, payload.text, payload.photo_id)
+    return diary.change_note(db, account.id, dek, uid, payload.text)
 
 
 @router.delete("/notes/{note_id}", status_code=204, summary="Delete a note")
@@ -163,9 +188,36 @@ def day(date: str, account: Account, db: DbSession) -> dict[str, Any]:
 def put_day(date: str, payload: DayIn, request: Request, account: Account, db: DbSession) -> dict[str, Any]:
     key = diary.check_date(account, date)
     dek = _values_ready(db, account, request)
-    fields = {name: getattr(payload, name) for name in payload.model_fields_set}
+    if not diary.day_exists(db, account.id, key):
+        brakes.take("new_day", account.id)
+    fields = {name: getattr(payload, name) for name in payload.model_fields_set if name != "base_revision"}
     patch = diary.clean_day_patch(db, account.id, fields)
-    return diary.change_day(db, account.id, dek, key, lambda content: diary.merge(content, patch))
+    return diary.change_day(db, account.id, dek, key, lambda content: diary.merge(content, patch),
+                            base_revision=payload.base_revision,
+                            discard_draft=payload.base_revision is not None)
+
+
+# --- Drafts ---------------------------------------------------------------------------------------------------------
+
+
+@router.get("/days/{date}/draft", summary="What is being written on a day and not saved yet; null when nothing")
+def draft(date: str, account: Account, db: DbSession) -> dict[str, Any] | None:
+    key = diary.check_date(account, date)
+    # No draft is the usual case, not an error: null, so that no browser logs a failed request every time.
+    return diary.get_draft(db, account.id, vault.dek_for(account.id), key)
+
+
+@router.put("/days/{date}/draft", summary="Keep what is being written, while it is written")
+def put_draft(date: str, payload: DraftIn, account: Account, db: DbSession) -> dict[str, Any]:
+    key = diary.check_date(account, date)
+    brakes.take("draft", account.id)
+    content = diary.clean_draft(db, account.id, payload.model_dump(exclude={"base_revision"}))
+    return diary.save_draft(db, account.id, vault.dek_for(account.id), key, content, payload.base_revision)
+
+
+@router.delete("/days/{date}/draft", status_code=204, summary="Throw away the draft of a day")
+def delete_draft(date: str, account: Account, db: DbSession) -> None:
+    diary.delete_draft(db, account.id, diary.check_date(account, date))
 
 
 @router.put("/days/{date}/values", summary="Rate values of a day; null takes a rating back")
@@ -173,6 +225,8 @@ def put_values_of_day(date: str, payload: ValuesOfDayIn, request: Request, accou
                       db: DbSession) -> dict[str, Any]:
     key = diary.check_date(account, date)
     dek = _values_ready(db, account, request)
+    if not diary.day_exists(db, account.id, key):
+        brakes.take("new_day", account.id)
     patch = {"values": diary.check_values(db, account.id, payload.values)}
     return diary.change_day(db, account.id, dek, key, lambda content: diary.merge(content, patch))
 

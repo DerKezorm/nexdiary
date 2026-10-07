@@ -50,8 +50,9 @@ DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 NOISY_LOGGERS = ("httpx", "httpcore", "watchfiles", "multipart", "uvicorn.access")
 #: Never finer than WARNING, at any level: SQLAlchemy writes every statement with its values from INFO on (diary
 #: texts, password and key hashes, sealed seeds), httpx the addresses it calls, uvicorn's access lines the paths with
-#: invitation tokens (which our own request line masks).
-SILENT_LOGGERS = ("sqlalchemy.engine", "sqlalchemy.pool", "httpx", "httpcore", "uvicorn.access")
+#: invitation tokens (which our own request line masks), Pillow every Exif value of a photo from DEBUG on (a
+#: description, a place, a device).
+SILENT_LOGGERS = ("sqlalchemy.engine", "sqlalchemy.pool", "httpx", "httpcore", "uvicorn.access", "PIL")
 
 MODES: dict[str, dict[str, int]] = {
     "quiet": {"app": logging.WARNING, "root": logging.WARNING, "libs": logging.WARNING},

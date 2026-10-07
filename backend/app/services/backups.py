@@ -324,7 +324,8 @@ def entries() -> list[Entry]:
             Entry(path.name, path.stat().st_size, manifest.created, manifest.kind, manifest.note, manifest.accounts,
                   manifest.files, manifest.version, path.name.endswith(UPLOADED))
         )
-    return sorted(found, key=lambda entry: entry.created, reverse=True)
+    # Newest first; two of the same second in the order of their names, so that which one stays is always the same.
+    return sorted(found, key=lambda entry: (entry.created, entry.name), reverse=True)
 
 
 def remove(name: str) -> None:

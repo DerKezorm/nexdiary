@@ -5,8 +5,9 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { ApiError, diaryApi, type Note, type TodayData } from '../api/client'
+import { ApiError, diaryApi, photosApi, type Note, type Photo, type TodayData } from '../api/client'
 import { newId } from '../lib/ids'
+import { uploadPhoto } from '../lib/upload'
 import { useAuth } from './auth'
 
 /** The text as the server keeps it: line breaks as \n, no control characters, no space at the ends. */
@@ -19,15 +20,22 @@ function codeOf(error: unknown): string {
   return error instanceof ApiError ? error.code : 'internal_error'
 }
 
+function valuesOf(error: unknown): Record<string, unknown> {
+  return error instanceof ApiError ? error.values : {}
+}
+
 export function useToday() {
   const { me } = useAuth()
   const zone = me?.profile?.timezone
   const [data, setData] = useState<TodayData | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
+  /** What the server said with the problem (the largest size of a photo, say), for its sentence. */
+  const [problemValues, setProblemValues] = useState<Record<string, unknown>>({})
   /** The id the next note goes out with. It stays the same until the server took the note, so a second send of the
    * same text (Enter twice, a double tap) is the same note. */
   const draftId = useRef(newId())
-  /** The text the current id went out with, while its answer is unknown (a send that failed or got no answer). */
+  /** The text (and photo) the current id went out with, while its answer is unknown (a send that failed or got no
+   * answer). */
   const draftText = useRef<string | null>(null)
   const sending = useRef(false)
 
@@ -37,6 +45,7 @@ export function useToday() {
       setProblem(null)
     } catch (error) {
       setProblem(codeOf(error))
+      setProblemValues(valuesOf(error))
     }
   }, [])
 
@@ -59,22 +68,23 @@ export function useToday() {
    * text sent again (a double tap, a retry after a lost answer) goes out with the same id and stays one note. A text
    * changed after a send whose answer was lost gets a new id: the old id may already hold the old text.
    */
-  const addNote = useCallback(async (text: string): Promise<boolean> => {
+  const addNote = useCallback(async (text: string, photoId: string | null = null): Promise<boolean> => {
     const clean = cleanNote(text)
-    if (!clean || sending.current) return false
+    if ((!clean && !photoId) || sending.current) return false
     sending.current = true
     try {
-      if (draftText.current !== null && draftText.current !== clean) draftId.current = newId()
-      draftText.current = clean
+      const sent = `${clean}|${photoId ?? ''}`
+      if (draftText.current !== null && draftText.current !== sent) draftId.current = newId()
+      draftText.current = sent
       let note: Note
       try {
         // No date: the server keeps it on its own "today", which may have moved on since the page was loaded.
-        note = await diaryApi.addNote(draftId.current, clean)
+        note = await diaryApi.addNote(draftId.current, clean, undefined, photoId)
       } catch (error) {
         // The id holds another text already: this text is a note of its own.
         if (!(error instanceof ApiError && error.code === 'note_id_taken')) throw error
         draftId.current = newId()
-        note = await diaryApi.addNote(draftId.current, clean)
+        note = await diaryApi.addNote(draftId.current, clean, undefined, photoId)
       }
       if (note.text !== clean) {
         setProblem('note_id_taken')
@@ -88,6 +98,7 @@ export function useToday() {
       return true
     } catch (error) {
       setProblem(codeOf(error))
+      setProblemValues(valuesOf(error))
       return false
     } finally {
       sending.current = false
@@ -101,6 +112,7 @@ export function useToday() {
       setProblem(null)
     } catch (error) {
       setProblem(codeOf(error))
+      setProblemValues(valuesOf(error))
       void load()
     }
   }, [load])
@@ -112,6 +124,7 @@ export function useToday() {
       setProblem(null)
     } catch (error) {
       setProblem(codeOf(error))
+      setProblemValues(valuesOf(error))
       void load()
     }
   }, [load])
@@ -125,7 +138,7 @@ export function useToday() {
       const values = { ...(current.day?.values ?? {}) }
       if (rating === null) delete values[valueId]
       else values[valueId] = rating
-      const day = current.day ?? { date, title: '', text: '', tags: [], values: {}, cover: null, written_by: null, words: 0, created_at: '', updated_at: '' }
+      const day = current.day ?? { date, title: '', text: '', tags: [], values: {}, cover: '', cover_chosen: false, written_by: null, words: 0, revision: -1, created_at: '', updated_at: '' }
       return { ...current, day: { ...day, values } }
     })
     try {
@@ -134,6 +147,7 @@ export function useToday() {
       setProblem(null)
     } catch (error) {
       setProblem(codeOf(error))
+      setProblemValues(valuesOf(error))
       void load()
     }
   }, [data, load])
@@ -147,10 +161,40 @@ export function useToday() {
       setProblem(null)
     } catch (error) {
       setProblem(codeOf(error))
+      setProblemValues(valuesOf(error))
     }
   }, [data])
 
-  return { data, problem, load, addNote, changeNote, deleteNote, rate, setTags }
+  /** A photo of today, uploaded; null when the server refused it (the page says why). */
+  const addPhoto = useCallback(async (file: Blob): Promise<Photo | null> => {
+    try {
+      const photo = await uploadPhoto(file)
+      setData((current) => (current && current.date === photo.date && !current.photos.some((item) => item.id === photo.id) ? { ...current, photos: [...current.photos, photo] } : current))
+      setProblem(null)
+      return photo
+    } catch (error) {
+      setProblem(codeOf(error))
+      setProblemValues(valuesOf(error))
+      return null
+    }
+  }, [])
+
+  /** Deletes a photo; its notes keep their words, a cover falls back to the illustration. */
+  const deletePhoto = useCallback(async (id: string) => {
+    setData((current) =>
+      current ? { ...current, photos: current.photos.filter((item) => item.id !== id), notes: current.notes.map((note) => (note.photo_id === id ? { ...note, photo_id: null } : note)) } : current,
+    )
+    try {
+      await photosApi.remove(id)
+      setProblem(null)
+    } catch (error) {
+      setProblem(codeOf(error))
+      setProblemValues(valuesOf(error))
+      void load()
+    }
+  }, [load])
+
+  return { data, problem, problemValues, load, addNote, changeNote, deleteNote, rate, setTags, addPhoto, deletePhoto }
 }
 
 export type TodayState = ReturnType<typeof useToday>

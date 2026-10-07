@@ -21,7 +21,7 @@ from .config import get_settings
 from .db import SessionLocal, init_db
 from .errors import detail
 from .middleware import GuardMiddleware, RequestContextMiddleware, unhandled_error
-from .routers import about, apitokens, auth, diary, health, invites, oidc
+from .routers import about, apitokens, auth, diary, health, invites, oidc, photos
 from .routers import avatars as avatars_router
 from .routers import backups as backups_router
 from .routers import locales as locales_router
@@ -30,13 +30,13 @@ from .routers import settings as settings_router
 from .routers import totp as totp_router
 from .routers import v1 as v1_router
 from .security import HashingBusy, purge_sessions
-from .services import accounts, backups, locales, logs, settings_service, totp, vault
+from .services import accounts, backups, locales, logs, pictures, settings_service, totp, vault
 
 logger = logging.getLogger("nexdiary")
 
 ROUTERS = [
     health, about, locales_router, logs_router, auth, totp_router, oidc, invites, settings_router, backups_router,
-    avatars_router, apitokens, v1_router, diary,
+    avatars_router, apitokens, v1_router, diary, photos,
 ]
 
 
@@ -136,6 +136,13 @@ async def _too_large_a_number(_request: Request, _exc: OverflowError) -> JSONRes
 @app.exception_handler(HashingBusy)
 async def _hashing_busy(_request: Request, _exc: HashingBusy) -> JSONResponse:
     # Every slot for checking a password stayed taken for 15 s: many sign-ins at once, as in a flood of guesses.
+    return JSONResponse(status_code=503, headers={"Retry-After": "5"},
+                        content={"detail": detail("busy", "The server is busy. Try again in a moment.")})
+
+
+@app.exception_handler(pictures.DecodersBusy)
+async def _decoders_busy(_request: Request, _exc: pictures.DecodersBusy) -> JSONResponse:
+    # Every decoder stayed taken: many large photos at once. A moment later it works.
     return JSONResponse(status_code=503, headers={"Retry-After": "5"},
                         content={"detail": detail("busy", "The server is busy. Try again in a moment.")})
 

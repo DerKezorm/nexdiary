@@ -205,7 +205,8 @@ def test_a_day_is_made_changed_in_parts_and_deleted_and_its_notes_stay(client: T
     assert client.get("/api/days/2026-10-06").json()["text"] == "Die Nacht war kurz. Der Hund bellte."
     listed = client.get("/api/days").json()
     assert listed == [{"date": "2026-10-06", "title": "Kastanien und Kopfweh", "tags": ["mia", "herbst", "draußen sein"],
-                       "words": 7, "values": {}, "written_by": "ai", "unreadable": False}]
+                       "words": 7, "values": {}, "cover": "illu:baum.abend.herbst", "written_by": "ai",
+                       "unreadable": False}]
     assert client.delete("/api/days/2026-10-06").status_code == 204
     assert client.get("/api/days/2026-10-06").status_code == 404
     assert client.delete("/api/days/2026-10-06").status_code == 404
@@ -230,7 +231,8 @@ def test_a_day_keeps_its_limits(client: TestClient, account: Account) -> None:
         ({"tags": ["x" * (diary.TAG_MAX + 1)]}, "tag_too_long"),
         ({"tags": [f"t{n}" for n in range(diary.TAGS_MAX + 1)]}, "too_many_tags"),
         ({"written_by": "robot"}, "invalid_input"),
-        ({"cover": "x"}, "invalid_input"),
+        ({"cover": "x"}, "cover_unknown"),
+        ({"cover": "illu:mond.abend.herbst"}, "cover_unknown"),
     ):
         answer = client.put("/api/days/2026-10-06", json=body)
         assert answer.status_code == 422 and answer.json()["detail"]["code"] == code, body

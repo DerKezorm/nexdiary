@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 import sqlite3
 from collections.abc import Iterator
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -64,7 +65,7 @@ def scratch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
 
 
 def version_of(path: Path) -> int:
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection:
         return int(connection.execute("PRAGMA user_version").fetchone()[0])
 
 
@@ -96,14 +97,19 @@ def test_every_older_schema_is_brought_up_to_the_current_one(scratch: Path) -> N
         connection.executescript(current)
         wanted = schema_of(connection)
     older = sorted(int(path.stem[1:]) for path in RECORDS.glob("v*.sql") if int(path.stem[1:]) < database.SCHEMA_VERSION)
+    assert older, "no older schema recorded"
     for version in older:
-        scratch.unlink(missing_ok=True)
-        with sqlite3.connect(scratch) as connection:
+        # A file of the round before may still be open on Windows unless every connection is closed (``closing``:
+        # sqlite3's own ``with`` only commits).
+        for leftover in (scratch, scratch.with_name(scratch.name + "-wal"), scratch.with_name(scratch.name + "-shm")):
+            leftover.unlink(missing_ok=True)
+        with closing(sqlite3.connect(scratch)) as connection:
             connection.executescript((RECORDS / f"v{version}.sql").read_text(encoding="utf-8"))
             connection.execute(f"PRAGMA user_version = {version}")
+            connection.commit()
         database.init_db()
         assert version_of(scratch) == database.SCHEMA_VERSION, version
-        with sqlite3.connect(scratch) as connection:
+        with closing(sqlite3.connect(scratch)) as connection:
             assert schema_of(connection) == wanted, f"schema {version}, brought up, differs from a new database"
 
 

@@ -224,6 +224,52 @@ class ValueDef(Base):
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
 
 
+class Photo(Base):
+    """A photo of a day. The picture itself lies sealed in the media folder (``services/photos.py``): the original,
+    drawn anew without anything but its pixels, and a smaller copy for lists. Its file names are the random ``uid``
+    (and ``uid.p``); what the database keeps in the clear is what sorting and laying out need."""
+
+    __tablename__ = "photos"
+    __table_args__ = (
+        UniqueConstraint("uid", name="uq_photos_uid"),
+        UniqueConstraint("user_id", "upload_id", name="uq_photos_user_upload"),
+        Index("ix_photos_user_date", "user_id", "date"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    uid: Mapped[str] = mapped_column(String(32))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    date: Mapped[str] = mapped_column(String(10))
+    #: ``upload`` or ``immich``.
+    source: Mapped[str] = mapped_column(String(8), default="upload")
+    #: The asset a photo was copied from (Immich).
+    asset_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #: Made by the browser for one upload: the same upload sent twice keeps one photo.
+    upload_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    width: Mapped[int] = mapped_column(Integer)
+    height: Mapped[int] = mapped_column(Integer)
+    #: Bytes on disk, sealed: the original and the smaller copy.
+    size: Mapped[int] = mapped_column(Integer)
+    preview_size: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+
+class Draft(Base):
+    """What is being written on a day and not saved yet, sealed like the day: kept while typing, so that a closed tab,
+    an empty battery or a lost connection loses nothing. ``base_revision`` is the revision of the day the writing
+    started from (-1: there was no page), so that saving it later does not silently overwrite a newer page."""
+
+    __tablename__ = "drafts"
+    __table_args__ = (UniqueConstraint("user_id", "date", name="uq_drafts_user_date"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    date: Mapped[str] = mapped_column(String(10))
+    content_enc: Mapped[bytes] = mapped_column(LargeBinary)
+    base_revision: Mapped[int] = mapped_column(Integer, default=-1)
+    updated_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+
 __all__ = [
     "MEMBER",
     "OPERATOR",
@@ -235,8 +281,10 @@ __all__ = [
     "AuthSession",
     "Base",
     "Day",
+    "Draft",
     "Invite",
     "Note",
+    "Photo",
     "Setting",
     "UserKey",
     "ValueDef",

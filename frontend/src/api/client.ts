@@ -4,6 +4,8 @@
  * its sentence from `errors.<code>` in the language files.
  */
 
+import i18n from 'i18next'
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
@@ -51,6 +53,8 @@ type Options = {
   blob?: boolean
   /** Headers of its own, next to the ones every request carries (the password of an upload). */
   headers?: Record<string, string>
+  /** Sent even while the page closes (the last draft). */
+  keepalive?: boolean
 }
 
 const BUSY_TRIES = 3
@@ -74,7 +78,8 @@ async function once<T>(path: string, options: Options): Promise<T> {
     if (Array.isArray(value)) for (const item of value) url.searchParams.append(key, item)
     else if (value !== undefined) url.searchParams.set(key, String(value))
   }
-  const headers: Record<string, string> = { ...options.headers, Accept: 'application/json', 'X-Nexdiary-Client': tabId() }
+  // The language the page is shown in: what an account without a language of its own starts with (its values).
+  const headers: Record<string, string> = { ...options.headers, Accept: 'application/json', 'X-Nexdiary-Client': tabId(), ...(i18n.language ? { 'X-Nexdiary-Language': i18n.language } : {}) }
   let body: BodyInit | undefined
   if (options.raw) body = options.raw
   else if (options.body !== undefined) {
@@ -83,7 +88,7 @@ async function once<T>(path: string, options: Options): Promise<T> {
   }
   let response: Response
   try {
-    response = await fetch(url.pathname + url.search, { method: options.method ?? 'GET', headers, body })
+    response = await fetch(url.pathname + url.search, { method: options.method ?? 'GET', headers, body, ...(options.keepalive ? { keepalive: true } : {}) })
   } catch {
     throw new ApiError(0, 'network')
   }
@@ -213,21 +218,40 @@ export type DayPage = {
   text: string
   tags: string[]
   values: Record<string, number>
-  cover: unknown
+  /** Always one: `illu:<motif>.<time>.<season>` or `photo:<id>`; the suggestion while none was chosen. */
+  cover: string
+  cover_chosen: boolean
   written_by: 'ai' | 'self' | null
   words: number
+  /** Counts every change; a save names the one it started from (`base_revision`). */
+  revision: number
   created_at: string
   updated_at: string
 }
 
-export type TodayData = { date: string; notes: Note[]; day: DayPage | null; values: ValueDef[]; streak: number }
+export type Photo = { id: string; date: string; source: 'upload' | 'immich'; width: number; height: number; created_at: string }
 
-export type DayChange = { title?: string; text?: string; tags?: string[]; values?: Record<string, number | null>; written_by?: 'ai' | 'self' | null }
+export type TodayData = { date: string; notes: Note[]; day: DayPage | null; values: ValueDef[]; streak: number; photos: Photo[] }
+
+export type DayChange = {
+  title?: string
+  text?: string
+  tags?: string[]
+  values?: Record<string, number | null>
+  written_by?: 'ai' | 'self' | null
+  cover?: string | null
+  /** The revision the writing started from (-1: there was no page): a newer page is not overwritten unseen. */
+  base_revision?: number
+}
+
+export type Draft = { title: string; text: string; tags: string[]; cover: string | null; base_revision: number; updated_at: string }
+export type DraftIn = Omit<Draft, 'updated_at'>
 
 export const diaryApi = {
   today: () => api<TodayData>('/api/today'),
   notes: (date: string) => api<Note[]>('/api/notes', { query: { date } }),
-  addNote: (id: string, text: string, date?: string) => api<Note>('/api/notes', { method: 'POST', body: date ? { id, text, date } : { id, text } }),
+  addNote: (id: string, text: string, date?: string, photoId?: string | null) =>
+    api<Note>('/api/notes', { method: 'POST', body: { id, text, ...(date ? { date } : {}), ...(photoId ? { photo_id: photoId } : {}) } }),
   changeNote: (id: string, text: string) => api<Note>(`/api/notes/${encodeURIComponent(id)}`, { method: 'PUT', body: { text } }),
   deleteNote: (id: string) => api<void>(`/api/notes/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   day: (date: string) => api<DayPage>(`/api/days/${encodeURIComponent(date)}`),
@@ -239,4 +263,21 @@ export const diaryApi = {
     api<ValueDef>(`/api/values/${encodeURIComponent(id)}`, { method: 'PUT', body: change }),
   orderValues: (ids: string[]) => api<ValueDef[]>('/api/values/order', { method: 'PUT', body: { ids } }),
   deleteValue: (id: string) => api<void>(`/api/values/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  /** The draft of a day; null when there is none. */
+  draft: (date: string) => api<Draft | null>(`/api/days/${encodeURIComponent(date)}/draft`),
+  saveDraft: (date: string, draft: DraftIn, keepalive = false) => api<Draft>(`/api/days/${encodeURIComponent(date)}/draft`, { method: 'PUT', body: draft, keepalive }),
+  deleteDraft: (date: string) => api<void>(`/api/days/${encodeURIComponent(date)}/draft`, { method: 'DELETE' }),
+}
+
+/** Photos of a day: uploaded as they are, drawn anew by the server without anything but their pixels. */
+export const photosApi = {
+  upload: (file: Blob, uploadId: string, date?: string) =>
+    api<Photo>('/api/photos', { method: 'POST', raw: file, query: { upload_id: uploadId, ...(date ? { date } : {}) } }),
+  list: (date: string) => api<Photo[]>('/api/photos', { query: { date } }),
+  remove: (id: string) => api<void>(`/api/photos/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+}
+
+/** Where a photo is shown from; the smaller copy for lists and tiles. */
+export function photoUrl(id: string, preview = false): string {
+  return `/api/photos/${encodeURIComponent(id)}${preview ? '/preview' : ''}`
 }

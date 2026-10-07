@@ -36,7 +36,7 @@ from app.db import SessionLocal, init_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import MEMBER, OPERATOR, Account, Base, Setting  # noqa: E402
 from app.security import SESSION_COOKIE, brake, hash_password, start_session  # noqa: E402
-from app.services import diary, totp, updates  # noqa: E402
+from app.services import backups, brakes, diary, totp, updates  # noqa: E402
 
 DATA_DIR = _DATA
 MEDIA = Path(_DATA) / "media"
@@ -58,7 +58,10 @@ def clean_db(schema: None) -> Iterator[None]:
     assert MEDIA.resolve().is_relative_to(Path(_DATA).resolve())
     shutil.rmtree(MEDIA, ignore_errors=True)
     MEDIA.mkdir(parents=True)
+    # Backups of a test before (an automatic one of the same second) must not decide what another test prunes.
+    shutil.rmtree(backups.folder(), ignore_errors=True)
     brake.forget()
+    brakes.forget()
     totp.forget()
     updates.forget()
     diary.forget_searches()
@@ -129,3 +132,18 @@ def operator(client: TestClient) -> Account:
 def account(client: TestClient) -> Account:
     """The same as ``operator``, under the name the tests from nexlore use."""
     return _operator(client)
+
+
+def pytest_unconfigure(config: pytest.Config) -> None:
+    """The data folder of this run goes when the run ends: the log file is closed first (Windows keeps open files),
+    then the folder with everything in it."""
+    import logging
+
+    for logger in (logging.getLogger(), logging.getLogger("uvicorn.error")):
+        for handler in list(logger.handlers):
+            handler.close()
+            logger.removeHandler(handler)
+    from app.db import engine
+
+    engine.dispose()
+    shutil.rmtree(_DATA, ignore_errors=True)

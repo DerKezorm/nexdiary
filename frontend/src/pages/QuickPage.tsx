@@ -2,16 +2,20 @@
  * The quick note for the phone, as the mock's `QuickPage.tsx`: one field with the keyboard open, today's notes above it,
  * no menus. Where a phone starts (Settings, Look, "On the phone"). "Alles" leads into the whole app.
  *
- * The question of the day and "Write the day up" come with their blocks; their places are marked below.
+ * The camera button takes or picks a photo for the next note; under the notes "Den Tag aufschreiben" leads to "Today".
+ * The question of the day comes with the writing prompts; its place is marked below.
  */
-import { ArrowUp, Check, Flame, LayoutGrid, X } from 'lucide-react'
+import { ArrowUp, Camera, Check, Flame, LayoutGrid, PenLine, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 
+import { photoUrl } from '../api/client'
 import { LogoMark } from '../components/Logo'
+import { PendingPhoto, usePendingPhoto } from '../components/PendingPhoto'
 import { longDate, timeOf } from '../lib/dates'
 import { errorText } from '../lib/errors'
+import { PHOTO_ACCEPT } from '../lib/upload'
 import { useAuth } from '../state/auth'
 import { useToday } from '../state/today'
 
@@ -24,6 +28,8 @@ export function QuickPage() {
   const [sent, setSent] = useState(false)
   const field = useRef<HTMLTextAreaElement>(null)
   const list = useRef<HTMLDivElement>(null)
+  const file = useRef<HTMLInputElement>(null)
+  const pending = usePendingPhoto(today)
   const notes = today.data?.notes ?? []
 
   // The newest note stands right above the field, like the last message in a chat.
@@ -40,9 +46,10 @@ export function QuickPage() {
   }, [text])
 
   const send = async () => {
-    if (!text.trim()) return
-    if (await today.addNote(text)) {
+    if (!text.trim() && !pending.photo) return
+    if (await today.addNote(text, pending.photo?.id ?? null)) {
       setText('')
+      pending.sent()
       setSent(true)
       window.setTimeout(() => setSent(false), 900)
     }
@@ -79,7 +86,8 @@ export function QuickPage() {
                 <div className="flex gap-3 rounded-2xl bg-sheet px-4 py-3 shadow-soft">
                   <span className="pt-0.5 text-xs font-bold text-muted tabular-nums">{timeOf(note.created_at, me?.profile?.timezone)}</span>
                   <div className="min-w-0 flex-1">
-                    {note.unreadable ? <p className="text-muted italic">{t('today.unreadable')}</p> : <p className="leading-relaxed break-words whitespace-pre-wrap">{note.text}</p>}
+                    {note.unreadable ? <p className="text-muted italic">{t('today.unreadable')}</p> : note.text && <p className="leading-relaxed break-words whitespace-pre-wrap">{note.text}</p>}
+                    {note.photo_id && <img src={photoUrl(note.photo_id, true)} alt={t('photos.alt')} className="mt-2 h-20 w-28 rounded-lg object-cover" draggable={false} />}
                   </div>
                   <button type="button" onClick={() => void today.deleteNote(note.id)} className="self-start rounded-full p-1 text-muted/60 hover:text-ink" aria-label={t('today.deleteNote')}>
                     <X size={15} />
@@ -89,17 +97,44 @@ export function QuickPage() {
             ))}
           </ol>
         )}
-        {/* "Write the day up" comes here with writing. */}
+        {notes.length > 0 && (
+          <Link to="/?aufschreiben=1" className="mt-5 flex items-center gap-3 rounded-2xl border border-dashed border-accent/40 bg-accent-soft/40 px-4 py-3.5">
+            <PenLine size={19} className="shrink-0 text-accent" aria-hidden />
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold">{t('quick.writeUp')}</span>
+              <span className="block text-xs text-muted">{t('quick.writeUpHint')}</span>
+            </span>
+            <span className="text-accent" aria-hidden>
+              →
+            </span>
+          </Link>
+        )}
       </div>
 
       <div className="border-t border-line bg-sheet/95 px-3 pt-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur">
         {/* The question of the day comes here with the writing prompts. */}
         {today.problem && (
           <p role="alert" className="mb-2 px-1 text-sm text-bad">
-            {errorText(today.problem)}
+            {errorText(today.problem, today.problemValues)}
           </p>
         )}
+        <PendingPhoto photo={pending.photo} busy={pending.busy} onDrop={pending.drop} />
         <div className="flex items-end gap-2">
+          <button type="button" onClick={() => file.current?.click()} disabled={pending.busy} className="mb-0.5 rounded-full p-3 text-muted active:bg-sheet-2" aria-label={t('photos.take')}>
+            <Camera size={22} />
+          </button>
+          <input
+            ref={file}
+            type="file"
+            accept={PHOTO_ACCEPT}
+            className="hidden"
+            aria-label={t('photos.take')}
+            onChange={(e) => {
+              const picked = e.target.files?.[0]
+              e.target.value = ''
+              if (picked) void pending.pick(picked)
+            }}
+          />
           <textarea
             ref={field}
             autoFocus
@@ -121,7 +156,7 @@ export function QuickPage() {
           <button
             type="button"
             onClick={() => void send()}
-            disabled={!text.trim() && !sent}
+            disabled={!text.trim() && !sent && !pending.photo}
             className="mb-0.5 flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-accent text-accent-ink transition disabled:opacity-30"
             aria-label={t('today.add')}
           >

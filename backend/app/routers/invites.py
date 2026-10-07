@@ -18,7 +18,7 @@ from ..models import Invite
 from ..security import MIN_PASSWORD, SESSION_COOKIE, brake, session_account
 from ..services import accounts, mailer, settings_service
 from ..services.accounts import AccountError
-from .auth import check_password, fail, sign_in
+from .auth import check_password, fail, interface_language, sign_in
 
 logger = logging.getLogger("nexdiary.auth")
 
@@ -148,4 +148,8 @@ def accept(token: Token, payload: AcceptIn, request: Request, response: Response
         if exc.code == "name_taken":
             brake.failed(key)
         raise fail(exc) from exc
+    # The account speaks the language its person chose the page in, from the first day (the values it starts with).
+    if not account.language:
+        account.language = interface_language(request)
+        db.commit()
     return sign_in(db, request, response, account)

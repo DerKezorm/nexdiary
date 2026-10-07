@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { lazy, Suspense, type ReactNode } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 
 import { AppShell } from './components/AppShell'
@@ -10,6 +10,9 @@ import { QuickPage } from './pages/QuickPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { TodayPage } from './pages/TodayPage'
 import { useAuth } from './state/auth'
+
+/** The editor is the heaviest part of the app: loaded only when somebody writes. */
+const WritePage = lazy(() => import('./pages/WritePage'))
 
 /** Everything behind the sign-in: without an account the page goes to the sign-in, and comes back after. An account
  * that still has to set up its second factor (the operator requires one) reaches its own account page only. */
@@ -52,6 +55,14 @@ export default function App() {
         <Route path="konto" element={<AccountPage />} />
         <Route path="einstellungen" element={<SettingsPage />} />
         <Route path="ueber" element={<AboutPage />} />
+        <Route
+          path="tag/:date/schreiben"
+          element={
+            <Suspense fallback={null}>
+              <WritePage />
+            </Suspense>
+          }
+        />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

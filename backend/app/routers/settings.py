@@ -16,7 +16,7 @@ from ..deps import DbSession, OperatorAccount
 from ..errors import error
 from ..models import SIGN_IN_PASSWORD
 from ..security import encrypt_secret
-from ..services import accounts, mailer, settings_service
+from ..services import accounts, mailer, quota, settings_service
 
 logger = logging.getLogger("nexdiary.settings")
 
@@ -37,6 +37,7 @@ class SettingsOut(BaseModel):
     smtp_from: str
     api_tokens_allowed: bool
     update_check: bool
+    storage_per_person_gb: float
 
 
 class SettingsIn(BaseModel):
@@ -54,6 +55,8 @@ class SettingsIn(BaseModel):
     smtp_from: str | None = Field(default=None, max_length=255)
     api_tokens_allowed: bool | None = None
     update_check: bool | None = None
+    #: What one person may keep in photos and drafts; 0: no limit.
+    storage_per_person_gb: float | None = Field(default=None, ge=0, le=quota.MAX_GB)
 
 
 class TestMailIn(BaseModel):
@@ -76,6 +79,7 @@ def _view(db: DbSession) -> SettingsOut:
         smtp_from=values["smtp_from"],
         api_tokens_allowed=bool(values["api_tokens_allowed"]),
         update_check=bool(values["update_check"]),
+        storage_per_person_gb=float(values["storage_per_person_gb"] or 0),
     )
 
 

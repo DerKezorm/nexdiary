@@ -43,7 +43,7 @@ from ..security import (
     session_account,
     start_session,
 )
-from ..services import accounts, diary, locales, mailer, settings_service, totp, vault
+from ..services import accounts, diary, locales, mailer, photos, settings_service, totp, vault
 from ..services.accounts import AccountError
 
 logger = logging.getLogger("nexdiary.auth")
@@ -130,6 +130,28 @@ def fail(exc: AccountError) -> HTTPException:
 def check_password(password: str) -> None:
     if len(password) < MIN_PASSWORD:
         raise error("password_too_short", f"Use at least {MIN_PASSWORD} characters.", 422, minimum=MIN_PASSWORD)
+
+
+#: The language the page is shown in, sent by the interface with every request.
+LANGUAGE_HEADER = "x-nexdiary-language"
+
+
+def _known(language: str) -> bool:
+    return language in SHIPPED or language in {item.code for item in locales.available()}
+
+
+def interface_language(request: Request) -> str:
+    """The language of the page that asks: the one the interface names (``X-Nexdiary-Language``), else the first of
+    the browser's languages nexdiary has; empty when none fits."""
+    named = request.headers.get(LANGUAGE_HEADER, "").strip()[:16]
+    if named and _known(named):
+        return named
+    for part in request.headers.get("accept-language", "").split(",")[:20]:
+        code = part.split(";")[0].strip()
+        for candidate in (code, code.split("-")[0].lower()):
+            if candidate and _known(candidate):
+                return candidate
+    return ""
 
 
 def check_language(language: str) -> str:
@@ -449,10 +471,12 @@ def delete_account(
         raise error("cannot_delete_self", "You cannot delete your own account.", 409)
     row = _row(db, account_id)
     name = row.name
-    # The database takes the days, notes, values and the data key with it (ON DELETE CASCADE): without the key, any
-    # copy of what the person wrote is unreadable for good.
+    # The database takes the days, notes, values, photos and the data key with it (ON DELETE CASCADE): without the
+    # key, any copy of what the person wrote is unreadable for good. The photo files go after the rows.
+    gone = photos.uids_of(db, account_id)
     db.delete(row)
     db.commit()
+    photos.remove_files(gone)
     vault.shred_leftovers()
     totp.forget_account(account_id)
     logger.warning("Account deleted name=%s by=%s", name, operator.name)

@@ -13,7 +13,7 @@ import { LayoutWire } from '../components/Wires'
 import { changeLanguage, languageOptions, type LanguageOption } from '../i18n'
 import { applyMode, storedMode, type Mode } from '../lib/theme'
 import { useAuth } from '../state/auth'
-import { AccountsCard, ApiTokensCard, BackupsCard, LanguagesCard, LogCard, MailCard, SignInCard, useServerSettings } from './settings/ServerCards'
+import { AccountsCard, ApiTokensCard, BackupsCard, LanguagesCard, LogCard, MailCard, SignInCard, StorageCard, useServerSettings } from './settings/ServerCards'
 import { Card, Feedback, Segment, TabRow, Toggle, useAction, type Tab } from './settings/ui'
 import { ValuesCard } from './settings/ValuesCard'
 
@@ -68,7 +68,12 @@ function ServerPart({ part }: { part: Part }) {
   const server = useServerSettings()
   switch (part) {
     case 'accounts':
-      return <AccountsCard />
+      return (
+        <div className="space-y-6">
+          <AccountsCard />
+          <StorageCard server={server} />
+        </div>
+      )
     case 'signin':
       return <SignInCard server={server} />
     case 'mail':
