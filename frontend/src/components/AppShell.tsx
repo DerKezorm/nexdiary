@@ -24,7 +24,7 @@ const QUICK_SHOWN = 'nexdiary.quickShown'
 
 /**
  * On a phone nexdiary opens on the quick note, once per visit (as the mock): "Alles" from there stays in the whole app.
- * Off when the person switched it off under Settings, Look.
+ * Off when the person switched it off under My account, Look.
  */
 // eslint-disable-next-line react-refresh/only-export-components
 export function shouldOpenQuick(pathname: string, quickStart: boolean, width: number, shownBefore: boolean): boolean {

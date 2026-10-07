@@ -66,9 +66,11 @@ export function AccountMenu({ up = false }: { up?: boolean }) {
           <Link to="/konto" className={item}>
             <User size={16} /> {t('account.mine')}
           </Link>
-          <Link to="/einstellungen" className={item}>
-            <Settings size={16} /> {t('settings.title')}
-          </Link>
+          {me.role === 'operator' && (
+            <Link to="/einstellungen" className={item}>
+              <Settings size={16} /> {t('settings.title')}
+            </Link>
+          )}
           <Link to="/ueber" className={item}>
             <Info size={16} /> {t('about.menu')}
           </Link>

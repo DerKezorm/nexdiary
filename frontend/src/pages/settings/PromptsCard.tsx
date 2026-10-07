@@ -1,5 +1,5 @@
 /**
- * "Schreibimpulse", as the mock's card under Settings, General: questions on or off, the six groups each on or off,
+ * "Schreibimpulse", as the mock's card under My account, Writing: questions on or off, the six groups each on or off,
  * and questions of one's own. Kept with the account (sealed on the server like the diary), so every device asks the
  * same; the question of the day on "Today" and the questions while writing come from here.
  *

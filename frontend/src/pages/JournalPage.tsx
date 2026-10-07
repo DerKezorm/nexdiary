@@ -1,6 +1,6 @@
 /**
  * The journal, as the mock's `Journal.tsx`: the own days as a blog (large cards, the newest one big) or a timeline (a
- * line per day, grouped by month), as the account chose under Settings, Look. A search over texts and notes (in the
+ * line per day, grouped by month), as the account chose under My account, Look. A search over texts and notes (in the
  * body of a request, never in the address) and the tags as filters.
  *
  * The server sends the days a page at a time and opens only those; the next page comes when the end of the list

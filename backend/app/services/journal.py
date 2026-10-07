@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import Day
@@ -47,32 +47,36 @@ def _item(day: str, content: dict[str, Any] | None, photo_ids: set[str], first: 
     }
 
 
+def has_page(content: dict[str, Any] | None) -> bool:
+    """Whether a day belongs in the journal: it has a title or a text. A day that holds only values, tags or notes is
+    not a page yet (an unreadable one is kept, so that it can be seen and dealt with)."""
+    return content is None or bool(content["title"].strip() or content["text"].strip())
+
+
 def page(db: Session, account_id: int, dek: bytes, *, before: str | None, limit: int,
          tag: str | None) -> dict[str, Any]:
     """One page of the own days before ``before`` (all when None), with ``tag`` only those that carry it, and whether
-    there are more."""
+    there are more. Only days with a page: one that holds just values or tags is not listed."""
     limit = min(max(limit, 1), PAGE_MAX)
     found: list[tuple[str, dict[str, Any] | None]] = []
     more = False
     cursor = before
+    size = limit + 1 if tag is None else BATCH
     while True:
         query = select(Day.date, Day.content_enc).where(Day.user_id == account_id)
         if cursor:
             query = query.where(Day.date < cursor)
-        rows = db.execute(query.order_by(Day.date.desc()).limit(limit + 1 if tag is None else BATCH)).all()
+        rows = db.execute(query.order_by(Day.date.desc()).limit(size)).all()
         for row in rows:
-            if tag is None and len(found) == limit:
+            content = diary._readable_content(account_id, dek, row.date, row.content_enc)
+            if not has_page(content) or (tag is not None and (content is None or tag not in content["tags"])):
+                continue
+            if len(found) == limit:
                 # One more day stands: that is all there is to know of it.
                 more = True
                 break
-            content = diary._readable_content(account_id, dek, row.date, row.content_enc)
-            if tag is not None and (content is None or tag not in content["tags"]):
-                continue
-            if len(found) == limit:
-                more = True
-                break
             found.append((row.date, content))
-        if more or tag is None or len(rows) < BATCH:
+        if more or len(rows) < size:
             break
         cursor = rows[-1].date
     return {"days": items(db, account_id, dek, found), "more": more}
@@ -99,10 +103,14 @@ def items_for_dates(db: Session, account_id: int, dek: bytes, dates: list[str]) 
 
 def overview(db: Session, account_id: int, dek: bytes) -> dict[str, Any]:
     """How many days there are, since when, and every tag with the number of days that carry it, most used first."""
-    count, since = db.execute(select(func.count(), func.min(Day.date)).where(Day.user_id == account_id)).one()
+    count, since = 0, None
     tags: Counter[str] = Counter()
-    for row in db.execute(select(Day.date, Day.content_enc).where(Day.user_id == account_id)):
+    for row in db.execute(select(Day.date, Day.content_enc).where(Day.user_id == account_id).order_by(Day.date)):
         content = diary._readable_content(account_id, dek, row.date, row.content_enc)
+        if not has_page(content):
+            continue
+        count += 1
+        since = since or row.date
         if content is not None:
             tags.update(set(content["tags"]))
     ordered = sorted(tags.items(), key=lambda pair: (-pair[1], pair[0]))

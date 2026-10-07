@@ -14,7 +14,7 @@ import { greetingOf, TodayPage } from './TodayPage'
 const me: { name: string; display_name: string; profile: Profile } = {
   name: 'jule',
   display_name: 'Jule',
-  profile: { mode: 'system', layout: 'page', quick_start: true, journal: 'blog', timezone: 'Europe/Berlin', timezone_source: 'browser', ai: true },
+  profile: { palette: 'salbei', mode: 'system', layout: 'page', quick_start: true, journal: 'blog', timezone: 'Europe/Berlin', timezone_source: 'browser', ai: true },
 }
 vi.mock('../state/auth', () => ({ useAuth: () => ({ me }) }))
 

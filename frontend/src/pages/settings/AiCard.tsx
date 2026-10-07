@@ -1,5 +1,5 @@
 /**
- * "KI zum Ausformulieren", as the mock's card under Settings, Server, AI: the operator chooses one service for the
+ * "KI zum Ausformulieren", as the mock's card under Settings, AI: the operator chooses one service for the
  * whole family (none from the start), with its address, key (for a local model only where its service asks for one)
  * and model, and tries it. The key is typed once and never shown again; a new address or another kind of service
  * forgets it (the server does that). Nobody else can set this.

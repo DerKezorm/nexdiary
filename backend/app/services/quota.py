@@ -1,4 +1,4 @@
-"""What one person may keep: the operator sets a limit in GB (Settings, Server, Accounts; 0: none) over everything
+"""What one person may keep: the operator sets a limit in GB (Settings, Accounts; 0: none) over everything
 the person has stored: the sealed photo files, and the sealed texts of their days, notes, drafts, values and own
 questions (counted as the bytes that lie in the database, the seal included). Counted inside the transaction that
 writes, so two writes at the same moment cannot pass the limit together: a statement that inserts checks it in its own

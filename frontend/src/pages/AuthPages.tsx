@@ -482,6 +482,27 @@ export function ForgotPage() {
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
   const [sent, setSent] = useState(false)
+  // Asked beforehand, so that a server without mail says so at once instead of answering a request with a refusal.
+  const [off, setOff] = useState(false)
+  useEffect(() => {
+    let alive = true
+    void authApi.methods().then((methods) => alive && setOff(methods.forgot === false), () => undefined)
+    return () => {
+      alive = false
+    }
+  }, [])
+  if (off) {
+    return (
+      <AuthFrame title={t('auth.forgot.title')}>
+        <p role="status" className="text-sm text-ink-2">
+          {errorText('reset_off')}
+        </p>
+        <Link to="/login" className={OUTLINE + ' mt-5'}>
+          {t('auth.backToLogin')}
+        </Link>
+      </AuthFrame>
+    )
+  }
   if (sent) {
     return (
       <AuthFrame title={t('auth.forgot.title')}>

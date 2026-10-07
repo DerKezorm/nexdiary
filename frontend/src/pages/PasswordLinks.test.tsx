@@ -21,7 +21,7 @@ const me: Me = {
   oidc_linked: false, two_factor: true, totp: true, passkeys: 0, two_factor_recovery_left: 8, avatar: null, version: '0.1.0', whats_new_seen: '0.1.0',
   session_stage: 'full', second_factor_required: true,
   profile: {
-    mode: 'light', layout: 'page', quick_start: true, journal: 'blog', timezone: 'Europe/Berlin', timezone_source: 'browser', ai: true,
+    palette: 'salbei', mode: 'light', layout: 'page', quick_start: true, journal: 'blog', timezone: 'Europe/Berlin', timezone_source: 'browser', ai: true,
     notify_login: true, reminder: { mode: 'never', time: '20:30', days: 2, skip_if_written: true, with_prompt: true },
   },
 }
@@ -133,6 +133,7 @@ describe('"Passwort vergessen?" on the sign-in page', () => {
   })
 
   it('asks for the link with the name, and says the same whatever the name is', async () => {
+    answers['GET /api/auth/methods'] = { password: true, oidc: false, oidc_name: '', passkeys: false, forgot: true }
     answers['POST /api/auth/forgot'] = { ok: true }
     await show(<ForgotPage />, '/forgot')
     expect(box.querySelector('h1')!.textContent).toBe('Passwort vergessen')
@@ -143,7 +144,15 @@ describe('"Passwort vergessen?" on the sign-in page', () => {
     expect(box.textContent).not.toContain('nicht gefunden')
   })
 
-  it('says nothing is sent when the server has no mail set up', async () => {
+  it('says at once that nothing is sent when the server has no mail set up, and asks nothing of it', async () => {
+    await show(<ForgotPage />, '/forgot')
+    expect(box.textContent).toContain('Das ist auf diesem Server nicht eingerichtet.')
+    expect(box.querySelector('form')).toBeNull()
+    expect(calls.some((call) => call.url === '/api/auth/forgot')).toBe(false)
+  })
+
+  it('still says so when the mail was switched off between the page opening and the request', async () => {
+    answers['GET /api/auth/methods'] = { password: true, oidc: false, oidc_name: '', passkeys: false, forgot: true }
     answers['POST /api/auth/forgot'] = { refused: 'reset_off' }
     await show(<ForgotPage />, '/forgot')
     await type(field('Name oder Mailadresse'), 'anna')

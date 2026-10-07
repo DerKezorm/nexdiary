@@ -113,6 +113,8 @@ export type Layout = 'page' | 'columns' | 'chat'
 export type JournalLook = 'blog' | 'timeline'
 
 export type Profile = {
+  /** The accent colour (every one exists light and dark). */
+  palette: 'salbei' | 'terrakotta' | 'pflaume' | 'altrosa' | 'tinte'
   mode: 'system' | 'light' | 'dark'
   /** How "Today" is laid out. */
   layout: Layout

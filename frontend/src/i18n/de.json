@@ -85,7 +85,7 @@
     "empty": "Noch keine Seite geschrieben. Sobald du den ersten Tag aufgeschrieben hast, siehst du hier deine Serie, dein halbes Jahr und mehr.",
     "unreadable_one": "{{count}} Tag ließ sich nicht lesen und fehlt hier.",
     "unreadable_other": "{{count}} Tage ließen sich nicht lesen und fehlen hier.",
-    "noValue": "Im Moment fragt nexdiary nach keinem Wert. Unter Einstellungen kannst du Werte einschalten.",
+    "noValue": "Im Moment fragt nexdiary nach keinem Wert. Unter Mein Konto, Schreiben kannst du Werte einschalten.",
     "needValue": "Dafür braucht es ein paar Tage mit {{name}}.",
     "tiles": {
       "streak": "Serie",
@@ -226,11 +226,6 @@
     "title": "Einstellungen",
     "saved": "Gespeichert.",
     "ownPassword": "Dein eigenes Passwort",
-    "tabs": {
-      "general": "Allgemein",
-      "looks": "Aussehen",
-      "server": "Server"
-    },
     "parts": {
       "accounts": "Konten",
       "signin": "Anmeldung",
@@ -248,8 +243,20 @@
       "text": "Gilt für dein Konto. Die anderen in der Familie wählen ihre eigene."
     },
     "looks": {
-      "title": "Hell oder dunkel",
-      "text": "Gilt für dein Konto, auf jedem Gerät."
+      "title": "Themes",
+      "text": "Nur für dein Konto, auf jedem Gerät. Jedes Theme gibt es hell und dunkel; links siehst du den Tag, rechts den Abend.",
+      "modeTitle": "Hell oder dunkel",
+      "swatchTitle": "Guten Abend",
+      "swatchNote": "Mittags im Park …",
+      "swatchButton": "Ausformulieren",
+      "own": "nexdiary",
+      "palette": {
+        "salbei": { "name": "Salbei", "mood": "Garten, Tee, Durchatmen. Am ruhigsten." },
+        "terrakotta": { "name": "Terrakotta", "mood": "Gebrannter Ton, Kaminfeuer. Am wärmsten von allen." },
+        "pflaume": { "name": "Pflaume", "mood": "Herbstlich, ein wenig verträumt. Ruhig, ohne kühl zu sein." },
+        "altrosa": { "name": "Altrosa", "mood": "Rosenholz, Briefpapier. Weich und persönlich." },
+        "tinte": { "name": "Tinte", "mood": "Füllerblau auf Papier. Das klassische Tagebuch, warm durch das Papier." }
+      }
     },
     "values": {
       "title": "Meine Werte",
@@ -280,7 +287,8 @@
       "title": "Auf dem Handy",
       "text": "Für unterwegs: nur ein Feld, die Tastatur gleich offen, darüber die Notizen von heute.",
       "quickStart": "Mit der Schnellnotiz starten",
-      "quickStartHint": "Öffnest du nexdiary auf dem Handy, landest du direkt im Eingabefeld. „Alles“ oben führt zur ganzen App."
+      "quickStartHint": "Öffnest du nexdiary auf dem Handy, landest du direkt im Eingabefeld. „Alles“ oben führt zur ganzen App.",
+      "also": "Außerdem: Lange auf das nexdiary-Symbol auf dem Startbildschirm drücken und „Notiz“ wählen, oder aus einer anderen App einen Text oder ein Foto an nexdiary teilen."
     },
     "layout": {
       "title": "Aufbau von „Heute“",
@@ -469,6 +477,8 @@
     "tabs": {
       "profile": "Profil",
       "security": "Sicherheit",
+      "looks": "Aussehen",
+      "writing": "Schreiben",
       "connections": "Verbindungen",
       "ai": "KI",
       "reminders": "Erinnerungen"
@@ -666,7 +676,7 @@
     "deleteNamed": "Token {{name}} löschen",
     "off": "Der Betreiber hat API-Token nicht eingeschaltet. Frag ihn, wenn du nexdiary mit einem Programm verbinden willst.",
     "offForOperator": "API-Token sind ausgeschaltet.",
-    "offOperator": "Einschalten unter Einstellungen, Server, API.",
+    "offOperator": "Einschalten unter Einstellungen, API.",
     "whatItDoes": "Was die API kann",
     "whatItDoesText": "Jede Anfrage trägt das Token in der Kopfzeile Authorization: Bearer, die Antworten sind JSON. Alles Weitere steht in docs/api.md.",
     "readOnly": "Ein Token liest nur.",
@@ -872,7 +882,7 @@
     "template": "Vorlage herunterladen",
     "languageCode": "Sprachcode",
     "upload": "Sprache hochladen",
-    "languageAdded": "Sprache hinzugefügt. Sie erscheint unter Einstellungen, Allgemein.",
+    "languageAdded": "Sprache hinzugefügt. Sie erscheint unter Mein Konto, Profil.",
     "log": "Log",
     "logHint": "Was der Server getan hat. Ohne Inhalte von Einträgen.",
     "level": "Stufe",
@@ -1288,7 +1298,7 @@
     "immich_too_often": "Zu viele Anfragen an Immich. Warte eine Minute.",
     "push_endpoint_invalid": "Diese Adresse ist keine eines Push-Dienstes.",
     "push_endpoint_refused": "Diese Adresse wird nie erreicht.",
-    "push_service_unknown": "An diesen Push-Dienst schickt nexdiary nichts. Der Betreiber kann ihn unter Einstellungen → Server → Web Push eintragen.",
+    "push_service_unknown": "An diesen Push-Dienst schickt nexdiary nichts. Der Betreiber kann ihn unter Einstellungen → Web Push eintragen.",
     "push_unreachable": "Der Server erreicht den Push-Dienst nicht.",
     "push_keys_invalid": "Die Schlüssel dieses Geräts sind nicht gültig.",
     "push_too_many_devices": "Höchstens {{max}} Geräte. Melde zuerst eines ab.",

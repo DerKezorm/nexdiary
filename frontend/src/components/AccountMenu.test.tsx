@@ -8,8 +8,9 @@ import { changeLanguage } from '../i18n'
 import { AccountMenu } from './AccountMenu'
 
 const me = { id: 1, name: 'jule', display_name: 'Jule', avatar: null, role: 'operator' }
+const asMember = vi.hoisted(() => ({ on: false }))
 
-vi.mock('../state/auth', () => ({ useAuth: () => ({ me, signOut: async () => undefined }) }))
+vi.mock('../state/auth', () => ({ useAuth: () => ({ me: asMember.on ? { ...me, role: 'member' } : me, signOut: async () => undefined }) }))
 
 let root: Root
 let box: HTMLDivElement
@@ -52,6 +53,17 @@ describe('the account menu', () => {
       ['Über nexdiary', '/ueber'],
       ['Abmelden', null],
     ])
+  })
+
+  it('leaves the settings out for a member, as they belong to the operator', async () => {
+    asMember.on = true
+    try {
+      await open(true)
+      const entries = [...box.querySelectorAll('a, button:not([aria-haspopup])')].map((item) => item.textContent?.trim())
+      expect(entries).toEqual(['Mein Konto', 'Über nexdiary', 'Abmelden'])
+    } finally {
+      asMember.on = false
+    }
   })
 
   it('shows name and role beside the picture in the sidebar, the picture alone in the header', async () => {

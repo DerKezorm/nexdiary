@@ -21,7 +21,7 @@ const me: Me = {
   oidc_linked: false, two_factor: true, totp: true, passkeys: 0, two_factor_recovery_left: 8, avatar: null, version: '0.1.0', whats_new_seen: '0.1.0',
   session_stage: 'full', second_factor_required: true,
   profile: {
-    mode: 'light', layout: 'page', quick_start: true, journal: 'blog', timezone: 'Europe/Berlin', timezone_source: 'browser', ai: true,
+    palette: 'salbei', mode: 'light', layout: 'page', quick_start: true, journal: 'blog', timezone: 'Europe/Berlin', timezone_source: 'browser', ai: true,
     notify_login: true, reminder: { mode: 'never', time: '20:30', days: 2, skip_if_written: true, with_prompt: true },
   },
 }

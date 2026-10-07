@@ -205,7 +205,7 @@ def master() -> bytes:
                 raise MasterKeyError(
                     f"The master key {path} is missing, but the database holds sealed diaries. nexdiary does not make "
                     "a new one, that would lose them all. Put back keys/master.key: from a copy of the data folder, or "
-                    "the file the operator saved under Settings, Server, Backups, Save master key "
+                    "the file the operator saved under Settings, Backups, Save master key "
                     "(nexdiary-master.key, renamed to master.key). Or set NEXDIARY_MASTER_KEY_FILE to where the "
                     "file is."
                 )

@@ -524,9 +524,10 @@ def set_language(payload: LanguageIn, account: Account, db: DbSession) -> dict[s
     return account_view(row)
 
 
-#: What a person may set for themselves, with the values allowed; the first one is the default. The rest of the
-#: profile (the palette) comes with the block that uses it.
+#: What a person may set for themselves, with the values allowed; the first one is the default.
 PROFILE: dict[str, tuple[Any, ...]] = {
+    #: The accent colour (sage, terracotta, plum, dusty rose, ink); each exists in a light and a dark form.
+    "palette": ("salbei", "terrakotta", "pflaume", "altrosa", "tinte"),
     #: Light, dark, or as the system is set.
     "mode": ("system", "light", "dark"),
     #: How "Today" is laid out: one page, two columns, or like a chat.

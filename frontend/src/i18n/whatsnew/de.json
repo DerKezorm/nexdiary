@@ -1,19 +1,58 @@
 {
   "0.1.0": {
-    "lead": "Die erste Version von nexdiary: Konten für die Familie und eine sichere Anmeldung.",
+    "lead": "Die erste Version von nexdiary: ein Tagebuch für die Familie auf deinem eigenen Server. Tagsüber hältst du Gedanken in Stichworten fest, abends wird daraus eine Seite.",
     "sections": [
       {
-        "title": "Konten für die Familie",
-        "where": "Einstellungen, Server, Konten",
-        "body": "Der Betreiber lädt per Link ein; jede Person legt ihr eigenes Konto an. Einträge sieht der Betreiber nie."
+        "title": "Tagsüber notieren, abends schreiben",
+        "where": "Heute, auf dem Handy auch die Schnellnotiz",
+        "body": "Schreib auf, was dir einfällt, ohne auf die Rechtschreibung zu achten. Am Abend machst du daraus eine Seite im Blogstil, selbst oder mit Hilfe der KI. Die Notizen bleiben dabei immer erhalten."
       },
       {
-        "title": "Zweiter Faktor",
+        "title": "Ein Bild für jeden Tag",
+        "where": "Beim Schreiben, Titelbild",
+        "body": "Jeder Tag hat ein Titelbild: ein eigenes Foto oder eine von 256 gezeichneten Illustrationen. Ein Vorschlag nach Jahreszeit und Tageszeit steht schon da, du kannst ihn tauschen."
+      },
+      {
+        "title": "Werte, Tags und Fragen",
+        "where": "Heute und Mein Konto, Schreiben",
+        "body": "Stimmung, Schlaf oder was du sonst verfolgen willst, von 1 bis 10. Dazu Tags und kleine Fragen des Tages, wenn dir nichts einfällt."
+      },
+      {
+        "title": "Tagebuch, Suche und Statistik",
+        "where": "Tagebuch und Statistik",
+        "body": "Blättern wie in einem Blog oder nach Monaten, mit Suche über Texte und Notizen. Die Statistik zeigt Serien, Stimmung im Verlauf und deinen besten und schlimmsten Tag."
+      },
+      {
+        "title": "Einen Tag teilen",
+        "where": "Tag lesen, Teilen",
+        "body": "Du teilst einzelne Tage mit Leuten aus der Familie. Sie können lesen und ein Herz geben, mehr nicht. Werte und Notizen gehen nur mit, wenn du es ankreuzt, und du nimmst das Teilen jederzeit zurück."
+      },
+      {
+        "title": "Fotos und Immich",
+        "where": "Mein Konto, Verbindungen",
+        "body": "Fotos lädst du hoch oder holst sie aus deiner Immich. Ort und Aufnahmedaten werden entfernt."
+      },
+      {
+        "title": "Erinnerung per Push",
+        "where": "Mein Konto, Erinnerungen",
+        "body": "Täglich zu deiner Uhrzeit oder erst nach ein paar Tagen Pause, auf Wunsch mit einer Frage."
+      },
+      {
+        "title": "Sicher und nur deins",
         "where": "Mein Konto, Sicherheit",
-        "body": "Neben dem Passwort ein Code aus einer App auf dem Handy, dazu Wiederherstellungscodes auf Papier."
+        "body": "Alles, was du schreibst, liegt verschlüsselt in der Datenbank, und der Betreiber sieht keine Einträge. Zum Passwort kommt ein zweiter Faktor, Passkeys gibt es auch. Du siehst deine angemeldeten Geräte und meldest sie einzeln ab."
+      },
+      {
+        "title": "Dein Aussehen",
+        "where": "Mein Konto, Aussehen",
+        "body": "Fünf Farben, jede hell und dunkel, dazu drei Aufbauten für Heute und das Tagebuch als Blog oder Zeitleiste. Das gilt für dein Konto auf jedem Gerät."
       }
     ],
     "smallTitle": "Außerdem",
-    "small": ["Hell oder dunkel gilt für dein Konto, auf jedem Gerät."]
+    "small": [
+      "Konten per Einladung, Anmeldung auch über authentik oder einen anderen OpenID-Anbieter.",
+      "Sicherungen mit Hochladen und Prüfen, Deutsch und Englisch, ein Log in vier Stufen.",
+      "Die App lässt sich auf dem Handy installieren und nimmt Texte und Fotos aus anderen Apps an."
+    ]
   }
 }

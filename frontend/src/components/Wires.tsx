@@ -1,4 +1,4 @@
-// Small sketches of the layouts of "Today" and of the journal, for choosing one under Settings, Look. As the mock's;
+// Small sketches of the layouts of "Today" and of the journal, for choosing one under My account, Look. As the mock's;
 // where the mock draws its photo scenes, the illustrations of the covers stand in.
 import type { JournalLook, Layout } from '../api/client'
 import { Illustration } from '../covers/drawings'

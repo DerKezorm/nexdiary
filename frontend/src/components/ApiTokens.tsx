@@ -71,7 +71,7 @@ export function ApiTokens() {
         <p className="text-sm text-ink-2" data-testid="api-tokens-off">
           {operator ? t('apiTokens.offForOperator') : t('apiTokens.off')}{' '}
           {operator && (
-            <Link to="/einstellungen?tab=server&sub=api" className="font-semibold text-accent underline decoration-accent/40 underline-offset-4">
+            <Link to="/einstellungen?tab=api" className="font-semibold text-accent underline decoration-accent/40 underline-offset-4">
               {t('apiTokens.offOperator')}
             </Link>
           )}

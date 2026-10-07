@@ -27,6 +27,7 @@ const PARTS = [
   { name: 'cryptography', url: 'https://cryptography.io', licence: 'Apache-2.0' },
   { name: 'Pillow', url: 'https://python-pillow.org', licence: 'MIT-CMU' },
   { name: 'React', url: 'https://react.dev', licence: 'MIT' },
+  { name: 'Milkdown', url: 'https://milkdown.dev', licence: 'MIT' },
   { name: 'Vite', url: 'https://vite.dev', licence: 'MIT' },
   { name: 'Tailwind CSS', url: 'https://tailwindcss.com', licence: 'MIT' },
   { name: 'Lucide', url: 'https://lucide.dev', licence: 'ISC' },

@@ -3,7 +3,7 @@
  * deinen Geräten": each one signed up on its own, renamed, signed off; this one turned on here; a test to all of them)
  * and when to remind ("Wann erinnern": never, every day at a time, after a pause; not on a day with a note; with the
  * question of the day; how it looks). Under Security the switch for the notice of a new sign-in. The operator's card
- * under Settings, Server, Web Push: ready and how many devices, the contact for the push services, the key pair, more
+ * under Settings, Web Push: ready and how many devices, the contact for the push services, the key pair, more
  * push services beyond the known ones.
  */
 import { Bell, BellRing, Check, Laptop, MonitorSmartphone, Pencil, Smartphone, Trash2 } from 'lucide-react'

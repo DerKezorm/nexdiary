@@ -1,19 +1,58 @@
 {
   "0.1.0": {
-    "lead": "The first version of nexdiary: accounts for the family and a safe sign-in.",
+    "lead": "The first version of nexdiary: a diary for the family on your own server. During the day you jot thoughts down in a few words, in the evening they become a page.",
     "sections": [
       {
-        "title": "Accounts for the family",
-        "where": "Settings, Server, Accounts",
-        "body": "The operator invites by link; every person makes an account of their own. The operator never sees entries."
+        "title": "Note by day, write in the evening",
+        "where": "Today, and the quick note on the phone",
+        "body": "Write down what comes to mind, without minding the spelling. In the evening you turn it into a page in the style of a blog, by yourself or with the help of the AI. The notes always stay."
       },
       {
-        "title": "Second factor",
+        "title": "A picture for every day",
+        "where": "While writing, cover picture",
+        "body": "Every day has a cover picture: a photo of your own or one of 256 drawn illustrations. A suggestion by season and time of day is already chosen, and you can change it."
+      },
+      {
+        "title": "Values, tags and questions",
+        "where": "Today and My account, Writing",
+        "body": "Mood, sleep or whatever else you want to follow, from 1 to 10. Tags too, and small questions of the day for when nothing comes to mind."
+      },
+      {
+        "title": "Journal, search and statistics",
+        "where": "Journal and Statistics",
+        "body": "Browse like a blog or by month, with a search over texts and notes. The statistics show streaks, mood over time and your best and your worst day."
+      },
+      {
+        "title": "Share a day",
+        "where": "Reading a day, Share",
+        "body": "You share single days with people from the family. They can read and give a heart, nothing more. Values and notes go along only if you tick them, and you take a share back at any time."
+      },
+      {
+        "title": "Photos and Immich",
+        "where": "My account, Connections",
+        "body": "You upload photos or fetch them from your Immich. Place and shooting data are removed."
+      },
+      {
+        "title": "A reminder by push",
+        "where": "My account, Reminders",
+        "body": "Daily at your time or only after a few days of pause, with a question if you like."
+      },
+      {
+        "title": "Safe, and yours alone",
         "where": "My account, Security",
-        "body": "Besides the password, a code from an app on your phone, with recovery codes on paper."
+        "body": "Everything you write is encrypted in the database, and the operator sees no entries. Besides the password there is a second factor, and passkeys too. You see your signed-in devices and sign them out one by one."
+      },
+      {
+        "title": "Your look",
+        "where": "My account, Look",
+        "body": "Five colours, each light and dark, three layouts for Today, and the journal as a blog or a timeline. It applies to your account on every device."
       }
     ],
     "smallTitle": "Also",
-    "small": ["Light or dark applies to your account, on every device."]
+    "small": [
+      "Accounts by invitation, sign-in through authentik or another OpenID provider too.",
+      "Backups with upload and check, German and English, a log in four levels.",
+      "The app installs on the phone and takes texts and photos from other apps."
+    ]
   }
 }

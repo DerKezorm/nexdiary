@@ -1,9 +1,9 @@
 /**
- * Immich, as the mock's card under Settings, General: each person connects their own Immich (address and API key; the
+ * Immich, as the mock's card under My account, Connections: each person connects their own Immich (address and API key; the
  * key is typed once and never shown again), switches the photos of the day on or off, saves and checks, disconnects.
  * While the operator has not allowed Immich, the card says only that.
  *
- * The operator's own card (Settings, Server, Immich) holds the bolt: Immich off from the start, and the hosts it may
+ * The operator's own card (Settings, Immich) holds the bolt: Immich off from the start, and the hosts it may
  * be reached on, one per line. It says how many people connected, never whose Immich it is.
  */
 import { Check, Image } from 'lucide-react'

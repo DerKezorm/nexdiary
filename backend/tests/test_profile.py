@@ -26,7 +26,7 @@ def test_a_display_name_is_not_too_long_and_has_no_control_characters(client: Te
     assert client.get("/api/auth/me").json()["display_name"] == "x" * 80
 
 
-DEFAULTS = {"mode": "system", "layout": "page", "quick_start": True, "journal": "blog", "timezone_source": "browser",
+DEFAULTS = {"palette": "salbei", "mode": "system", "layout": "page", "quick_start": True, "journal": "blog", "timezone_source": "browser",
             "ai": True, "notify_login": True, "timezone": "",
             "reminder": {"mode": "daily", "time": "20:30", "days": 2, "skip_if_written": True, "with_prompt": True}}
 
@@ -36,10 +36,29 @@ def test_light_or_dark_is_kept_with_the_account(client: TestClient, account: Acc
     saved = client.put("/api/me/preferences", json={"mode": "dark"})
     assert saved.status_code == 200 and saved.json() == {**DEFAULTS, "mode": "dark"}
     assert client.get("/api/auth/me").json()["profile"]["mode"] == "dark"
-    for wrong in ({"mode": "sepia"}, {"mode": True}, {"palette": "salbei"}, {"mode": ["dark"]}):
+    for wrong in ({"mode": "sepia"}, {"mode": True}, {"palette": "neon"}, {"palette": 1}, {"palette": True}, {"mode": ["dark"]}):
         answer = client.put("/api/me/preferences", json=wrong)
         assert answer.status_code == 422 and answer.json()["detail"]["code"] == "bad_preference", wrong
     assert client.get("/api/auth/me").json()["profile"]["mode"] == "dark", "a refused value changes nothing"
+
+
+def test_the_palette_is_kept_with_the_account_in_all_five_colours(client: TestClient, account: Account) -> None:
+    assert client.get("/api/auth/me").json()["profile"]["palette"] == "salbei", "sage is the default"
+    for palette in ("terrakotta", "pflaume", "altrosa", "tinte", "salbei"):
+        saved = client.put("/api/me/preferences", json={"palette": palette})
+        assert saved.status_code == 200 and saved.json()["palette"] == palette
+        assert client.get("/api/auth/me").json()["profile"]["palette"] == palette
+    # Only the colour changes; the mode chosen before stays.
+    client.put("/api/me/preferences", json={"mode": "dark"})
+    client.put("/api/me/preferences", json={"palette": "tinte"})
+    assert client.get("/api/auth/me").json()["profile"]["mode"] == "dark"
+
+
+def test_a_stored_palette_that_is_not_offered_any_more_shows_the_default(client: TestClient, account: Account) -> None:
+    from app.routers.auth import profile_of
+
+    assert profile_of({"palette": "gone"})["palette"] == "salbei"
+    assert profile_of({"palette": ["tinte"]})["palette"] == "salbei"
 
 
 def test_the_profile_is_the_own_account_s_only(client: TestClient, account: Account) -> None:

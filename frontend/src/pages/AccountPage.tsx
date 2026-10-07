@@ -1,10 +1,12 @@
 /**
- * The own account in tabs, as the mock (and nexlore): Profile (picture, display name, name, role, mail address),
- * Security (password, second factor, the link to the provider, the notice of a new sign-in), Reminders (Web Push on
- * this device and the others, when to remind), AI (the own switch, and what the operator set up) and Connections (API
- * tokens for programs). The tab stands in the address (`?tab=`).
+ * The own account in tabs, everything personal in one place: Profile (picture, display name, name, role, mail
+ * address, language), Security (password, second factor, the link to the provider, the notice of a new sign-in),
+ * Look (colour, light or dark, the layout of "Today" and of the journal, where a phone starts), Writing (the values
+ * and the writing prompts), Reminders (Web Push on this device and the others, when to remind), AI (the own switch,
+ * and what the operator set up) and Connections (the own Immich, API tokens for programs). The tab stands in the
+ * address (`?tab=`). Settings are the operator's.
  */
-import { Bell, Camera, KeyRound, Plug, ShieldCheck, Sparkles, Trash2, User } from 'lucide-react'
+import { Bell, Camera, Eye, KeyRound, PenLine, Plug, ShieldCheck, Sparkles, Trash2, User } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
@@ -15,12 +17,16 @@ import { Avatar } from '../components/Avatar'
 import { providerName } from '../lib/aiProviders'
 import { useAiState } from '../state/ai'
 import { useAuth } from '../state/auth'
+import { ImmichCard } from './settings/ImmichCards'
+import { JournalCard, LanguageCard, LayoutCard, LooksCard, PhoneCard } from './settings/PersonalCards'
+import { PromptsCard } from './settings/PromptsCard'
 import { RemindersPart } from './settings/PushCards'
 import { DevicesCard, PasskeysCard, SecondFactorCard } from './settings/SecurityCards'
 import { Button, Card, Feedback, Input, TabRow, Toggle, useAction, type Tab } from './settings/ui'
+import { ValuesCard } from './settings/ValuesCard'
 
-type Part = 'profile' | 'security' | 'reminders' | 'ai' | 'connections'
-const PARTS: Part[] = ['profile', 'security', 'reminders', 'ai', 'connections']
+type Part = 'profile' | 'security' | 'looks' | 'writing' | 'reminders' | 'ai' | 'connections'
+const PARTS: Part[] = ['profile', 'security', 'looks', 'writing', 'reminders', 'ai', 'connections']
 
 export function AccountPage() {
   const { t } = useTranslation()
@@ -33,6 +39,8 @@ export function AccountPage() {
   const tabs: Tab<Part>[] = [
     { value: 'profile', label: t('me.tabs.profile'), icon: User },
     { value: 'security', label: t('me.tabs.security'), icon: ShieldCheck },
+    { value: 'looks', label: t('me.tabs.looks'), icon: Eye },
+    { value: 'writing', label: t('me.tabs.writing'), icon: PenLine },
     { value: 'reminders', label: t('me.tabs.reminders'), icon: Bell },
     { value: 'ai', label: t('me.tabs.ai'), icon: Sparkles },
     { value: 'connections', label: t('me.tabs.connections'), icon: Plug },
@@ -42,11 +50,35 @@ export function AccountPage() {
       <h1 className="font-display text-3xl font-semibold tracking-tight">{t('me.title')}</h1>
       <TabRow tabs={tabs} active={part} label={t('me.title')} onChange={(value) => setParams(value === 'profile' ? {} : { tab: value }, { replace: true })} />
       <div className="space-y-6 pt-1">
-        {part === 'profile' && <Profile me={me} />}
+        {part === 'profile' && (
+          <>
+            <Profile me={me} />
+            <LanguageCard />
+          </>
+        )}
         {part === 'security' && <Security me={me} />}
+        {part === 'looks' && (
+          <>
+            <LooksCard />
+            <PhoneCard />
+            <LayoutCard />
+            <JournalCard />
+          </>
+        )}
+        {part === 'writing' && (
+          <>
+            <ValuesCard />
+            <PromptsCard />
+          </>
+        )}
         {part === 'reminders' && <RemindersPart me={me} />}
         {part === 'ai' && <AiPart me={me} />}
-        {part === 'connections' && <ApiTokens />}
+        {part === 'connections' && (
+          <>
+            <ImmichCard />
+            <ApiTokens />
+          </>
+        )}
       </div>
     </div>
   )

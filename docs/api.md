@@ -5,7 +5,7 @@ anything. What is under `/api/v1` stays as it is: new fields may come, nothing i
 
 ## Switching it on
 
-API tokens are off until the operator switches them on, under **Settings → Server → API**. Then every account makes
+API tokens are off until the operator switches them on, under **Settings → API**. Then every account makes
 its own tokens under **My account → Connections**:
 
 - A token reads as its account, never more.

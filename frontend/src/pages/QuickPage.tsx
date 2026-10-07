@@ -1,6 +1,6 @@
 /**
  * The quick note for the phone, as the mock's `QuickPage.tsx`: one field with the keyboard open, today's notes above it,
- * no menus. Where a phone starts (Settings, Look, "On the phone"). "Alles" leads into the whole app.
+ * no menus. Where a phone starts (My account, Look, "On the phone"). "Alles" leads into the whole app.
  *
  * The camera button takes or picks a photo for the next note; under the notes "Den Tag aufschreiben" leads to "Today".
  * Above the field stands the question of the day: tapped, the next note is the answer and keeps the question; the

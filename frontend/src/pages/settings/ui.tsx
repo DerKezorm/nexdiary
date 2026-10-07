@@ -288,7 +288,11 @@ export type Tab<T extends string> = { value: T; label: string; icon?: LucideIcon
 /** A row of round tabs. `under`: a second row below the first, tied to it by a line on the left. Wraps when narrow. */
 export function TabRow<T extends string>({ tabs, active, onChange, under = false, label }: { tabs: Tab<T>[]; active: T; onChange: (value: T) => void; under?: boolean; label?: string }) {
   return (
-    <div role="tablist" aria-label={label} className={`flex flex-wrap items-center gap-2 ${under ? 'border-l-2 border-accent/40 pl-4' : ''}`}>
+    <div
+      role="tablist"
+      aria-label={label}
+      className={`scroll-x -mx-4 flex items-center gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0 ${under ? 'border-l-2 border-accent/40 pl-4' : ''}`}
+    >
       {tabs.map(({ value, label: name, icon: Icon }) => {
         const on = value === active
         return (
@@ -298,7 +302,11 @@ export function TabRow<T extends string>({ tabs, active, onChange, under = false
             role="tab"
             aria-selected={on}
             onClick={() => onChange(value)}
-            className={`inline-flex items-center gap-2 rounded-full border font-semibold transition ${under ? 'px-3.5 py-1.5 text-sm' : 'px-4 py-2 text-sm'} ${
+            ref={(element) => {
+              // A tab out of sight on a phone (the link points at the last one) is brought into view.
+              if (on && element && typeof element.scrollIntoView === 'function') element.scrollIntoView({ block: 'nearest', inline: 'center' })
+            }}
+            className={`inline-flex shrink-0 items-center gap-2 rounded-full border font-semibold transition ${under ? 'px-3.5 py-1.5 text-sm' : 'px-4 py-2 text-sm'} ${
               on ? 'border-accent/50 bg-accent-soft text-accent' : 'border-line bg-sheet text-ink-2 hover:text-ink'
             }`}
           >

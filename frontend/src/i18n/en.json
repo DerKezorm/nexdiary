@@ -85,7 +85,7 @@
     "empty": "No page written yet. Once you have written up your first day, your streak, your half year and more show up here.",
     "unreadable_one": "{{count}} day could not be read and is missing here.",
     "unreadable_other": "{{count}} days could not be read and are missing here.",
-    "noValue": "nexdiary is not asking for any value right now. You can switch values on under Settings.",
+    "noValue": "nexdiary is not asking for any value right now. You can switch values on under My account, Writing.",
     "needValue": "That takes a few days with {{name}}.",
     "tiles": {
       "streak": "Streak",
@@ -226,11 +226,6 @@
     "title": "Settings",
     "saved": "Saved.",
     "ownPassword": "Your own password",
-    "tabs": {
-      "general": "General",
-      "looks": "Look",
-      "server": "Server"
-    },
     "parts": {
       "accounts": "Accounts",
       "signin": "Sign-in",
@@ -248,8 +243,20 @@
       "text": "Applies to your account. The others in the family choose their own."
     },
     "looks": {
-      "title": "Light or dark",
-      "text": "Applies to your account, on every device."
+      "title": "Themes",
+      "text": "For your account only, on every device. Every theme comes light and dark; on the left you see the day, on the right the evening.",
+      "modeTitle": "Light or dark",
+      "swatchTitle": "Good evening",
+      "swatchNote": "Lunch in the park …",
+      "swatchButton": "Write it up",
+      "own": "nexdiary",
+      "palette": {
+        "salbei": { "name": "Sage", "mood": "Garden, tea, a deep breath. The calmest." },
+        "terrakotta": { "name": "Terracotta", "mood": "Fired clay, a fire in the hearth. The warmest of all." },
+        "pflaume": { "name": "Plum", "mood": "Autumnal, a little dreamy. Calm without being cold." },
+        "altrosa": { "name": "Dusty rose", "mood": "Rosewood, letter paper. Soft and personal." },
+        "tinte": { "name": "Ink", "mood": "Fountain-pen blue on paper. The classic diary, warm thanks to the paper." }
+      }
     },
     "values": {
       "title": "My values",
@@ -280,7 +287,8 @@
       "title": "On the phone",
       "text": "For on the go: just one field, the keyboard already open, today's notes above it.",
       "quickStart": "Start with the quick note",
-      "quickStartHint": "When you open nexdiary on your phone, you land right in the text field. \"All\" at the top leads to the whole app."
+      "quickStartHint": "When you open nexdiary on your phone, you land right in the text field. \"All\" at the top leads to the whole app.",
+      "also": "Also: press and hold the nexdiary icon on the home screen and choose \"Note\", or share a text or a photo from another app to nexdiary."
     },
     "layout": {
       "title": "Layout of \"Today\"",
@@ -469,6 +477,8 @@
     "tabs": {
       "profile": "Profile",
       "security": "Security",
+      "looks": "Look",
+      "writing": "Writing",
       "connections": "Connections",
       "ai": "AI",
       "reminders": "Reminders"
@@ -666,7 +676,7 @@
     "deleteNamed": "Delete token {{name}}",
     "off": "The operator has not switched API tokens on. Ask them if you want to connect nexdiary with a program.",
     "offForOperator": "API tokens are switched off.",
-    "offOperator": "Switch them on under Settings, Server, API.",
+    "offOperator": "Switch them on under Settings, API.",
     "whatItDoes": "What the API does",
     "whatItDoesText": "Every request carries the token in the header Authorization: Bearer, the answers are JSON. All the rest is in docs/api.md.",
     "readOnly": "A token only reads.",
@@ -872,7 +882,7 @@
     "template": "Download the template",
     "languageCode": "Language code",
     "upload": "Upload a language",
-    "languageAdded": "Language added. It appears under Settings, General.",
+    "languageAdded": "Language added. It appears under My account, Profile.",
     "log": "Log",
     "logHint": "What the server did. Without the content of entries.",
     "level": "Level",
@@ -1288,7 +1298,7 @@
     "immich_too_often": "Too many requests to Immich. Wait a minute.",
     "push_endpoint_invalid": "This is not the address of a push service.",
     "push_endpoint_refused": "This address is never reached.",
-    "push_service_unknown": "nexdiary sends nothing to this push service. The operator can add it under Settings → Server → Web Push.",
+    "push_service_unknown": "nexdiary sends nothing to this push service. The operator can add it under Settings → Web Push.",
     "push_unreachable": "The server cannot reach the push service.",
     "push_keys_invalid": "The keys of this device are not valid.",
     "push_too_many_devices": "At most {{max}} devices. Sign one off first.",

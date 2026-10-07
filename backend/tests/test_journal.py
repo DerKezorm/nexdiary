@@ -66,7 +66,8 @@ def test_a_journal_page_opens_only_the_days_it_shows(client: TestClient, account
 
     monkeypatch.setattr(diary, "_readable_content", counting)
     client.post("/api/journal", json={"limit": 2})
-    assert len(opened) == 2
+    # The two shown, and the one after them: that is how the page knows there is more.
+    assert len(opened) == 3
 
 
 def test_a_tag_filters_across_as_many_days_as_it_takes(client: TestClient, account: Account,
@@ -116,12 +117,37 @@ def test_the_start_of_a_long_text_is_cut_at_a_word() -> None:
 def test_the_overview_counts_days_and_tags(client: TestClient, account: Account) -> None:
     client.put("/api/me/preferences", json={"timezone": "UTC"})
     assert client.get("/api/journal/overview").json() == {"count": 0, "since": None, "tags": []}
-    client.put("/api/days/2026-10-05", json={"tags": ["familie", "see"]})
-    client.put("/api/days/2026-10-01", json={"tags": ["familie"]})
-    client.put("/api/days/2026-09-20", json={"tags": ["arbeit"]})
+    client.put("/api/days/2026-10-05", json={"title": "Am See", "tags": ["familie", "see"]})
+    client.put("/api/days/2026-10-01", json={"text": "Ein Tag.", "tags": ["familie"]})
+    client.put("/api/days/2026-09-20", json={"title": "Arbeit", "tags": ["arbeit"]})
     assert client.get("/api/journal/overview").json() == {
         "count": 3, "since": "2026-09-20",
         "tags": [{"tag": "familie", "count": 2}, {"tag": "arbeit", "count": 1}, {"tag": "see", "count": 1}]}
+
+
+def test_a_day_with_only_values_tags_or_notes_is_no_page_and_stays_out_of_the_journal(
+        client: TestClient, account: Account) -> None:
+    client.put("/api/me/preferences", json={"timezone": "UTC"})
+    value = client.get("/api/values").json()[0]["id"]
+    client.put("/api/days/2026-10-06/values", json={"values": {value: 6}})
+    client.put("/api/days/2026-10-05", json={"tags": ["herbst"]})
+    client.put("/api/days/2026-10-04", json={"title": "  ", "text": " \n "})
+    client.put("/api/days/2026-10-03", json={"title": "Ein Titel"})
+    client.put("/api/days/2026-10-02", json={"text": "Nur Text."})
+    assert [item["date"] for item in client.post("/api/journal", json={}).json()["days"]] == ["2026-10-03", "2026-10-02"]
+    assert client.post("/api/journal", json={"tag": "herbst"}).json()["days"] == []
+    assert client.get("/api/journal/overview").json() == {"count": 2, "since": "2026-10-02", "tags": []}
+    # The page of such a day still opens (the statistics and the quick note work with it); it is only not listed.
+    assert client.get("/api/days/2026-10-06").status_code == 200
+
+
+def test_the_journal_goes_on_past_days_without_a_page(client: TestClient, account: Account) -> None:
+    client.put("/api/me/preferences", json={"timezone": "UTC"})
+    for day in range(10, 20):
+        client.put(f"/api/days/2026-09-{day}", json={"tags": ["leer"]})
+    client.put("/api/days/2026-09-01", json={"title": "Der erste"})
+    answer = client.post("/api/journal", json={"limit": 1}).json()
+    assert [item["date"] for item in answer["days"]] == ["2026-09-01"] and answer["more"] is False
 
 
 def test_the_search_brings_the_days_it_found(client: TestClient, account: Account) -> None:

@@ -1,5 +1,5 @@
 /**
- * "Today", as the mock's `Today.tsx`, in the three layouts a person chooses under Settings, Look: one page, two columns,
+ * "Today", as the mock's `Today.tsx`, in the three layouts a person chooses under My account, Look: one page, two columns,
  * or like a chat. Notes are thrown down here, changed and deleted; the values of the day are rated.
  *
  * Photos are taken or picked with the camera button beside the field (they go with the next note) and under "Fotos

@@ -7,7 +7,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { ApiError, authApi, SIGNED_OUT_EVENT, type Me } from '../api/client'
 import i18n, { changeLanguage } from '../i18n'
 import { browserTimeZone } from '../lib/dates'
-import { applyMode, isMode, storedMode } from '../lib/theme'
+import { applyMode, applyPalette, isMode, isPalette, storedMode } from '../lib/theme'
 
 type Status = 'loading' | 'setup' | 'signedOut' | 'signedIn'
 
@@ -61,6 +61,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (next.language && next.language !== i18n.language) void changeLanguage(next.language)
     const mode = next.profile?.mode
     if (isMode(mode) && mode !== storedMode()) applyMode(mode)
+    const palette = next.profile?.palette
+    if (isPalette(palette)) applyPalette(palette)
     // "Today" is the date in the person's own time zone; the server learns it from the browser in use.
     const zone = browserTimeZone()
     if (next.profile && !next.second_factor_setup_required && shouldReportZone(zone, next.profile.timezone, next.profile.timezone_source, reportedZone())) {
