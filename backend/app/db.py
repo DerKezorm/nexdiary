@@ -37,7 +37,7 @@ _settings.data_dir.mkdir(parents=True, exist_ok=True)
 BUSY_SECONDS = 15
 
 #: The version of the schema the models describe.
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 def _v2_diary(connection: Connection) -> None:
@@ -144,9 +144,23 @@ def _v5_writing_prompts(connection: Connection) -> None:
         connection.exec_driver_sql(statement)
 
 
+def _v6_immich(connection: Connection) -> None:
+    """Version 6: each person's own Immich, sealed; a photo of Immich taken over twice stays one. Written out as it
+    stood then, not taken from the models."""
+    for statement in (
+        (
+            "CREATE TABLE immich_links ( user_id INTEGER NOT NULL, content_enc BLOB NOT NULL, "
+            "updated_at DATETIME NOT NULL, PRIMARY KEY (user_id), "
+            "FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE )"
+        ),
+        "CREATE UNIQUE INDEX uq_photos_user_asset ON photos (user_id, asset_id)",
+    ):
+        connection.exec_driver_sql(statement)
+
+
 #: ``MIGRATIONS[n]`` brings a database from version ``n - 1`` to ``n``. Version 1 is the first schema; it has no step.
 MIGRATIONS: dict[int, Callable[[Connection], None]] = {
-    2: _v2_diary, 3: _v3_photos_and_drafts, 4: _v4_sharing, 5: _v5_writing_prompts,
+    2: _v2_diary, 3: _v3_photos_and_drafts, 4: _v4_sharing, 5: _v5_writing_prompts, 6: _v6_immich,
 }
 
 # No pool with an upper bound: with the default pool the sixteenth concurrent request would block the event

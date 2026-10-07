@@ -333,6 +333,34 @@ export const photosApi = {
   remove: (id: string) => api<void>(`/api/photos/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 }
 
+/** The own Immich, as its card shows it. With the operator's bolt closed only `allowed: false`; the key never comes
+ * back, only whether one is stored. */
+export type ImmichState = { allowed: boolean; connected: boolean; url?: string; key_set?: boolean; suggest?: boolean; email?: string; version?: string }
+/** A photo of the own Immich on a day: its id there, when it was taken, and the photo taken from it, if one was. */
+export type ImmichPhoto = { id: string; taken_at: string; photo_id: string | null }
+export type ImmichDay = { date: string; photos: ImmichPhoto[]; more: boolean }
+export type ImmichProbe = { version: string; today: number; more: boolean; email: string }
+export type ImmichSettings = { allowed: boolean; hosts: string[]; connected: number }
+
+/** Immich, always through nexdiary: the browser never learns the address or the key, and a photo is copied only when
+ * it is taken. */
+export const immichApi = {
+  state: () => api<ImmichState>('/api/immich'),
+  save: (change: { url?: string; key?: string; suggest?: boolean }) => api<ImmichState>('/api/immich', { method: 'PUT', body: change }),
+  disconnect: () => api<void>('/api/immich', { method: 'DELETE' }),
+  probe: () => api<ImmichProbe>('/api/immich/probe', { method: 'POST' }),
+  photos: (date?: string) => api<ImmichDay>('/api/immich/photos', { query: { date } }),
+  take: (asset: string, date?: string, note = false) =>
+    api<Photo>(`/api/immich/photos/${encodeURIComponent(asset)}`, { method: 'POST', body: { ...(date ? { date } : {}), ...(note ? { note: true } : {}) } }),
+  settings: () => api<ImmichSettings>('/api/settings/immich'),
+  saveSettings: (change: { allowed?: boolean; hosts?: string[] }) => api<ImmichSettings>('/api/settings/immich', { method: 'PUT', body: change }),
+}
+
+/** The small picture of a photo in the own Immich, through nexdiary. */
+export function immichThumbUrl(asset: string): string {
+  return `/api/immich/photos/${encodeURIComponent(asset)}/thumbnail`
+}
+
 /** Where a photo is shown from; the smaller copy for lists and tiles. */
 export function photoUrl(id: string, preview = false): string {
   return `/api/photos/${encodeURIComponent(id)}${preview ? '/preview' : ''}`

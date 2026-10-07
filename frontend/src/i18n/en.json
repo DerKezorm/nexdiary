@@ -142,7 +142,8 @@
       "backups": "Backup",
       "languages": "Languages",
       "log": "Log",
-      "ai": "AI"
+      "ai": "AI",
+      "immich": "Immich"
     },
     "language": {
       "title": "Language",
@@ -226,6 +227,26 @@
       "new": "New question",
       "newPlaceholder": "What surprised you today?",
       "add": "Add"
+    },
+    "immich": {
+      "title": "Immich",
+      "text": "Suggest the photos of your day straight from Immich. Everyone connects their own account; nexdiary only reads, and copies a photo only when you take it for a day.",
+      "closed": "Your operator has not allowed Immich.",
+      "connectedAs": "Connected as {{email}}",
+      "connected": "Connected",
+      "url": "Address of Immich",
+      "key": "API key",
+      "keyKept": "stored, leave empty to keep",
+      "keyHint": "In Immich under Account Settings → API Keys, with the permissions “asset.read”, “asset.view” and “asset.download”.",
+      "suggest": "Suggest the photos of the day",
+      "suggestHint": "“Today” shows the photos you took on that day.",
+      "save": "Save and check",
+      "disconnect": "Disconnect",
+      "probed_one": "Connection checked: Immich {{version}}, {{count}} photo of today.",
+      "probed_other": "Connection checked: Immich {{version}}, {{count}} photos of today.",
+      "probedMore": "Connection checked: Immich {{version}}, more than {{count}} photos of today.",
+      "saved": "Saved.",
+      "disconnected": "Disconnected. The photos you took stay."
     }
   },
   "auth": {
@@ -667,6 +688,18 @@
       "saved": "Saved.",
       "keyOptional": "API key (if needed)",
       "keyLocalHint": "Only when the service asks for one, such as LiteLLM. Ollama needs none."
+    },
+    "immich": {
+      "title": "Immich",
+      "text": "Everyone can connect their own Immich and take photos of the day from it. The address is a way into your network, so this works only on the hosts you allow here.",
+      "allowed": "Allow Immich",
+      "allowedHint": "Off from the start. Off, and nobody reaches an Immich through this server.",
+      "hosts": "Allowed Immich addresses",
+      "hostsHint": "One host per line, such as photos.example.com. With a port only that port counts, such as immich.example.com:2283. Metadata addresses of cloud servers never work.",
+      "connected_one": "{{count}} person has connected Immich.",
+      "connected_other": "{{count}} people have connected Immich.",
+      "save": "Save",
+      "saved": "Saved."
     }
   },
   "editor": {
@@ -796,7 +829,10 @@
     "remove": "Remove the photo again",
     "delete": "Delete photo",
     "uploading": "Uploading …",
-    "alt": "Photo"
+    "alt": "Photo",
+    "fromImmich": "from Immich · {{count}} chosen",
+    "immichAway": "Immich cannot be reached right now. Everything else works as always.",
+    "pick": "Take photo"
   },
   "errors": {
     "account_blocked": "This account is blocked.",
@@ -951,7 +987,32 @@
     "question_too_long": "The question is too long, at most {{max}} characters.",
     "too_many_questions": "No more than {{max}} own questions.",
     "ai_daily_limit": "That was the last request to the AI for today. Tomorrow it works again.",
-    "question_empty": "A question needs a few words."
+    "question_empty": "A question needs a few words.",
+    "immich_closed": "Your operator has not allowed Immich.",
+    "immich_host_not_allowed": "Your operator has not allowed this address for Immich.",
+    "immich_host_invalid": "“{{entry}}” is neither a host nor an address.",
+    "immich_host_refused": "“{{entry}}” is never reached, it is a metadata address.",
+    "immich_too_many_hosts": "At most {{max}} addresses.",
+    "immich_not_connected": "No Immich is connected.",
+    "immich_suggest_off": "The photos of the day are switched off.",
+    "immich_address_missing": "Give the address of your Immich.",
+    "immich_address_invalid": "This is not an address of an Immich, such as https://photos.example.com.",
+    "immich_address_refused": "This address is never reached.",
+    "immich_key_missing": "Give the API key of your Immich.",
+    "immich_key_invalid": "This is not an API key.",
+    "immich_unreachable": "The server cannot reach your Immich.",
+    "immich_timeout": "Your Immich took too long.",
+    "immich_redirect": "Your Immich redirects. Enter the address it leads to, with https perhaps.",
+    "immich_key_refused": "Your Immich refused the API key.",
+    "immich_permission": "The API key lacks a permission. It needs asset.read, asset.view and asset.download.",
+    "immich_not_found": "This is not the address of an Immich, or the photo is no longer there.",
+    "immich_failed": "Your Immich answered with an error.",
+    "immich_unreadable": "The answer of your Immich could not be read.",
+    "immich_too_large": "The answer of your Immich is too large.",
+    "immich_not_a_picture": "nexdiary cannot take this photo.",
+    "immich_other_day": "This photo is from another day.",
+    "immich_busy": "Many photos are on their way right now. Try again in a moment.",
+    "immich_too_often": "Too many requests to Immich. Wait a minute."
   },
   "entry": {
     "back": "← Journal",

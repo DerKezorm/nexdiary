@@ -9,7 +9,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 
-import { ApiError, diaryApi, journalApi, photosApi, photoUrl, sharingApi, type DayPage, type DayShares, type JournalDay, type Note, type Photo, type ValueDef } from '../api/client'
+import { ApiError, diaryApi, journalApi, photosApi, photoUrl, sharingApi, type DayPage, type DayShares, type ImmichPhoto, type JournalDay, type Note, type Photo, type ValueDef } from '../api/client'
 import { Avatar } from '../components/Avatar'
 import { Markdown } from '../components/Markdown'
 import { ShareDialog } from '../components/ShareDialog'
@@ -19,6 +19,7 @@ import { errorText } from '../lib/errors'
 import { nameOf } from '../lib/people'
 import { uploadPhoto } from '../lib/upload'
 import { useAuth } from '../state/auth'
+import { useImmichDay } from '../state/immich'
 
 /** A calendar day `n` days away, as `YYYY-MM-DD`. */
 // eslint-disable-next-line react-refresh/only-export-components
@@ -43,6 +44,8 @@ export function EntryPage() {
   const [share, setShare] = useState(false)
   const [picking, setPicking] = useState(false)
   const [uploading, setUploading] = useState(false)
+  // The photos of the day in the own Immich, asked for only while the cover is being chosen.
+  const immich = useImmichDay(date, picking)
   const [yearAgo, setYearAgo] = useState<JournalDay | null>(null)
 
   const load = useCallback(async () => {
@@ -93,6 +96,14 @@ export function EntryPage() {
     } finally {
       setUploading(false)
     }
+  }
+
+  /** A photo of Immich becomes a photo of this day (copied now), then its cover. */
+  const takeFromImmich = async (entry: ImmichPhoto): Promise<string | null> => {
+    const photo = await immich.take(entry.id)
+    if (!photo) return null
+    setData((current) => (current ? { ...current, photos: current.photos.some((item) => item.id === photo.id) ? current.photos : [...current.photos, photo] } : current))
+    return photo.id
   }
 
   const removePhoto = async (photo: Photo) => {
@@ -257,6 +268,10 @@ export function EntryPage() {
           onUpload={(file) => void upload(file)}
           onDelete={removePhoto}
           uploading={uploading}
+          immich={(immich.photos ?? []).filter((entry) => !entry.photo_id || !photos.some((photo) => photo.id === entry.photo_id))}
+          taking={immich.taking}
+          problem={immich.problem}
+          onImmich={takeFromImmich}
         />
       )}
     </div>

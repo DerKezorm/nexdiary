@@ -56,6 +56,8 @@ def test_a_v4_database_with_a_diary_comes_to_v5_whole(client: TestClient, accoun
         path = get_settings().database_path
         # Back to what B3 made: the table of version 5 gone, the version 4.
         with closing(sqlite3.connect(path)) as connection:
+            connection.execute("DROP INDEX uq_photos_user_asset")
+            connection.execute("DROP TABLE immich_links")
             connection.execute("DROP TABLE writing_prompts")
             connection.execute("ALTER TABLE notes DROP COLUMN prompt_ref_enc")
             connection.execute("PRAGMA user_version = 4")
@@ -67,7 +69,7 @@ def test_a_v4_database_with_a_diary_comes_to_v5_whole(client: TestClient, accoun
         assert made == [f"before schema {database.SCHEMA_VERSION}"]
         assert counts(path) == before, "no row lost"
         with closing(sqlite3.connect(path)) as connection:
-            assert int(connection.execute("PRAGMA user_version").fetchone()[0]) == database.SCHEMA_VERSION == 5
+            assert int(connection.execute("PRAGMA user_version").fetchone()[0]) == database.SCHEMA_VERSION
             migrated = schema_of(connection)
             foreign = connection.execute("PRAGMA foreign_key_list(writing_prompts)").fetchall()
         with closing(sqlite3.connect(":memory:")) as connection:

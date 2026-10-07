@@ -180,6 +180,11 @@ export function useToday() {
     }
   }, [])
 
+  /** A photo the server holds already (taken from Immich): it joins the photos of the day. */
+  const keepPhoto = useCallback((photo: Photo) => {
+    setData((current) => (current && current.date === photo.date && !current.photos.some((item) => item.id === photo.id) ? { ...current, photos: [...current.photos, photo] } : current))
+  }, [])
+
   /** Deletes a photo; its notes keep their words, a cover falls back to the illustration. */
   const deletePhoto = useCallback(async (id: string) => {
     setData((current) =>
@@ -207,7 +212,7 @@ export function useToday() {
     }
   }, [])
 
-  return { data, problem, problemValues, load, addNote, changeNote, deleteNote, rate, setTags, addPhoto, deletePhoto, anotherQuestion }
+  return { data, problem, problemValues, load, addNote, changeNote, deleteNote, rate, setTags, addPhoto, keepPhoto, deletePhoto, anotherQuestion }
 }
 
 export type TodayState = ReturnType<typeof useToday>

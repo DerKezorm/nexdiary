@@ -26,7 +26,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 
-import { aiApi, ApiError, diaryApi, photosApi, photoUrl, promptsApi, type AiLength, type DayChange, type DayPage, type DraftIn, type Note, type Photo, type Question } from '../api/client'
+import { aiApi, ApiError, diaryApi, photosApi, photoUrl, promptsApi, type AiLength, type DayChange, type DayPage, type DraftIn, type ImmichPhoto, type Note, type Photo, type Question } from '../api/client'
 import { Dialog } from '../components/Dialog'
 import { TagPicker } from '../components/TagPicker'
 import { CoverImage, CoverPicker, defaultCover } from '../covers/Cover'
@@ -39,6 +39,7 @@ import { errorText } from '../lib/errors'
 import { uploadPhoto } from '../lib/upload'
 import { useAiState } from '../state/ai'
 import { useAuth } from '../state/auth'
+import { useImmichDay } from '../state/immich'
 
 /** After the last key, how long until the draft goes out; and the longest it waits while somebody types on. */
 const DRAFT_PAUSE_MS = 1500
@@ -138,6 +139,8 @@ export default function WritePage() {
   const [copied, setCopied] = useState(false)
   const [editorEmpty, setEditorEmpty] = useState(true)
   const [picking, setPicking] = useState(false)
+  // The photos of the day in the own Immich, asked for only while the cover is being chosen.
+  const immich = useImmichDay(date, picking)
   const [uploading, setUploading] = useState(false)
   const inset = useKeyboardInset()
   const editor = useRef<DiaryEditorHandle>(null)
@@ -438,6 +441,14 @@ export default function WritePage() {
     } finally {
       setUploading(false)
     }
+  }
+
+  /** A photo of Immich becomes a photo of this day (copied now); the picker makes it the cover. */
+  const takeFromImmich = async (entry: ImmichPhoto): Promise<string | null> => {
+    const photo = await immich.take(entry.id)
+    if (!photo) return null
+    setPhotos((current) => (current.some((item) => item.id === photo.id) ? current : [...current, photo]))
+    return photo.id
   }
 
   const back = async () => {
@@ -762,6 +773,10 @@ export default function WritePage() {
           onUpload={(file) => void upload(file)}
           onDelete={removePhoto}
           uploading={uploading}
+          immich={(immich.photos ?? []).filter((entry) => !entry.photo_id || !photos.some((photo) => photo.id === entry.photo_id))}
+          taking={immich.taking}
+          problem={immich.problem}
+          onImmich={takeFromImmich}
         />
       )}
     </div>

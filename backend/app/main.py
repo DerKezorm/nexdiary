@@ -21,7 +21,7 @@ from .config import get_settings
 from .db import SessionLocal, init_db
 from .errors import detail
 from .middleware import GuardMiddleware, RequestContextMiddleware, unhandled_error
-from .routers import about, ai, apitokens, auth, diary, health, invites, oidc, photos, prompts, sharing
+from .routers import about, ai, apitokens, auth, diary, health, immich, invites, oidc, photos, prompts, sharing
 from .routers import avatars as avatars_router
 from .routers import backups as backups_router
 from .routers import locales as locales_router
@@ -36,7 +36,7 @@ logger = logging.getLogger("nexdiary")
 
 ROUTERS = [
     health, about, locales_router, logs_router, auth, totp_router, oidc, invites, settings_router, backups_router,
-    avatars_router, apitokens, v1_router, diary, photos, sharing, ai, prompts,
+    avatars_router, apitokens, v1_router, diary, photos, sharing, ai, prompts, immich,
 ]
 
 

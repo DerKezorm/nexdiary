@@ -28,12 +28,9 @@ and narrowed to what a family diary needs:
 
 from __future__ import annotations
 
-import ipaddress
 import json
 import logging
 import re
-import socket
-import ssl
 import threading
 import time
 from collections import deque
@@ -41,7 +38,6 @@ from collections.abc import Callable, Hashable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, tzinfo
-from functools import cache
 from typing import Any
 from urllib.parse import urljoin, urlsplit
 
@@ -52,7 +48,7 @@ from sqlalchemy.orm import Session
 from .. import clock
 from ..errors import error
 from ..security import decrypt_secret, encrypt_secret
-from . import diary, settings_service
+from . import diary, outbound, settings_service
 
 logger = logging.getLogger("nexdiary.ai")
 
@@ -244,95 +240,50 @@ def save(db: Session, *, provider: str | None, url: str | None, model: str | Non
 
 def _resolve(host: str, port: int) -> list[str]:
     try:
-        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
-    except (OSError, UnicodeError) as exc:
+        return outbound.resolve(host, port)
+    except outbound.Unreachable as exc:
         raise fail("ai_unreachable", 502) from exc
-    return list(dict.fromkeys(str(info[4][0]) for info in infos))
 
 
 #: Resolves a name to its addresses; the tests put their own in.
 resolver: Callable[[str, int], list[str]] = _resolve
 
-
-def _ip(address: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
-    ip = ipaddress.ip_address(address.split("%", 1)[0])
-    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
-        return ip.ipv4_mapped
-    return ip
-
-
-def public(address: str) -> bool:
-    """Whether an address lies outside every own, shared or special network."""
-    try:
-        ip = _ip(address)
-    except ValueError:
-        return False
-    special = ip.is_multicast or ip.is_reserved or ip.is_loopback or ip.is_link_local or ip.is_private
-    return ip.is_global and not special
-
-
-@dataclass(frozen=True)
-class Target:
-    """Where a request really goes: every address checked, to be tried in turn, with the name kept for Host and
-    TLS."""
-
-    urls: tuple[str, ...]
-    host: str
-    named: str
-    scheme: str
-    public: bool
+public = outbound.public
+Target = outbound.Target
 
 
 def checked_target(url: str, provider: str) -> Target:
     """The service's address, resolved and checked once; the connection then goes to exactly the addresses checked
     (no second lookup that could answer differently). A local service only in the own network, one on the internet
-    only on the internet; link-local, multicast and the unspecified address never."""
+    only on the internet; link-local, multicast, the unspecified address and the metadata services never
+    (``outbound``)."""
     parts = urlsplit(url)
     host = (parts.hostname or "").lower()
     try:
-        port = parts.port or (443 if parts.scheme == "https" else 80)
+        outbound.port_of(url)
     except ValueError as exc:
         raise fail("ai_address_invalid") from exc
     if parts.scheme not in ("http", "https") or not host or parts.username or parts.password:
         raise fail("ai_address_invalid")
     if provider in CLOUD and parts.scheme != "https":
         raise fail("ai_https_required")
-    addresses = resolver(host, port)
-    if not addresses:
-        raise fail("ai_unreachable", 502)
-    for address in addresses:
-        try:
-            ip = _ip(address)
-        except ValueError as exc:
-            raise fail("ai_address_refused") from exc
-        if ip.is_link_local or ip.is_multicast or ip.is_unspecified:
-            raise fail("ai_address_refused")
+
+    def rule(ip: Any) -> None:
         if provider == "local" and public(str(ip)):
             raise fail("ai_address_public")
         if provider != "local" and not public(str(ip)):
             raise fail("ai_address_private")
-    urls = tuple(parts._replace(netloc=f"[{address}]:{port}" if ":" in address else f"{address}:{port}").geturl()
-                 for address in addresses)
-    # An address literal of IPv6 stands in brackets in the Host header, as in the address itself.
-    shown = f"[{host}]" if ":" in host else host
-    return Target(
-        urls=urls,
-        host=host,
-        named=shown if port in (80, 443) else f"{shown}:{port}",
-        scheme=parts.scheme,
-        public=provider != "local",
-    )
 
-
-@cache
-def tls() -> ssl.SSLContext:
-    """The certificates, loaded once (a new client loads them again each time; under Windows that alone took 0.9 s in
-    nexlore)."""
-    return httpx.create_ssl_context(trust_env=False)
+    try:
+        return outbound.pin(url, resolver, rule)
+    except outbound.Refused as exc:
+        raise fail("ai_address_refused") from exc
+    except outbound.Unreachable as exc:
+        raise fail("ai_unreachable", 502) from exc
 
 
 def _client() -> httpx.Client:
-    return httpx.Client(follow_redirects=False, transport=transport, trust_env=False, verify=tls())
+    return outbound.client(transport)
 
 
 def _late(seconds: float) -> HTTPException:
@@ -341,35 +292,15 @@ def _late(seconds: float) -> HTTPException:
 
 def _send(client: httpx.Client, method: str, place: Target, headers: dict[str, str], deadline: float,
           seconds: float, **sent: Any) -> httpx.Response:
-    """One request to the checked addresses, tried in turn while one cannot be connected to; never a redirect followed
-    (that led into the own network in nexlore), the answer read up to MAX_ANSWER and only until the deadline: a
-    service that sends a byte now and then holds nobody longer than that."""
-    extensions = {"sni_hostname": place.host} if place.scheme == "https" else {}
-    last: Exception | None = None
-    for url in place.urls:
-        left = deadline - ticks()
-        if left <= 0:
-            raise _late(seconds)
-        timeout = httpx.Timeout(left, connect=min(CONNECT_SECONDS, left))
-        try:
-            with client.stream(method, url, headers={**headers, "Host": place.named}, extensions=extensions,
-                               timeout=timeout, **sent) as answer:
-                body = b""
-                for chunk in answer.iter_bytes():
-                    body += chunk
-                    if len(body) > MAX_ANSWER:
-                        raise fail("ai_unreadable", 502)
-                    if ticks() > deadline:
-                        raise _late(seconds)
-                # Unpacked already: the new answer must not say it is packed, or it is unpacked a second time.
-                kept = [(name, value) for name, value in answer.headers.multi_items()
-                        if name.lower() not in ("content-encoding", "content-length", "transfer-encoding")]
-                return httpx.Response(answer.status_code, headers=kept, content=body, request=answer.request)
-        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
-            # The next address checked, if there is one: localhost may name ::1 first while the service is on IPv4.
-            last = exc
-    assert last is not None
-    raise last
+    """One request to the checked addresses (``outbound.send``): no redirect followed, the answer read up to
+    MAX_ANSWER and only until the deadline."""
+    try:
+        return outbound.send(client, method, place, headers, deadline=deadline, ticks=ticks, limit=MAX_ANSWER,
+                             connect_seconds=CONNECT_SECONDS, **sent)
+    except outbound.Late as exc:
+        raise _late(seconds) from exc
+    except (outbound.TooLarge, outbound.Refused) as exc:
+        raise fail("ai_unreadable", 502) from exc
 
 
 def _headers(found: Service) -> dict[str, str]:
@@ -409,7 +340,8 @@ def _judge(answer: httpx.Response, place: Target) -> None:
         raise fail("ai_address_not_found", 502)
     if answer.status_code == 429:
         raise fail("ai_service_busy", 502)
-    raise fail("ai_service_failed", 502, answered=answer.status_code, said=_said(answer) if place.public else "")
+    from_internet = all(public(address) for address in place.addresses)
+    raise fail("ai_service_failed", 502, answered=answer.status_code, said=_said(answer) if from_internet else "")
 
 
 def _log(found: Service, what: str, status: str, started: float) -> None:

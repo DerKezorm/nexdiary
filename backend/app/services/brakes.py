@@ -19,6 +19,10 @@ LIMITS = {
     "draft": 120,
     "new_day": 60,
     "new_note": 120,
+    #: A look at the own Immich: the photos of a day, a probe, saving the link.
+    "immich": 30,
+    #: The small pictures of Immich: sixty on a day, a few pages in a minute.
+    "immich_thumb": 600,
 }
 #: The code and the sentence of the answer.
 CODES = {
@@ -26,6 +30,8 @@ CODES = {
     "draft": ("slow_down_writing", "Too much at once. Wait a minute."),
     "new_day": ("slow_down_writing", "Too much at once. Wait a minute."),
     "new_note": ("slow_down_writing", "Too much at once. Wait a minute."),
+    "immich": ("immich_too_often", "Too many requests to Immich. Wait a minute."),
+    "immich_thumb": ("immich_too_often", "Too many requests to Immich. Wait a minute."),
 }
 
 _lock = threading.Lock()

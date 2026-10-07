@@ -7,8 +7,9 @@ import { Check, ImageIcon, ImagePlus, Loader2, Search, Trash2 } from 'lucide-rea
 import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { photoUrl, type Photo } from '../api/client'
+import { immichThumbUrl, photoUrl, type ImmichPhoto, type Photo } from '../api/client'
 import { Dialog } from '../components/Dialog'
+import { errorText } from '../lib/errors'
 import { PHOTO_ACCEPT } from '../lib/upload'
 import { Illustration, useIlluName } from './drawings'
 import { ALL_ILLUS, GROUPS, ILLU, isIllustration, MOTIFS, PHOTO, photoOf, SEASONS, seasonOf, suggestIllus, TIMES, type Season, type Time } from './suggest'
@@ -49,6 +50,10 @@ export function CoverPicker({
   onDelete,
   uploading = false,
   time = 'abend',
+  immich = [],
+  onImmich,
+  taking = null,
+  problem = null,
 }: {
   date: string
   tags: string[]
@@ -62,6 +67,14 @@ export function CoverPicker({
   onDelete?: (photo: Photo) => Promise<void>
   uploading?: boolean
   time?: Time
+  /** Photos of the day in the own Immich that were not taken yet: picking one copies it, then it is the cover. */
+  immich?: ImmichPhoto[]
+  /** Takes a photo of Immich for the day; the id of the photo it became, or null when that did not work. */
+  onImmich?: (photo: ImmichPhoto) => Promise<string | null>
+  /** The photo of Immich being taken right now. */
+  taking?: string | null
+  /** What went wrong taking a photo of Immich. */
+  problem?: { code: string; values: Record<string, unknown> } | null
 }) {
   const { t } = useTranslation()
   const illuName = useIlluName()
@@ -107,7 +120,12 @@ export function CoverPicker({
   return (
     <Dialog title={t('covers.title')} onClose={onClose} wide>
       <p className="-mt-2 mb-4 text-sm text-ink-2">{t('covers.intro', { count: ALL_ILLUS.length })}</p>
-      {(photos.length > 0 || onUpload) && (
+      {problem && (
+        <p role="alert" className="mb-4 rounded-xl border border-bad/40 bg-bad/10 px-3 py-2 text-sm text-bad">
+          {errorText(problem.code, problem.values)}
+        </p>
+      )}
+      {(photos.length > 0 || onUpload || immich.length > 0) && (
         <>
           <h3 className="mb-2 text-xs font-bold tracking-wide text-muted uppercase">{t('covers.ownPhotos')}</h3>
           <div className="mb-5 grid grid-cols-3 gap-2 sm:grid-cols-5">
@@ -151,6 +169,29 @@ export function CoverPicker({
                 )}
               </div>
             ))}
+            {onImmich &&
+              immich.map((entry) => (
+                <button
+                  key={entry.id}
+                  type="button"
+                  disabled={taking !== null}
+                  onClick={async () => {
+                    const id = await onImmich(entry)
+                    if (id) pick(`${PHOTO}${id}`)
+                  }}
+                  title={t('covers.ownPhoto')}
+                  aria-label={t('covers.ownPhoto')}
+                  aria-pressed={false}
+                  className="relative overflow-hidden rounded-xl transition hover:-translate-y-0.5"
+                >
+                  <img src={immichThumbUrl(entry.id)} alt="" className="aspect-[16/11] w-full object-cover" draggable={false} />
+                  {taking === entry.id && (
+                    <span className="absolute inset-0 flex items-center justify-center bg-black/30 text-white">
+                      <Loader2 size={20} className="animate-spin" aria-hidden />
+                    </span>
+                  )}
+                </button>
+              ))}
             {onUpload && (
               <button
                 type="button"

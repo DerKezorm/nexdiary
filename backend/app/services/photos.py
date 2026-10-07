@@ -205,16 +205,41 @@ def list_of_day(db: Session, account_id: int, day: str) -> list[dict[str, Any]]:
     return [view(row) for row in rows]
 
 
-def _by_upload(db: Session, account_id: int, upload_id: str) -> Any:
-    return db.execute(select(*_COLUMNS).where(Photo.user_id == account_id, Photo.upload_id == upload_id)).first()
+def _by_upload(db: Session, account_id: int, upload_id: str | None, asset_key: str | None = None) -> Any:
+    """The photo that came with this upload id, or from this photo of Immich (``asset_key``)."""
+    if asset_key is not None:
+        found = Photo.asset_id == asset_key
+    elif upload_id is not None:
+        found = Photo.upload_id == upload_id
+    else:
+        return None
+    return db.execute(select(*_COLUMNS).where(Photo.user_id == account_id, found)).first()
 
 
-def add(db: Session, account_id: int, dek: bytes, day: str, upload_id: str, drawn: Drawn,
-        moment: Any, on_note: bool = False) -> tuple[dict[str, Any], bool]:
-    """Keeps a drawn photo: files first, then the row; the photo and whether it is new. The same upload id again
-    returns the photo that stands (a double tap, a retry after a lost answer) and leaves no files behind. The row is
-    written only while the day has room and the person's storage too (``quota``), checked in the same statement."""
-    existing = _by_upload(db, account_id, upload_id)
+def by_asset(db: Session, account_id: int, asset_key: str) -> dict[str, Any] | None:
+    row = _by_upload(db, account_id, None, asset_key)
+    return view(row) if row is not None else None
+
+
+def taken_from_immich(db: Session, account_id: int, keys: Iterable[str]) -> dict[str, str]:
+    """For the keys of photos of Immich, the ids of the photos taken over from them."""
+    wanted = list(keys)
+    if not wanted:
+        return {}
+    rows = db.execute(select(Photo.asset_id, Photo.uid).where(Photo.user_id == account_id,
+                                                              Photo.asset_id.in_(wanted))).all()
+    return {str(row.asset_id): row.uid for row in rows}
+
+
+def add(db: Session, account_id: int, dek: bytes, day: str, upload_id: str | None, drawn: Drawn,
+        moment: Any, on_note: bool = False, *, source: str = "upload",
+        asset_key: str | None = None) -> tuple[dict[str, Any], bool]:
+    """Keeps a drawn photo: files first, then the row; the photo and whether it is new. The same upload id again, or
+    the same photo of Immich taken over again (``asset_key``), returns the photo that stands (a double tap, a retry
+    after a lost answer, two tabs) and leaves no files behind. The row is written only while the day has room and the
+    person's storage too (``quota``), checked in the same statement."""
+    assert source in SOURCES and (upload_id is not None) != (asset_key is not None)
+    existing = _by_upload(db, account_id, upload_id, asset_key)
     if existing is not None:
         return view(existing), False
     uid = secrets.token_hex(16)
@@ -226,14 +251,16 @@ def add(db: Session, account_id: int, dek: bytes, day: str, upload_id: str, draw
     try:
         inserted = db.execute(
             text(
-                "INSERT INTO photos (uid, user_id, date, source, upload_id, width, height, size, preview_size, "  # noqa: S608 - constants
-                "created_at, on_note) SELECT :uid, :user, :date, 'upload', :upload, :width, :height, :size, :preview, "
-                ":now, :on_note "
+                "INSERT INTO photos (uid, user_id, date, source, upload_id, asset_id, width, height, size, "  # noqa: S608 - constants
+                "preview_size, created_at, on_note) SELECT :uid, :user, :date, :source, :upload, :asset, :width, "
+                ":height, :size, :preview, :now, :on_note "
                 "WHERE (SELECT count(*) FROM photos WHERE user_id = :user AND date = :date) < :limit "
                 f"AND (:quota IS NULL OR {quota.USED} + :size + :preview <= :quota) "
-                "ON CONFLICT (user_id, upload_id) DO NOTHING"
+                # The upload id, or the photo of Immich: whichever was there first stays.
+                "ON CONFLICT DO NOTHING"
             ).bindparams(bindparam("now", type_=UtcDateTime())),
-            {"uid": uid, "user": account_id, "date": day, "upload": upload_id, "width": drawn.width,
+            {"uid": uid, "user": account_id, "date": day, "upload": upload_id, "asset": asset_key, "source": source,
+             "width": drawn.width,
              "height": drawn.height, "size": len(original), "preview": len(preview), "now": moment,
              "limit": PHOTOS_PER_DAY, "quota": limit, "on_note": bool(on_note)},
         )
@@ -244,7 +271,7 @@ def add(db: Session, account_id: int, dek: bytes, day: str, upload_id: str, draw
         raise
     if inserted.rowcount != 1:
         remove_files([uid])
-        found = _by_upload(db, account_id, upload_id)
+        found = _by_upload(db, account_id, upload_id, asset_key)
         if found is not None:
             return view(found), False
         if limit is not None and quota.used(db, account_id) + len(original) + len(preview) > limit:

@@ -237,6 +237,8 @@ class Photo(Base):
         UniqueConstraint("uid", name="uq_photos_uid"),
         UniqueConstraint("user_id", "upload_id", name="uq_photos_user_upload"),
         Index("ix_photos_user_date", "user_id", "date"),
+        #: The same photo of Immich taken over twice (a double tap, two tabs) stays one photo.
+        Index("uq_photos_user_asset", "user_id", "asset_id", unique=True),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -245,7 +247,8 @@ class Photo(Base):
     date: Mapped[str] = mapped_column(String(10))
     #: ``upload`` or ``immich``.
     source: Mapped[str] = mapped_column(String(8), default="upload")
-    #: The asset a photo was copied from (Immich).
+    #: Which photo of Immich it was copied from, and for what (the day or a note): a keyed hash of the person
+    #: (``services/immich.py``), never the asset's own id.
     asset_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     #: Made by the browser for one upload: the same upload sent twice keeps one photo.
     upload_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
@@ -286,6 +289,17 @@ class WritingPrompts(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     content_enc: Mapped[bytes] = mapped_column(LargeBinary)
     revision: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+
+class ImmichLink(Base):
+    """A person's own Immich: its address, the API key and the choices of the card, sealed in one field with the
+    person's data key. Only the person's own requests use it; the operator sees how many there are, never one."""
+
+    __tablename__ = "immich_links"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    content_enc: Mapped[bytes] = mapped_column(LargeBinary)
     updated_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
 
 
@@ -347,6 +361,7 @@ __all__ = [
     "Day",
     "Draft",
     "Heart",
+    "ImmichLink",
     "Invite",
     "Note",
     "Photo",

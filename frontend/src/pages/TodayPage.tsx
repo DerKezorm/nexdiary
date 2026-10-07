@@ -5,14 +5,15 @@
  * Photos are taken or picked with the camera button beside the field (they go with the next note) and under "Fotos
  * von heute"; "Den Tag aufschreiben" leads to the writing page, with the AI when the operator set one up and the person
  * did not switch it off ("Ausformulieren": the writing page asks for the suggestion, never on its own). The question of
- * the day stands under the field; its answer becomes a note with the question. The photos from Immich come later.
+ * the day stands under the field; its answer becomes a note with the question. With Immich connected, the photos taken
+ * there today are suggested in "Fotos von heute" and copied only when chosen.
  */
-import { ArrowUp, Camera, Flame, ImagePlus, Loader2, MessageCircleQuestion, PenLine, Shuffle, Sparkles, Trash2, X } from 'lucide-react'
+import { ArrowUp, Camera, Check, Flame, ImagePlus, Loader2, MessageCircleQuestion, PenLine, Shuffle, Sparkles, Trash2, X } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
-import { photoUrl, type AiLength, type AiState, type Note, type TodayData, type ValueDef } from '../api/client'
+import { immichThumbUrl, photoUrl, type AiLength, type AiState, type ImmichPhoto, type Note, type TodayData, type ValueDef } from '../api/client'
 import { Dialog } from '../components/Dialog'
 import { Scale } from '../components/Scale'
 import { TagPicker } from '../components/TagPicker'
@@ -22,6 +23,7 @@ import { PHOTO_ACCEPT } from '../lib/upload'
 import { PendingPhoto, usePendingPhoto } from '../components/PendingPhoto'
 import { aiHint } from '../lib/aiProviders'
 import { useAiState } from '../state/ai'
+import { useImmichDay } from '../state/immich'
 import { useAuth } from '../state/auth'
 import { useToday, type TodayState } from '../state/today'
 
@@ -251,25 +253,64 @@ function FinishCard({ today, ai }: { today: TodayState; ai: AiState | null }) {
   )
 }
 
-/** The photos of today, as the mock's photo strip: the own uploads, each with its time, and a tile to add one. The
- * photos from Immich join them in their block. */
+/** The photos of today, as the mock's photo strip: with Immich connected, the photos taken today there first, each
+ * chosen with a tap (copied to the day only then) and put back with another; then the own uploads, each with its time,
+ * and a tile to add one. Immich not answering leaves a quiet line; everything else goes on. */
 function PhotosBlock({ today, bare = false }: { today: TodayState; bare?: boolean }) {
   const { t } = useTranslation()
   const { me } = useAuth()
   const [busy, setBusy] = useState(false)
   const file = useRef<HTMLInputElement>(null)
+  const immich = useImmichDay(today.data?.date)
   // The photos of the day itself; a photo that came with a note stands with its note.
   const onNotes = new Set((today.data?.notes ?? []).map((note) => note.photo_id).filter(Boolean))
   const photos = (today.data?.photos ?? []).filter((photo) => !photo.on_note && !onNotes.has(photo.id))
+  const kept = new Set(photos.map((photo) => photo.id))
+  const suggested = immich.photos ?? []
+  const chosen = (entry: ImmichPhoto) => Boolean(entry.photo_id && kept.has(entry.photo_id))
+  // A photo taken from a tile stands as that tile, not a second time.
+  const shownAsTile = new Set(suggested.filter(chosen).map((entry) => entry.photo_id))
+  const own = photos.filter((photo) => !shownAsTile.has(photo.id))
   const add = async (picked: File) => {
     setBusy(true)
     await today.addPhoto(picked)
     setBusy(false)
   }
+  const toggle = async (entry: ImmichPhoto) => {
+    if (chosen(entry) && entry.photo_id) {
+      immich.released(entry.photo_id)
+      await today.deletePhoto(entry.photo_id)
+      return
+    }
+    const photo = await immich.take(entry.id)
+    if (photo) today.keepPhoto(photo)
+  }
+  const extra = immich.photos ? t('photos.fromImmich', { count: suggested.filter(chosen).length }) : t('photos.count', { count: photos.length })
   return (
-    <Block title={t('photos.title')} bare={bare} extra={<span className="text-sm text-muted">{t('photos.count', { count: photos.length })}</span>}>
+    <Block title={t('photos.title')} bare={bare} extra={<span className="text-sm text-muted">{extra}</span>}>
       <div className="scroll-x -mx-1 flex gap-2.5 overflow-x-auto px-1 pb-1">
-        {photos.map((photo) => (
+        {suggested.map((entry) => {
+          const on = chosen(entry)
+          const time = timeOf(entry.taken_at, me?.profile?.timezone)
+          return (
+            <button
+              key={entry.id}
+              type="button"
+              onClick={() => void toggle(entry)}
+              disabled={immich.taking !== null}
+              className="relative shrink-0 overflow-hidden rounded-xl"
+              aria-pressed={on}
+              aria-label={`${t('photos.pick')} ${time}`}
+            >
+              <img src={immichThumbUrl(entry.id)} alt="" className={`h-24 w-32 object-cover transition ${on ? '' : 'opacity-75 saturate-50'}`} draggable={false} />
+              <span className="absolute bottom-1 left-1.5 rounded bg-black/35 px-1 text-[0.68rem] font-bold text-white">{time}</span>
+              <span className={`absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white ${on ? 'bg-accent text-accent-ink' : 'bg-black/20'}`}>
+                {immich.taking === entry.id ? <Loader2 size={13} className="animate-spin text-white" aria-hidden /> : on && <Check size={14} strokeWidth={3} aria-hidden />}
+              </span>
+            </button>
+          )
+        })}
+        {own.map((photo) => (
           <div key={photo.id} className="group relative shrink-0 overflow-hidden rounded-xl">
             <img src={photoUrl(photo.id, true)} alt={t('photos.alt')} className="h-24 w-32 object-cover" draggable={false} />
             <span className="absolute bottom-1 left-1.5 rounded bg-black/35 px-1 text-[0.68rem] font-bold text-white">{timeOf(photo.created_at, me?.profile?.timezone)}</span>
@@ -305,6 +346,12 @@ function PhotosBlock({ today, bare = false }: { today: TodayState; bare?: boolea
           }}
         />
       </div>
+      {immich.away && <p className="mt-2 text-xs text-muted">{t('photos.immichAway')}</p>}
+      {immich.problem && (
+        <p role="alert" className="mt-2 text-xs text-bad">
+          {errorText(immich.problem.code, immich.problem.values)}
+        </p>
+      )}
     </Block>
   )
 }

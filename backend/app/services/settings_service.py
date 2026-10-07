@@ -53,6 +53,10 @@ DEFAULTS: dict[str, Any] = {
     "ai_model": "",
     #: Sealed with the server's secret (context ``operator:ai-key``); never shown again.
     "ai_key_enc": "",
+    #: Immich (``services/immich.py``): closed from the start. Open, each person may connect their own Immich, but
+    #: only on one of these hosts (``host`` or ``host:port``): the address is a way into the own network.
+    "immich_allowed": False,
+    "immich_hosts": [],
 }
 
 
