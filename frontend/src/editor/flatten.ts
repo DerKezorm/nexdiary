@@ -7,12 +7,15 @@
  * - **links and pictures** become their words (`[a](javascript:…)` is "a"); a picture is never loaded from anywhere.
  *   The one exception is a paragraph of nothing but `![caption](photo:<id>)` at the top of the page: the person's own
  *   photo as a block of its own (`photo.ts`). `photo:` is no address a browser could load; the server keeps only ids of
- *   the person's own photos of the day;
+ *   the person's own photos of the day. A cut after the id (`#crop=…&rot=…`) stays when it is exactly the canonical
+ *   form (`lib/textPhoto.ts`); any other fragment is dropped and the photo stays, whole;
  * - code becomes text, a heading of any level a subheading, a dividing line nothing.
  *
  * Pure functions on the Markdown tree (mdast), so they are tested without a browser. The same pass runs on what is
  * loaded, on what is pasted as Markdown and on what an assistant writes later.
  */
+
+import { cutOfAddress, formatFragment } from '../lib/textPhoto'
 
 export type MdNode = {
   type: string
@@ -27,8 +30,8 @@ const KEPT = new Set(['root', 'paragraph', 'heading', 'blockquote', 'list', 'lis
 /** Nodes that hold blocks: a stray inline node inside them is put into a paragraph. */
 const HOLDS_BLOCKS = new Set(['root', 'blockquote', 'listItem'])
 const BLOCKS = new Set(['paragraph', 'heading', 'blockquote', 'list', 'diaryPhoto'])
-/** The one address a picture may have: a photo of the person, by its id. */
-const PHOTO_URL = /^photo:[0-9a-f]{32}$/
+/** The one address a picture may have: a photo of the person, by its id, with a fragment perhaps (read strictly). */
+const PHOTO_URL = /^photo:([0-9a-f]{32})(#.*)?$/s
 /** Form without words: gone. */
 const DROPPED = new Set(['thematicBreak', 'definition', 'footnoteDefinition', 'yaml', 'toml'])
 
@@ -43,8 +46,11 @@ function clean(node: MdNode, parent: string): MdNode[] {
   if (DROPPED.has(node.type)) return []
   if (node.type === 'paragraph' && parent === 'root' && node.children?.length === 1) {
     const only = node.children[0]
-    if (only.type === 'image' && typeof only.url === 'string' && PHOTO_URL.test(only.url)) {
-      return [{ type: 'diaryPhoto', id: only.url.slice('photo:'.length), alt: only.alt ?? '' }]
+    const address = only.type === 'image' && typeof only.url === 'string' ? PHOTO_URL.exec(only.url) : null
+    if (address) {
+      const cut = formatFragment(cutOfAddress(address[2])).slice(1)
+      const photo: MdNode = { type: 'diaryPhoto', id: address[1], alt: only.alt ?? '' }
+      return [cut ? { ...photo, cut } : photo]
     }
   }
   if (KEPT.has(node.type)) {

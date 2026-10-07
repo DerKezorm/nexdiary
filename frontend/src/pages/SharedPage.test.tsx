@@ -108,7 +108,7 @@ describe('a day shared with me', () => {
     expect(box.querySelector('strong')?.textContent).toBe('See')
     expect(box.querySelectorAll('script, b, iframe')).toHaveLength(0)
     const pictures = [...box.querySelectorAll('img')].map((image) => image.getAttribute('src'))
-    expect(pictures).toEqual([`/api/shared/7/2026-10-04/photos/${'a'.repeat(32)}`, `/api/shared/7/2026-10-04/photos/${'b'.repeat(32)}/preview`])
+    expect(pictures).toEqual([`/api/shared/7/2026-10-04/photos/${'a'.repeat(32)}`, `/api/shared/7/2026-10-04/photos/${'b'.repeat(32)}`])
     expect((window as { __xss?: number }).__xss).toBeUndefined()
     // No values, no notes: the server did not send them, so nothing stands there.
     expect(box.textContent).not.toContain('Werte von dem Tag')

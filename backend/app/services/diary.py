@@ -299,11 +299,59 @@ def clean_tags(tags: list[str]) -> list[str]:
 
 # --- Photos in the text ----------------------------------------------------------------------------------------------
 
-#: A picture inside a page: ``![caption](photo:<id>)``, the id of one of the person's own photos. The only picture
-#: syntax a page keeps; any other picture (an address, ``data:``) is turned into its words when the page is read.
-PHOTO_IMAGE = re.compile(r"!\[((?:\\.|[^\]\\\n]){0,300})\]\(photo:([0-9a-f]{32})\)")
-_PARTIAL_IMAGE = re.compile(r"!\[[^\]\n]*(?:\]\(?(?:photo:?[0-9a-f]*)?)?$")
+#: A picture inside a page: ``![caption](photo:<id>#crop=x,y,w,h&rot=90)``, the id of one of the person's own photos
+#: and, after ``#``, how the text shows it (``canonical_fragment``). The only picture syntax a page keeps; any other
+#: picture (an address, ``data:``) is turned into its words when the page is read. The fragment may hold anything but
+#: brackets, parentheses and line breaks: what is not the canonical form is dropped when the page is saved, the picture
+#: stays. It never reaches past the next ``[``, so a page full of half pictures is still read in one pass.
+PHOTO_IMAGE = re.compile(r"!\[((?:\\.|[^\]\\\n]){0,300})\]\(photo:([0-9a-f]{32})(?:#([^()\[\]\n]*))?\)")
+_PARTIAL_IMAGE = re.compile(r"!\[[^\]\n]*(?:\]\(?(?:photo:?[0-9a-f]*(?:#[^()\[\]\n]*)?)?)?$")
 _BLANKS = re.compile(r"\n{3,}")
+#: The longest fragment that is read at all; the canonical form is at most 33 characters.
+FRAGMENT_MAX = 64
+#: A crop and its parts are in per mille of the photo as turned (``rot``); the smallest side of a crop.
+PERMILLE = 1000
+CROP_MIN = 10
+ROTATIONS = (0, 90, 180, 270)
+_FRAGMENT_NUMBER = re.compile(r"[0-9]{1,4}")
+
+
+def canonical_fragment(raw: str | None) -> str:
+    """How a picture in the text is shown, in the one form the server keeps: ``#crop=x,y,w,h&rot=r`` (either part
+    optional, the crop first), or nothing. Turned first, then cut: the crop is in per mille of the turned picture, whole
+    numbers without a sign, at least ``CROP_MIN`` wide and high and inside the picture; a crop of all of it and a turn
+    of 0 are left out. A fragment with anything else (another key, a key twice, spaces, decimals, a sign, too long) is
+    dropped whole: the picture stays and is shown as it is. The photo itself is never changed by it."""
+    if not raw or len(raw) > FRAGMENT_MAX:
+        return ""
+    parts: dict[str, str] = {}
+    for part in raw.split("&"):
+        key, equals, value = part.partition("=")
+        if not equals or key not in ("crop", "rot") or key in parts:
+            return ""
+        parts[key] = value
+    out: list[str] = []
+    if "crop" in parts:
+        numbers = parts["crop"].split(",")
+        if len(numbers) != 4 or not all(_FRAGMENT_NUMBER.fullmatch(number) for number in numbers):
+            return ""
+        x, y, w, h = (int(number) for number in numbers)
+        if w < CROP_MIN or h < CROP_MIN or x + w > PERMILLE or y + h > PERMILLE:
+            return ""
+        if (x, y, w, h) != (0, 0, PERMILLE, PERMILLE):
+            out.append(f"crop={x},{y},{w},{h}")
+    if "rot" in parts:
+        if not _FRAGMENT_NUMBER.fullmatch(parts["rot"]) or int(parts["rot"]) not in ROTATIONS:
+            return ""
+        if int(parts["rot"]):
+            out.append(f"rot={int(parts['rot'])}")
+    return "#" + "&".join(out) if out else ""
+
+
+def canonical_photos(markdown: str) -> str:
+    """The text with every picture of a photo in its canonical form (``canonical_fragment``); nothing else changes."""
+    return PHOTO_IMAGE.sub(
+        lambda match: f"![{match.group(1)}](photo:{match.group(2)}{canonical_fragment(match.group(3))})", markdown)
 
 
 def text_photo_ids(markdown: str) -> list[str]:
@@ -318,8 +366,10 @@ def strip_images(markdown: str, *, keep_caption: bool = False) -> str:
 
 
 def scrub_text_photos(db: Session, account_id: int, day: str, markdown: str) -> str:
-    """The text as it may be kept: a picture of a photo that is not the person's own, or not of this day, is removed (a
-    deleted photo cannot be told from a stranger's, and both must answer alike). The rest of the text is untouched."""
+    """The text as it may be kept: every picture in its canonical form (``canonical_photos``), and a picture of a photo
+    that is not the person's own, or not of this day, removed (a deleted photo cannot be told from a stranger's, and
+    both must answer alike). The rest of the text is untouched."""
+    markdown = canonical_photos(markdown)
     wanted = text_photo_ids(markdown)
     if not wanted:
         return markdown
@@ -329,6 +379,58 @@ def scrub_text_photos(db: Session, account_id: int, day: str, markdown: str) -> 
         return markdown
     kept = PHOTO_IMAGE.sub(lambda match: match.group(0) if match.group(2) in known else "", markdown)
     return _BLANKS.sub("\n\n", kept).strip()
+
+
+def photos_held(content: dict[str, Any] | None) -> set[str]:
+    """The photos a page or a draft holds: the pictures of its text and its cover."""
+    if not content:
+        return set()
+    held = set(text_photo_ids(content.get("text") or ""))
+    photo = covers.photo_of(content.get("cover"))
+    if photo is not None:
+        held.add(photo)
+    return held
+
+
+def without_photo(content: dict[str, Any], uid: str) -> dict[str, Any] | None:
+    """A page or a draft without this photo: its pictures in the text gone, the cover back to the suggestion (and its
+    crop with it). None when it did not hold the photo."""
+    out = {**content}
+    text_ = content.get("text") or ""
+    if uid in text_photo_ids(text_):
+        kept = PHOTO_IMAGE.sub(lambda match: "" if match.group(2) == uid else match.group(0), text_)
+        out["text"] = _BLANKS.sub("\n\n", kept).strip()
+    if covers.photo_of(content.get("cover")) == uid:
+        out["cover"] = None
+        out["cover_crop"] = None
+    return out if out != content else None
+
+
+def settle_photos(db: Session, account_id: int, dek: bytes, day: str, saved: dict[str, Any]) -> dict[str, Any]:
+    """After a save: a photo the saved page names that was deleted while the save was under way (checked before, gone
+    before the write) is taken out of it again, so that no page keeps a picture or a cover of a photo that is gone. The
+    page as it stands then."""
+    named = set(text_photo_ids(saved["text"]))
+    sealed = db.scalar(select(Day.content_enc).where(Day.user_id == account_id, Day.date == day))
+    content = _readable_content(account_id, dek, day, sealed) if sealed is not None else None
+    if content is not None:
+        named |= photos_held(content)
+    if not named:
+        return saved
+    missing = named - set(db.scalars(select(Photo.uid).where(Photo.user_id == account_id, Photo.uid.in_(named))))
+    if not missing:
+        return saved
+
+    def without(standing: dict[str, Any]) -> dict[str, Any]:
+        for uid in missing:
+            standing = without_photo(standing, uid) or standing
+        return standing
+
+    try:
+        return change_day(db, account_id, dek, day, without)
+    except Exception:  # noqa: BLE001 - a lock or a busy moment in between: the page reads as it is, the next save cleans
+        db.rollback()
+        return get_day(db, account_id, dek, day) or saved
 
 
 def adopt_text_photos(db: Session, account_id: int, day: str, markdown: str) -> None:
@@ -889,7 +991,43 @@ def _day_aad(account_id: int, day: str) -> bytes:
 
 
 def empty_day() -> dict[str, Any]:
-    return {"title": "", "text": "", "tags": [], "values": {}, "cover": None, "written_by": None}
+    return {"title": "", "text": "", "tags": [], "values": {}, "cover": None, "cover_crop": None, "written_by": None}
+
+
+#: The part of a photo a cover shows: its middle in per mille of the photo, and how far it is zoomed in (100: the photo
+#: fills the cover).
+COVER_CROP_KEYS = frozenset({"x", "y", "zoom"})
+ZOOM_MIN = 100
+ZOOM_MAX = 400
+
+
+def check_cover_crop(value: Any) -> dict[str, int] | None:
+    """A crop of a cover as it may be kept: exactly ``x``, ``y`` (0 to 1000) and ``zoom`` (100 to 400), whole numbers;
+    None takes it back. ``cover_crop_invalid`` for anything else."""
+    if value is None:
+        return None
+    if not isinstance(value, dict) or set(value) != COVER_CROP_KEYS or any(
+            type(value[key]) is not int for key in COVER_CROP_KEYS):
+        raise error("cover_crop_invalid", "The crop of the cover is not valid.", 422)
+    if not (0 <= value["x"] <= PERMILLE and 0 <= value["y"] <= PERMILLE and ZOOM_MIN <= value["zoom"] <= ZOOM_MAX):
+        raise error("cover_crop_invalid", "The crop of the cover is not valid.", 422)
+    return {"x": value["x"], "y": value["y"], "zoom": value["zoom"]}
+
+
+def kept_crop(content: dict[str, Any]) -> dict[str, int] | None:
+    """The crop a page or a draft keeps: only with a photo for its cover, and only one of the right form (what an older
+    nexdiary or a damaged value left is no crop)."""
+    if covers.photo_of(content.get("cover")) is None:
+        return None
+    try:
+        return check_cover_crop(content.get("cover_crop"))
+    except Exception:  # noqa: BLE001 - a crop that is not one is simply none
+        return None
+
+
+def shown_crop(content: dict[str, Any], chosen: bool) -> dict[str, int] | None:
+    """The crop of the cover a day shows: the kept one while the chosen photo is shown, else none."""
+    return kept_crop(content) if chosen else None
 
 
 def effective_cover(day: str, content: dict[str, Any], photo_ids: set[str] | None) -> tuple[str, bool]:
@@ -933,6 +1071,7 @@ def _day_view(day: str, content: dict[str, Any] | None, created: datetime, updat
         "values": content["values"],
         "cover": cover,
         "cover_chosen": chosen,
+        "cover_crop": shown_crop(content, chosen),
         "written_by": content["written_by"],
         "words": words_in(content["text"]),
         "unreadable": broken,
@@ -1030,11 +1169,15 @@ def check_values(db: Session, account_id: int, values: dict[str, Any]) -> dict[s
 
 
 def merge(content: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
-    """The day with the fields of ``patch`` changed; ``values`` is merged one by one, null takes a value back."""
+    """The day with the fields of ``patch`` changed; ``values`` is merged one by one, null takes a value back. A cover
+    that changes without a crop of its own loses the crop of the one before, and only a photo keeps a crop."""
     out = {**content}
-    for key in ("title", "text", "tags", "written_by", "cover"):
+    for key in ("title", "text", "tags", "written_by", "cover", "cover_crop"):
         if key in patch:
             out[key] = patch[key]
+    if "cover" in patch and "cover_crop" not in patch and patch["cover"] != content.get("cover"):
+        out["cover_crop"] = None
+    out["cover_crop"] = kept_crop(out)
     if "values" in patch:
         values = {**content.get("values", {})}
         for uid, rating in patch["values"].items():
@@ -1062,6 +1205,8 @@ def clean_day_patch(db: Session, account_id: int, day: str, fields: dict[str, An
         patch["values"] = check_values(db, account_id, fields["values"])
     if "cover" in fields:
         patch["cover"] = check_cover(db, account_id, day, fields["cover"])
+    if "cover_crop" in fields:
+        patch["cover_crop"] = check_cover_crop(fields["cover_crop"])
     return patch
 
 
@@ -1101,9 +1246,10 @@ def list_days(db: Session, account_id: int, dek: bytes, *, before: str | None, l
     for row in rows:
         content = _readable_content(account_id, dek, row.date, row.content_enc)
         shown = content or empty_day()
+        cover, chosen = effective_cover(row.date, shown, photo_ids)
         out.append({"date": row.date, "title": shown["title"], "tags": shown["tags"],
                     "words": words_in(shown["text"]), "values": shown["values"],
-                    "cover": effective_cover(row.date, shown, photo_ids)[0],
+                    "cover": cover, "cover_crop": shown_crop(shown, chosen),
                     "written_by": shown["written_by"], "unreadable": content is None,
                     "locked": row.locked_at is not None})
     return out
@@ -1177,15 +1323,19 @@ def _draft_aad(account_id: int, day: str) -> bytes:
 
 def clean_draft(db: Session, account_id: int, day: str, fields: dict[str, Any]) -> dict[str, Any]:
     """What a draft holds: title, text, tags and cover, cleaned and limited like the page itself."""
-    draft: dict[str, Any] = {"title": "", "text": "", "tags": [], "cover": None, "written_by": None, "ai_length": None}
+    draft: dict[str, Any] = {"title": "", "text": "", "tags": [], "cover": None, "cover_crop": None,
+                             "written_by": None, "ai_length": None}
     if fields.get("title") is not None:
         draft["title"] = clean_line(fields["title"], TITLE_MAX, "title_too_long")
     if fields.get("text") is not None:
-        draft["text"] = clean_text(fields["text"], TEXT_MAX, "text_too_long")
+        # The pictures in their canonical form already here; which photos stay is decided when the page is saved.
+        draft["text"] = canonical_photos(clean_text(fields["text"], TEXT_MAX, "text_too_long"))
     if fields.get("tags") is not None:
         draft["tags"] = clean_tags(fields["tags"])
     if fields.get("cover") is not None:
         draft["cover"] = check_cover(db, account_id, day, fields["cover"])
+    draft["cover_crop"] = check_cover_crop(fields.get("cover_crop"))
+    draft["cover_crop"] = kept_crop(draft)
     # Whether the writing began as a suggestion of the AI, and how long it was asked for: kept with the draft, so a
     # page closed and opened again still counts as written with the AI.
     if fields.get("written_by") is not None:
@@ -1261,20 +1411,98 @@ def get_draft(db: Session, account_id: int, dek: bytes, day: str) -> dict[str, A
         return None
     cover = content.get("cover")
     photo = covers.photo_of(cover)
+    crop = kept_crop(content)
     if photo is not None and photo not in photo_ids_of(db, account_id):
         # The photo was deleted since: the draft falls back to the suggestion, it never names a photo that is gone.
-        cover = None
+        cover, crop = None, None
     written_by = content.get("written_by") if content.get("written_by") in WRITTEN_BY else None
     ai_length = content.get("ai_length") if content.get("ai_length") in ("short", "long") else None
     return {"title": content.get("title", ""), "text": content.get("text", ""), "tags": content.get("tags", []),
-            "cover": cover, "written_by": written_by, "ai_length": ai_length, "base_revision": row.base_revision,
-            "updated_at": row.updated_at.isoformat(), "auto": bool(row.auto)}
+            "cover": cover, "cover_crop": crop, "written_by": written_by, "ai_length": ai_length,
+            "base_revision": row.base_revision, "updated_at": row.updated_at.isoformat(), "auto": bool(row.auto)}
 
 
-def delete_draft(db: Session, account_id: int, day: str) -> None:
+def delete_draft(db: Session, account_id: int, dek: bytes, day: str) -> list[str]:
+    """Throws the draft of a day away, and with it the photos taken for its text that nothing else holds
+    (``tidy_text_photos``); the ids of those photos, whose files are the caller's to remove."""
     ensure_open(db, account_id, day)
-    db.execute(delete(Draft).where(Draft.user_id == account_id, Draft.date == day))
-    db.commit()
+    return tidy_text_photos(db, account_id, dek, day, drop_draft=True)
+
+
+# --- Photos taken for the text ----------------------------------------------------------------------------------------
+
+#: A photo taken for the text this short a time ago is never tidied away: it may be on its way into the text on
+#: another device (uploaded there, its draft not saved yet: the draft follows a moment after the typing), or still in
+#: the request that keeps it. Short on purpose: whoever puts a picture in and takes it out again sees it gone at once.
+TEXT_PHOTO_GRACE = timedelta(seconds=5)
+
+
+def tidy_text_photos(db: Session, account_id: int, dek: bytes, day: str, *, drop_draft: bool = False) -> list[str]:
+    """Deletes the photos of a day that were taken for its text (``for_text``) and that nothing holds any more: not the
+    text or the cover of the saved page, not a note, not the text or the cover of the draft (thrown away first with
+    ``drop_draft``, in the same transaction). Never on a locked day, never a photo younger than ``TEXT_PHOTO_GRACE``,
+    and never when the page or the draft cannot be read (what they hold is not known then).
+
+    One statement decides: it deletes only while the page still stands on the revision that was read and the draft is
+    still the one that was read, so a save or a draft from another device in between keeps every photo; then it is
+    read again. The ids of the photos deleted; their files are the caller's to remove, after this has committed."""
+    for _ in range(CHANGE_TRIES):
+        page = db.execute(select(Day.revision, Day.content_enc, Day.locked_at)
+                          .where(Day.user_id == account_id, Day.date == day)).first()
+        if page is not None and page.locked_at is not None:
+            if drop_draft:
+                raise locked_error()
+            return []
+        readable = True
+        held: set[str] = set()
+        if page is not None:
+            content = _readable_content(account_id, dek, day, page.content_enc)
+            readable = content is not None
+            held |= photos_held(content)
+        draft_sealed = None
+        if not drop_draft:
+            draft_sealed = db.scalar(select(Draft.content_enc).where(Draft.user_id == account_id, Draft.date == day))
+            if draft_sealed is not None:
+                try:
+                    held |= photos_held(vault.open_json(dek, draft_sealed, _draft_aad(account_id, day)))
+                except vault.SealError:
+                    unreadable("drafts")
+                    readable = False
+        revision = page.revision if page is not None else None
+        if drop_draft:
+            db.execute(delete(Draft).where(Draft.user_id == account_id, Draft.date == day,
+                                           ~_locked_day(Draft.user_id, Draft.date)))
+        removed: list[str] = []
+        if readable:
+            removed = list(db.scalars(
+                delete(Photo).where(
+                    Photo.user_id == account_id, Photo.date == day, Photo.for_text.is_(True),
+                    Photo.created_at <= now() - TEXT_PHOTO_GRACE,
+                    Photo.uid.not_in(sorted(held)),
+                    ~exists().where(Note.user_id == account_id, Note.photo_id == Photo.uid),
+                    ~_locked_day(account_id, day),
+                    select(Day.revision).where(Day.user_id == account_id, Day.date == day)
+                    .scalar_subquery().is_not_distinct_from(revision),
+                    select(Draft.content_enc).where(Draft.user_id == account_id, Draft.date == day)
+                    .scalar_subquery().is_not_distinct_from(draft_sealed),
+                ).returning(Photo.uid)
+            ))
+        if not removed:
+            # Nothing deleted: because nothing was to go, or because the page or the draft changed in between (then
+            # read again). Asked inside the transaction, which writes and so holds the lock.
+            standing = db.execute(select(Day.revision, Day.locked_at)
+                                  .where(Day.user_id == account_id, Day.date == day)).first()
+            standing_draft = db.scalar(select(Draft.content_enc)
+                                       .where(Draft.user_id == account_id, Draft.date == day))
+            if (standing.revision if standing else None) != revision or standing_draft != draft_sealed or (
+                    standing is not None and standing.locked_at is not None):
+                db.rollback()
+                continue
+        db.commit()
+        return removed
+    if drop_draft:
+        raise error("busy", "nexdiary is busy. Try again in a moment.", 503)
+    return []
 
 
 # --- Search ---------------------------------------------------------------------------------------------------------

@@ -1,20 +1,34 @@
 /** A page of the diary as elements (`lib/markdown.ts` reads it): never HTML, so nothing written becomes markup. Should
  * reading it ever fail, the page shows the text as it was written, in paragraphs, instead of nothing. */
 import { ImageOff } from 'lucide-react'
-import { Component, Fragment, useMemo, useState, type ReactNode } from 'react'
+import { Component, Fragment, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { photoUrl } from '../api/client'
 import { parseBlocks, type Block, type Inline } from '../lib/markdown'
+import { cutLayout, isCut, NO_CUT, ratioValue, type TextCut } from '../lib/textPhoto'
+import { useLightbox, type ViewerPhoto } from './Lightbox'
 
 /** Where the picture of a photo in the text comes from: the person's own photos, or the route of a shared day. */
 export type PhotoSource = (id: string) => string
 
-/** A picture inside a page: full width, with its caption. A photo that is gone (deleted since) shows a quiet
- * placeholder, never a broken image. */
-function TextPhoto({ id, caption, source }: { id: string; caption: string; source: PhotoSource }) {
+/** Opens the big view at one of the photos of the page. */
+type Opener = (index: number, element: HTMLElement) => void
+
+/**
+ * A picture inside a page: as wide as the column, as high as its shape says up to a limit (then narrower, never cut
+ * further), with its caption. A cut (`lib/textPhoto.ts`) shows that part of the original, turned as it was turned; the
+ * original stays whole for the big view a tap opens. A photo that is gone (deleted since) shows a quiet placeholder,
+ * never a broken image.
+ */
+function TextPhoto({ id, caption, cut = NO_CUT, source, onOpen }: { id: string; caption: string; cut?: TextCut; source: PhotoSource; onOpen: (element: HTMLElement) => void }) {
   const { t } = useTranslation()
   const [gone, setGone] = useState(false)
+  const [size, setSize] = useState<[number, number] | null>(null)
+  const layout = size ? cutLayout(size[0], size[1], cut) : null
+  // A cut photo stays out of sight until it can be shown cut: the whole picture never flashes up first.
+  const waiting = !layout && isCut(cut)
+  const frame = layout ? ({ '--cut-ratio': ratioValue(layout.ratio) } as CSSProperties) : undefined
   return (
     <figure className="diary-photo" data-photo={id}>
       {gone ? (
@@ -22,7 +36,18 @@ function TextPhoto({ id, caption, source }: { id: string; caption: string; sourc
           <ImageOff size={18} aria-hidden /> {t('textPhoto.gone')}
         </div>
       ) : (
-        <img src={source(id)} alt={caption} onError={() => setGone(true)} draggable={false} />
+        <button type="button" className="diary-photo-open" onClick={(event) => onOpen(event.currentTarget)} aria-label={caption || t('photoView.open')}>
+          <span className={layout ? 'diary-photo-frame diary-photo-cut' : 'diary-photo-frame'} style={frame}>
+            <img
+              src={source(id)}
+              alt={caption}
+              onError={() => setGone(true)}
+              onLoad={(event) => setSize([event.currentTarget.naturalWidth, event.currentTarget.naturalHeight])}
+              style={layout ? layout.img : waiting ? { visibility: 'hidden' } : undefined}
+              draggable={false}
+            />
+          </span>
+        </button>
       )}
       {caption && <figcaption>{caption}</figcaption>}
     </figure>
@@ -38,19 +63,23 @@ function renderInline(nodes: Inline[]): ReactNode[] {
   })
 }
 
-function renderBlocks(nodes: Block[], source: PhotoSource): ReactNode[] {
+function renderBlocks(nodes: Block[], source: PhotoSource, open: Opener): ReactNode[] {
+  let photo = 0
   return nodes.map((node, index) => {
     switch (node.kind) {
-      case 'photo':
-        return <TextPhoto key={index} id={node.id} caption={node.caption} source={source} />
+      case 'photo': {
+        // Photos stand only at the top of the page: their order there is their place in the big view.
+        const at = photo++
+        return <TextPhoto key={index} id={node.id} caption={node.caption} cut={node.cut} source={source} onOpen={(element) => open(at, element)} />
+      }
       case 'paragraph':
         return <p key={index}>{renderInline(node.children)}</p>
       case 'heading':
         return <h2 key={index}>{renderInline(node.children)}</h2>
       case 'quote':
-        return <blockquote key={index}>{renderBlocks(node.children, source)}</blockquote>
+        return <blockquote key={index}>{renderBlocks(node.children, source, open)}</blockquote>
       case 'list': {
-        const items = node.items.map((item, at) => <li key={at}>{renderBlocks(item, source)}</li>)
+        const items = node.items.map((item, at) => <li key={at}>{renderBlocks(item, source, open)}</li>)
         return node.ordered ? (
           <ol key={index} start={node.start === 1 ? undefined : node.start}>
             {items}
@@ -65,7 +94,13 @@ function renderBlocks(nodes: Block[], source: PhotoSource): ReactNode[] {
 
 function Read({ text, className, source }: { text: string; className: string; source: PhotoSource }) {
   const blocks = useMemo(() => parseBlocks(text), [text])
-  return <div className={className}>{renderBlocks(blocks, source)}</div>
+  const { open } = useLightbox()
+  // The big view shows the whole original of every photo of the text, the one tapped first.
+  const photos = useMemo<ViewerPhoto[]>(
+    () => blocks.flatMap((block) => (block.kind === 'photo' ? [{ id: block.id, src: source(block.id), caption: block.caption || undefined, alt: block.caption || undefined }] : [])),
+    [blocks, source],
+  )
+  return <div className={className}>{renderBlocks(blocks, source, (index, element) => open(photos, index, element))}</div>
 }
 
 const OWN: PhotoSource = (id) => photoUrl(id)

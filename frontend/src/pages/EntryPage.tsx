@@ -4,16 +4,20 @@
  * the notes of the day folded away, and a year ago today. "Bearbeiten" leads into the writing page, "Teilen" opens the
  * dialog.
  */
-import { ChevronDown, Heart, ImageIcon, Lock, PenLine, Share2, Sparkles } from 'lucide-react'
+import { ChevronDown, Crop, Heart, ImageIcon, Lock, PenLine, Share2, Sparkles } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 
-import { ApiError, diaryApi, immichApi, journalApi, photosApi, photoUrl, sharingApi, type DayPage, type DayShares, type ImmichEntry, type ImmichPhoto, type JournalDay, type Note, type Photo, type ValueDef } from '../api/client'
+import { ApiError, diaryApi, immichApi, journalApi, photosApi, photoUrl, sharingApi, type CoverCropValue, type DayPage, type DayShares, type ImmichEntry, type ImmichPhoto, type JournalDay, type Note, type Photo, type ValueDef } from '../api/client'
 import { Avatar } from '../components/Avatar'
+import { CoverCropDialog } from '../components/CropEditor'
 import { LockDialog, LockedMark } from '../components/LockDay'
 import { ImmichPicker } from '../components/ImmichPicker'
 import { Markdown } from '../components/Markdown'
+import { useOwnPhotoViewer } from '../components/ownPhotoViewer'
+import { useDeletePhotos } from '../components/PhotoDelete'
+import { PhotoFigure, PhotoTile } from '../components/PhotoViews'
 import { ShareDialog } from '../components/ShareDialog'
 import { YearAgo } from '../components/YearAgo'
 import { CoverImage, CoverPicker } from '../covers/Cover'
@@ -40,6 +44,8 @@ export function EntryPage() {
   const [share, setShare] = useState(false)
   const [locking, setLocking] = useState(false)
   const [picking, setPicking] = useState(false)
+  /** The cut of the cover photo being chosen. */
+  const [cropping, setCropping] = useState(false)
   /** The whole collection of the own Immich, to pick the cover from (the cover picker closes for it). */
   const [collection, setCollection] = useState(false)
   const immichReady = useImmichReady()
@@ -47,6 +53,7 @@ export function EntryPage() {
   // The photos of the day in the own Immich, asked for only while the cover is being chosen.
   const immich = useImmichDay(date, picking)
   const [yearAgo, setYearAgo] = useState<JournalDay | null>(null)
+  const { confirmDelete } = useDeletePhotos()
 
   const load = useCallback(async () => {
     try {
@@ -76,9 +83,11 @@ export function EntryPage() {
 
   const say = (notice: string) => navigate(location.pathname, { replace: true, state: { notice } })
 
-  const setCover = async (cover: string | null) => {
+  const setCover = async (cover: string | null, crop: CoverCropValue | null = null) => {
     try {
-      const day = await diaryApi.changeDay(date, { cover })
+      // Another cover starts without a cut on the server; the same one keeps its cut unless one is sent (none included).
+      const same = cover === data?.day.cover
+      const day = await diaryApi.changeDay(date, { cover, ...(cover?.startsWith('photo:') && (crop || same) ? { cover_crop: crop } : {}) })
       setData((current) => (current ? { ...current, day } : current))
     } catch (error) {
       setProblem(error instanceof ApiError ? error.code : 'internal_error')
@@ -114,14 +123,16 @@ export function EntryPage() {
     await setCover(`photo:${photo.id}`)
   }
 
+  /** Asks where the photo is used, then deletes it everywhere (title picture, text, notes) and loads the day again. */
   const removePhoto = async (photo: Photo) => {
     try {
-      await photosApi.remove(photo.id)
-      await load()
+      const result = await confirmDelete([photo.id])
+      if (result && result.deleted.length > 0) await load()
     } catch (error) {
       setProblem(error instanceof ApiError ? error.code : 'internal_error')
     }
   }
+  const viewOwn = useOwnPhotoViewer(() => void load())
 
   if (missing)
     return (
@@ -142,6 +153,8 @@ export function EntryPage() {
   // A cover taken from the notes goes to whoever the day is shared with, notes or not: the dialog says so.
   const coverFromNotes = coverPhoto !== null && (onNotes.has(coverPhoto) || photos.some((photo) => photo.id === coverPhoto && photo.on_note))
   const rated = values.filter((value) => day.values[value.id] !== undefined)
+  /** The big view runs through all the photos of this day. */
+  const openPhoto = (id: string, opener: HTMLElement) => viewOwn(photos.map((photo) => ({ id: photo.id })), Math.max(0, photos.findIndex((photo) => photo.id === id)), opener)
   const zone = me?.profile?.timezone
 
   return (
@@ -171,11 +184,21 @@ export function EntryPage() {
       {problem && <p className="mb-4 text-sm text-bad">{errorText(problem)}</p>}
       <article className="card overflow-hidden">
         <div className="group relative">
-          <CoverImage cover={day.cover} large className="aspect-[16/8] w-full" />
+          <CoverImage cover={day.cover} crop={day.cover_crop} large className="aspect-[16/8] w-full" />
+          {coverPhoto && photos.some((photo) => photo.id === coverPhoto) && (
+            <button type="button" onClick={(event) => openPhoto(coverPhoto, event.currentTarget)} className="absolute inset-0 cursor-zoom-in" aria-label={t('photoView.open')} data-cover-open />
+          )}
           {!day.locked && (
-            <button type="button" onClick={() => setPicking(true)} className="absolute right-3 bottom-3 inline-flex items-center gap-1.5 rounded-full bg-black/45 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur hover:bg-black/60">
-              <ImageIcon size={14} aria-hidden /> {t('entry.changeCover')}
-            </button>
+            <span className="absolute right-3 bottom-3 flex gap-2">
+              {coverPhoto && photos.some((photo) => photo.id === coverPhoto) && (
+                <button type="button" onClick={() => setCropping(true)} className="inline-flex items-center gap-1.5 rounded-full bg-black/45 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur hover:bg-black/60" data-cover-crop-open>
+                  <Crop size={14} aria-hidden /> {t('cover.crop.short')}
+                </button>
+              )}
+              <button type="button" onClick={() => setPicking(true)} className="inline-flex items-center gap-1.5 rounded-full bg-black/45 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur hover:bg-black/60">
+                <ImageIcon size={14} aria-hidden /> {t('entry.changeCover')}
+              </button>
+            </span>
           )}
         </div>
         <div className="px-6 py-8 sm:px-12 sm:py-10">
@@ -183,9 +206,9 @@ export function EntryPage() {
           <h1 className="mt-1 mb-6 font-display text-3xl font-semibold tracking-tight break-words sm:text-[2.6rem] sm:leading-tight">{day.title || t('journal.untitled')}</h1>
           <Markdown text={day.text} />
           {dayPhotos.length > 0 && (
-            <div className="mt-6 grid grid-cols-2 gap-3">
+            <div className="mt-6 space-y-4">
               {dayPhotos.map((photo) => (
-                <img key={photo.id} src={photoUrl(photo.id, true)} alt="" className="aspect-[4/3] w-full rounded-xl object-cover" draggable={false} />
+                <PhotoFigure key={photo.id} src={photoUrl(photo.id)} width={photo.width} height={photo.height} alt={t('photos.alt')} onOpen={(opener) => openPhoto(photo.id, opener)} />
               ))}
             </div>
           )}
@@ -252,7 +275,7 @@ export function EntryPage() {
                   <span className="min-w-0 text-ink-2">
                     {note.prompt && <span className="block text-xs font-semibold text-muted">{note.prompt}</span>}
                     {note.text && <span className="break-words whitespace-pre-line">{note.text}</span>}
-                    {note.photo_id && <img src={photoUrl(note.photo_id, true)} alt="" className="mt-1.5 h-16 w-24 rounded-lg object-cover" draggable={false} />}
+                    {note.photo_id && <PhotoTile src={photoUrl(note.photo_id, true)} alt={t('photos.alt')} onOpen={(opener) => openPhoto(note.photo_id as string, opener)} className="mt-1.5 h-16 w-24 rounded-lg" imageClassName="h-full w-full" />}
                   </span>
                 </li>
               ))}
@@ -308,6 +331,23 @@ export function EntryPage() {
                 }
               : undefined
           }
+          onCrop={() => {
+            setPicking(false)
+            setCropping(true)
+          }}
+        />
+      )}
+      {cropping && !day.locked && coverPhoto && (
+        <CoverCropDialog
+          src={photoUrl(coverPhoto, true)}
+          value={day.cover_crop ?? null}
+          width={photos.find((photo) => photo.id === coverPhoto)?.width}
+          height={photos.find((photo) => photo.id === coverPhoto)?.height}
+          onClose={() => setCropping(false)}
+          onDone={(crop) => {
+            setCropping(false)
+            void setCover(day.cover, crop)
+          }}
         />
       )}
       {collection && !day.locked && <ImmichPicker date={date} onClose={() => setCollection(false)} onPick={takeAny} />}

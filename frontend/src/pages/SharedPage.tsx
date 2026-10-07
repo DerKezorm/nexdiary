@@ -10,7 +10,9 @@ import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'reac
 
 import { ApiError, sharedPhotoUrl, sharingApi, type SharedByMe, type SharedDay, type SharedItem } from '../api/client'
 import { Avatar } from '../components/Avatar'
+import { useLightbox } from '../components/Lightbox'
 import { Markdown } from '../components/Markdown'
+import { PhotoFigure, PhotoTile } from '../components/PhotoViews'
 import { CoverImage } from '../covers/Cover'
 import { longDate, timeOf } from '../lib/dates'
 import { errorText } from '../lib/errors'
@@ -74,7 +76,7 @@ export function SharedPage() {
           <div className="grid gap-5 md:grid-cols-2">
             {withMe.map((item) => (
               <Link key={`${item.from.id}/${item.date}`} to={`/geteilt/${item.from.id}/${item.date}`} className="card group flex flex-col overflow-hidden">
-                <CoverImage cover={item.cover} className="aspect-[16/8] w-full" src={(id, preview) => sharedPhotoUrl(item.from.id, item.date, id, preview)} />
+                <CoverImage cover={item.cover} crop={item.cover_crop} className="aspect-[16/8] w-full" src={(id, preview) => sharedPhotoUrl(item.from.id, item.date, id, preview)} />
                 <div className="flex flex-1 flex-col p-5">
                   <div className="flex items-center gap-2.5">
                     <Avatar person={item.from} size={30} />
@@ -102,7 +104,7 @@ export function SharedPage() {
         <div className="card divide-y divide-line overflow-hidden">
           {byMe.map((item) => (
             <div key={item.date} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-4">
-              <CoverImage cover={item.cover} className="h-14 w-20 shrink-0 rounded-lg" />
+              <CoverImage cover={item.cover} crop={item.cover_crop} className="h-14 w-20 shrink-0 rounded-lg" />
               <Link to={`/tag/${item.date}`} className="min-w-0 flex-1">
                 <div className="truncate font-display text-lg font-semibold hover:text-accent">{item.title || t('journal.untitled')}</div>
                 <div className="text-xs text-muted">{longDate(item.date, i18n.language, true)}</div>
@@ -144,6 +146,7 @@ export function SharedEntryPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const { refresh } = useShared()
+  const { open } = useLightbox()
   const owner = /^\d{1,12}$/.test(from) ? Number(from) : null
   const [day, setDay] = useState<SharedDay | null>(null)
   const [gone, setGone] = useState(false)
@@ -181,6 +184,15 @@ export function SharedEntryPage() {
 
   const hearted = day.heart !== null
   const src = (id: string, preview: boolean) => sharedPhotoUrl(owner, date, id, preview)
+  /** The big view runs through the photos of this day that came with the share: the originals, through the share. */
+  const coverPhoto = day.cover.startsWith('photo:') ? day.cover.slice('photo:'.length) : null
+  const gallery = [...day.photos.map((photo) => photo.id), ...[coverPhoto, ...(day.notes ?? []).map((note) => note.photo_id)].filter((id): id is string => Boolean(id) && !day.photos.some((photo) => photo.id === id))].filter((id, index, all) => all.indexOf(id) === index)
+  const openPhoto = (id: string, opener: HTMLElement) =>
+    open(
+      gallery.map((photoId) => ({ id: photoId, src: src(photoId, false) })),
+      Math.max(0, gallery.indexOf(id)),
+      opener,
+    )
   const toggle = async () => {
     if (busy) return
     setBusy(true)
@@ -208,7 +220,12 @@ export function SharedEntryPage() {
       </div>
       {problem && <p className="mb-4 text-sm text-bad">{errorText(problem)}</p>}
       <article className="card overflow-hidden">
-        <CoverImage cover={day.cover} large className="aspect-[16/8] w-full" src={src} />
+        <div className="relative">
+          <CoverImage cover={day.cover} crop={day.cover_crop} large className="aspect-[16/8] w-full" src={src} />
+          {coverPhoto && (
+            <button type="button" onClick={(event) => openPhoto(coverPhoto, event.currentTarget)} className="absolute inset-0 cursor-zoom-in" aria-label={t('photoView.open')} data-cover-open />
+          )}
+        </div>
         <div className="px-6 py-8 sm:px-12 sm:py-10">
           <div className="flex items-center gap-3">
             <Avatar person={day.from} size={40} />
@@ -220,9 +237,9 @@ export function SharedEntryPage() {
           <h1 className="mt-6 mb-6 font-display text-3xl font-semibold tracking-tight break-words sm:text-[2.6rem] sm:leading-tight">{day.title || t('journal.untitled')}</h1>
           <Markdown text={day.text} photo={(id) => src(id, false)} />
           {day.photos.length > 0 && (
-            <div className="mt-6 grid grid-cols-2 gap-3">
+            <div className="mt-6 space-y-4">
               {day.photos.map((photo) => (
-                <img key={photo.id} src={src(photo.id, true)} alt="" className="aspect-[4/3] w-full rounded-xl object-cover" draggable={false} />
+                <PhotoFigure key={photo.id} src={src(photo.id, false)} width={photo.width} height={photo.height} alt={t('photos.alt')} onOpen={(opener) => openPhoto(photo.id, opener)} />
               ))}
             </div>
           )}
@@ -259,7 +276,7 @@ export function SharedEntryPage() {
                   <span className="min-w-0 text-ink-2">
                     {note.prompt && <span className="block text-xs font-semibold text-muted">{note.prompt}</span>}
                     {note.text && <span className="break-words whitespace-pre-line">{note.text}</span>}
-                    {note.photo_id && <img src={src(note.photo_id, true)} alt="" className="mt-1.5 h-16 w-24 rounded-lg object-cover" draggable={false} />}
+                    {note.photo_id && <PhotoTile src={src(note.photo_id, true)} alt={t('photos.alt')} onOpen={(opener) => openPhoto(note.photo_id as string, opener)} className="mt-1.5 h-16 w-24 rounded-lg" imageClassName="h-full w-full" />}
                   </span>
                 </li>
               ))}

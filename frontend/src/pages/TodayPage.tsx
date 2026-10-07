@@ -20,6 +20,9 @@ import { ImmichPicker } from '../components/ImmichPicker'
 import { LockedMark } from '../components/LockDay'
 import { NightDialog, NightHint } from '../components/NightChoice'
 import { NoteMenu } from '../components/NoteMenu'
+import { useOwnPhotoViewer } from '../components/ownPhotoViewer'
+import { useDeletePhotos } from '../components/PhotoDelete'
+import { PhotoTile } from '../components/PhotoViews'
 import { Scale } from '../components/Scale'
 import { TagPicker } from '../components/TagPicker'
 import { longDate, timeOf } from '../lib/dates'
@@ -32,6 +35,18 @@ import { useAiState } from '../state/ai'
 import { useImmichDay } from '../state/immich'
 import { useAuth } from '../state/auth'
 import { useToday, type TodayState } from '../state/today'
+
+/** The big view of a photo of today: it runs through all the photos of the day; a deleted one is gone from the page. */
+function useTodayViewer(today: TodayState) {
+  const viewOwn = useOwnPhotoViewer(() => void today.load())
+  const photos = today.data?.photos ?? []
+  return (id: string, opener: HTMLElement) =>
+    viewOwn(
+      photos.map((photo) => ({ id: photo.id })),
+      Math.max(0, photos.findIndex((photo) => photo.id === id)),
+      opener,
+    )
+}
 
 /** Morning until eleven, the day until six, then the evening: the greeting of "Today". */
 // eslint-disable-next-line react-refresh/only-export-components
@@ -306,6 +321,8 @@ function PhotosBlock({ today, bare = false }: { today: TodayState; bare?: boolea
   // What was uploaded lately, not what was shot today: Immich often receives a phone's photos hours late.
   const immich = useImmichDay(today.data?.date, true, 'recent')
   const [choosing, setChoosing] = useState(false)
+  const view = useTodayViewer(today)
+  const { confirmDelete } = useDeletePhotos()
   // The photos of the day itself; a photo that came with a note stands with its note.
   const onNotes = new Set((today.data?.notes ?? []).map((note) => note.photo_id).filter(Boolean))
   const photos = (today.data?.photos ?? []).filter((photo) => !photo.on_note && !onNotes.has(photo.id))
@@ -375,11 +392,15 @@ function PhotosBlock({ today, bare = false }: { today: TodayState; bare?: boolea
         })}
         {own.map((photo) => (
           <div key={photo.id} className="group relative shrink-0 overflow-hidden rounded-xl">
-            <img src={photoUrl(photo.id, true)} alt={t('photos.alt')} className="h-24 w-32 object-cover" draggable={false} />
-            <span className="absolute bottom-1 left-1.5 rounded bg-black/35 px-1 text-[0.68rem] font-bold text-white">{timeOf(photo.created_at, me?.profile?.timezone)}</span>
+            <PhotoTile src={photoUrl(photo.id, true)} alt={t('photos.alt')} onOpen={(opener) => view(photo.id, opener)} className="block h-24 w-32" imageClassName="h-full w-full" />
+            <span className="pointer-events-none absolute bottom-1 left-1.5 rounded bg-black/35 px-1 text-[0.68rem] font-bold text-white">{timeOf(photo.created_at, me?.profile?.timezone)}</span>
             <button
               type="button"
-              onClick={() => void today.deletePhoto(photo.id)}
+              onClick={() =>
+                void confirmDelete([photo.id]).then((result) => {
+                  if (result && result.deleted.length > 0) void today.load()
+                })
+              }
               className="absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-black/35 text-white opacity-0 group-hover:opacity-100 focus:opacity-100 [@media(hover:none)]:opacity-100"
               aria-label={t('photos.delete')}
             >
@@ -527,6 +548,7 @@ function Timeline({ today }: { today: TodayState }) {
 function NoteRow({ note, today }: { note: Note; today: TodayState }) {
   const { t } = useTranslation()
   const { me } = useAuth()
+  const view = useTodayViewer(today)
   const box = useRef<HTMLParagraphElement>(null)
   // The text in the box is the page's while it is being changed; the note's text again when it changes from outside.
   useLayoutEffect(() => {
@@ -567,7 +589,7 @@ function NoteRow({ note, today }: { note: Note; today: TodayState }) {
           className="leading-relaxed break-words whitespace-pre-wrap text-ink focus:outline-none"
         />
         )}
-        {note.photo_id && <img src={photoUrl(note.photo_id, true)} alt={t('photos.alt')} className="mt-2 h-24 w-36 rounded-lg object-cover" draggable={false} />}
+        {note.photo_id && <PhotoTile src={photoUrl(note.photo_id, true)} alt={t('photos.alt')} onOpen={(opener) => view(note.photo_id as string, opener)} className="mt-2 h-24 w-36 rounded-lg" imageClassName="h-full w-full" />}
       </div>
       <NoteMenu note={note} today={today} />
       <button
@@ -585,6 +607,7 @@ function NoteRow({ note, today }: { note: Note; today: TodayState }) {
 function Bubbles({ today }: { today: TodayState }) {
   const { t } = useTranslation()
   const { me } = useAuth()
+  const view = useTodayViewer(today)
   const notes = today.data?.notes ?? []
   return (
     <div className="space-y-2.5">
@@ -607,7 +630,7 @@ function Bubbles({ today }: { today: TodayState }) {
               <Trash2 size={14} />
             </button>
             <div className="max-w-[85%] rounded-[1.3rem] rounded-br-md bg-accent-soft px-4 py-2.5 text-ink">
-              {note.photo_id && <img src={photoUrl(note.photo_id, true)} alt={t('photos.alt')} className="mb-2 aspect-[16/10] w-56 max-w-full rounded-xl object-cover" draggable={false} />}
+              {note.photo_id && <PhotoTile src={photoUrl(note.photo_id, true)} alt={t('photos.alt')} onOpen={(opener) => view(note.photo_id as string, opener)} className="mb-2 block aspect-[16/10] w-56 max-w-full rounded-xl" imageClassName="h-full w-full" />}
               {note.unreadable ? <p className="text-muted italic">{t('today.unreadable')}</p> : note.text && <p className="leading-relaxed break-words whitespace-pre-wrap">{note.text}</p>}
               <p className="mt-0.5 text-right text-[0.7rem] font-bold text-muted tabular-nums">{timeOf(note.created_at, me?.profile?.timezone)}</p>
             </div>

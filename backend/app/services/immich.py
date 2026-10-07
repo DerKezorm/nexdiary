@@ -727,18 +727,19 @@ def _download(db: Session, account_id: int, link: Link, asset: str, original: bo
 
 
 def take(db: Session, account_id: int, dek: bytes, asset: str, day: str, zone: tzinfo, moment: datetime,
-         on_note: bool = False, *, anywhen: bool = False) -> tuple[dict[str, Any], bool]:
+         on_note: bool = False, *, anywhen: bool = False, for_text: bool = False) -> tuple[dict[str, Any], bool]:
     """Copies one photo of the person's own Immich to a day: checked to be a still picture of that day (with
     ``anywhen``: a still picture taken whenever, which then belongs to the day it is taken for), fetched,
     drawn anew without anything but its pixels and sealed (``photos``). The same photo taken again for the same
     purpose returns the photo that stands. An original nexdiary does not take (a RAW file, one too large) is taken
-    from the large picture Immich made of it."""
+    from the large picture Immich made of it. With ``for_text`` it is taken for a picture in the text (it goes again
+    when nothing holds it); the same photo taken for the day without it is chosen on purpose and stays."""
     link = _usable(db, account_id, dek)
     brakes.take("upload", account_id)
     key = asset_key(dek, asset, day, NOTE_PURPOSE if on_note else DAY_PURPOSE)
     existing = photos.by_asset(db, account_id, key)
     if existing is not None:
-        return existing, False
+        return (existing if for_text else photos.chosen(db, account_id, existing)), False
     info = _get_json(db, account_id, link, "GET", f"/api/assets/{asset}", "asset")
     if isinstance(info, dict) and str(info.get("id") or "").lower() != asset:
         raise fail("immich_unreadable", 502)
@@ -765,7 +766,8 @@ def take(db: Session, account_id: int, dek: bytes, asset: str, day: str, zone: t
                 drawn = photos.draw(preview or b"")
             except pictures.PictureError as exc:
                 raise fail("immich_not_a_picture", 422) from exc
-    return photos.add(db, account_id, dek, day, None, drawn, moment, on_note, source="immich", asset_key=key)
+    return photos.add(db, account_id, dek, day, None, drawn, moment, on_note, source="immich", asset_key=key,
+                      for_text=for_text)
 
 
 def probe(db: Session, account_id: int, dek: bytes, day: str, zone: tzinfo) -> dict[str, Any]:

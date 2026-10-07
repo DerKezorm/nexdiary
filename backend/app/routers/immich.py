@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
 
 from ..deps import Account, DbSession, OperatorAccount
+from ..errors import error
 from ..services import diary, immich, immich_browse, vault
 
 router = APIRouter(prefix="/api", tags=["immich"])
@@ -40,6 +41,8 @@ class TakeIn(Strict):
     note: bool = False
     #: A photo of the whole collection, whenever it was taken: it belongs to the day it is taken for.
     anywhen: bool = False
+    #: For a picture in the text of the page: it goes again when the page is saved and nothing holds it.
+    text: bool = False
 
 
 class SearchIn(Strict):
@@ -130,10 +133,13 @@ async def thumbnail(asset: str, account: Account, db: DbSession) -> Response:
 
 @router.post("/immich/photos/{asset}", summary="Take a photo of the own Immich for a day: it is copied now")
 def take(asset: str, payload: TakeIn, response: Response, account: Account, db: DbSession) -> dict[str, Any]:
+    if payload.note and payload.text:
+        raise error("invalid_input", "The input is not valid.", 422, fields=["text"])
     day = diary.check_date(account, payload.date) if payload.date else diary.note_day(account).isoformat()
     diary.ensure_open(db, account.id, day)
     photo, new = immich.take(db, account.id, vault.dek_for(account.id), immich.check_asset(asset), day,
-                             diary.zone_of(account), diary.now(), payload.note, anywhen=payload.anywhen)
+                             diary.zone_of(account), diary.now(), payload.note, anywhen=payload.anywhen,
+                             for_text=payload.text)
     response.status_code = 201 if new else 200
     return photo
 

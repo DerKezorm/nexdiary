@@ -5,13 +5,13 @@
 import { ApiError, photosApi, type Photo } from '../api/client'
 import { newId } from './ids'
 
-export async function uploadPhoto(file: Blob, date?: string, forNote = false): Promise<Photo> {
+export async function uploadPhoto(file: Blob, date?: string, forNote = false, forText = false): Promise<Photo> {
   const id = newId()
   try {
-    return await photosApi.upload(file, id, date, forNote)
+    return await photosApi.upload(file, id, date, forNote, forText)
   } catch (error) {
     if (!(error instanceof ApiError && error.code === 'network')) throw error
-    return await photosApi.upload(file, id, date, forNote)
+    return await photosApi.upload(file, id, date, forNote, forText)
   }
 }
 

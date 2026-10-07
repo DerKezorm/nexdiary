@@ -243,3 +243,101 @@ describe('the button "Bild einfügen"', () => {
     expect(open().disabled).toBe(true)
   })
 })
+
+describe('cutting a photo in the editor', () => {
+  /** The picture's size once it has loaded, as a browser would give it. */
+  function load(img: HTMLImageElement, width: number, height: number): void {
+    Object.defineProperty(img, 'naturalWidth', { value: width, configurable: true })
+    Object.defineProperty(img, 'naturalHeight', { value: height, configurable: true })
+    Object.defineProperty(img, 'complete', { value: true, configurable: true })
+    act(() => {
+      img.dispatchEvent(new Event('load'))
+    })
+  }
+  const dialog = () => document.querySelector<HTMLElement>('[role=dialog]')
+  const button = (scope: ParentNode, name: string) => [...scope.querySelectorAll<HTMLButtonElement>('button')].find((item) => item.textContent?.trim() === name || item.getAttribute('aria-label') === name)!
+
+  it('reads a cut and writes the same line back', async () => {
+    const handle = createRef<DiaryEditorHandle>()
+    const text = `Vorher.\n\n![Mia](photo:${ID}#crop=100,200,300,400&rot=90)\n\n![Ben](photo:${OTHER}#rot=180)`
+    await show(text, handle)
+    expect(markdown(handle)).toBe(text)
+  })
+
+  it('drops a fragment that is not a cut and keeps the photo', async () => {
+    const handle = createRef<DiaryEditorHandle>()
+    await show(`![Mia](photo:${ID}#rot=45)\n\n![x](photo:${OTHER}#crop=1,2,30,40&x=1)\n\n![y](photo:${ID}#rot=90&rot=90)\n\n![z](photo:${ID}#crop=1,2,30,40;--x:url(y))`, handle)
+    expect(markdown(handle)).toBe(`![Mia](photo:${ID})\n\n![x](photo:${OTHER})\n\n![y](photo:${ID})\n\n![z](photo:${ID})`)
+  })
+
+  it('writes no cut that is not one, whatever the block was given', async () => {
+    const handle = createRef<DiaryEditorHandle>()
+    await show(`![Mia](photo:${ID}#rot=90)`, handle)
+    for (const cut of ['rot=45', 'crop=1,2,30,40;background:red', 'rot=90&rot=90']) {
+      act(() =>
+        handle.current!.withView((view) => {
+          view.dispatch(view.state.tr.setNodeMarkup(0, undefined, { ...view.state.doc.firstChild!.attrs, cut }))
+        }),
+      )
+      expect(markdown(handle)).toBe(`![Mia](photo:${ID})`)
+    }
+  })
+
+  it('shows the cut in the block, from the original', async () => {
+    const editable = await show(`![Mia](photo:${ID}#crop=500,0,500,1000)`)
+    const img = editable.querySelector<HTMLImageElement>('figure img')!
+    expect(img.getAttribute('src')).toBe(`/api/photos/${ID}`)
+    load(img, 4000, 3000)
+    const frame = editable.querySelector<HTMLElement>('.diary-photo-cut')!
+    expect(frame.style.getPropertyValue('--cut-ratio')).toBe('0.66667')
+    expect([img.style.left, img.style.width, img.style.transform]).toEqual(['0%', '200%', 'translate(-50%, -50%)'])
+  })
+
+  it('opens the dialog on "Zuschneiden", turns, cuts with the keyboard and writes the cut on "Fertig"', async () => {
+    const handle = createRef<DiaryEditorHandle>()
+    const editable = await show(`Text.\n\n![Mia](photo:${ID})`, handle)
+    load(editable.querySelector<HTMLImageElement>('figure img')!, 4000, 3000)
+    await act(async () => button(editable.querySelector('figure')!, 'Zuschneiden').click())
+    const open = await until(dialog, 'the dialog')
+    expect(open.getAttribute('aria-label')).toBe('Bild zuschneiden')
+    // The smaller copy, to learn its size.
+    const copy = open.querySelector<HTMLImageElement>('img')!
+    expect(copy.getAttribute('src')).toBe(`/api/photos/${ID}/preview`)
+    load(copy, 400, 300)
+    const stage = await until(() => open.querySelector<HTMLElement>('[data-text-crop-stage]'), 'the stage')
+    expect(stage.querySelector('img')!.getAttribute('src')).toBe(`/api/photos/${ID}/preview`)
+    await act(async () => button(open, 'Drehen').click())
+    expect(stage.querySelector('img')!.style.transform).toBe('translate(-50%, -50%) rotate(90deg)')
+    const cut = open.querySelector<HTMLElement>('[data-text-crop-rect]')!
+    await act(async () => {
+      cut.dispatchEvent(new KeyboardEvent('keydown', { key: '-', bubbles: true }))
+    })
+    await act(async () => {
+      cut.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }))
+    })
+    await act(async () => button(open, 'Fertig').click())
+    expect(dialog()).toBeNull()
+    // A tenth smaller around the middle, then ten thousandths to the left.
+    expect(markdown(handle)).toBe(`Text.\n\n![Mia](photo:${ID}#crop=35,45,909,909&rot=90)`)
+    // The block shows the new cut at once.
+    expect(editable.querySelector<HTMLElement>('.diary-photo-cut')!.style.getPropertyValue('--cut-ratio')).toBe('0.75')
+  })
+
+  it('changes nothing on "Abbrechen", and "Zurücksetzen" takes the cut away', async () => {
+    const handle = createRef<DiaryEditorHandle>()
+    const editable = await show(`![Mia](photo:${ID}#crop=100,100,500,500&rot=270)`, handle)
+    await act(async () => button(editable.querySelector('figure')!, 'Zuschneiden').click())
+    let open = await until(dialog, 'the dialog')
+    load(open.querySelector<HTMLImageElement>('img')!, 400, 300)
+    await act(async () => button(open, 'Drehen').click())
+    await act(async () => button(open, 'Abbrechen').click())
+    expect(dialog()).toBeNull()
+    expect(markdown(handle)).toBe(`![Mia](photo:${ID}#crop=100,100,500,500&rot=270)`)
+    await act(async () => button(editable.querySelector('figure')!, 'Zuschneiden').click())
+    open = await until(dialog, 'the dialog')
+    load(open.querySelector<HTMLImageElement>('img')!, 400, 300)
+    await act(async () => button(open, 'Zurücksetzen').click())
+    await act(async () => button(open, 'Fertig').click())
+    expect(markdown(handle)).toBe(`![Mia](photo:${ID})`)
+  })
+})

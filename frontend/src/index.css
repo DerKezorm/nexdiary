@@ -209,6 +209,36 @@ body {
     border-radius: 1rem;
     background: var(--sheet-2);
   }
+  /* A photo of the text: the column's width, its own shape up to a sensible height (then narrower, never cut). With
+     a cut (`lib/textPhoto.ts`) the frame takes the cut's shape and hides the rest of the original. */
+  .diary-photo-open {
+    display: block;
+    width: 100%;
+    cursor: zoom-in;
+    border-radius: 1rem;
+  }
+  .diary-photo-frame {
+    display: block;
+  }
+  .diary-photo .diary-photo-frame:not(.diary-photo-cut) img {
+    width: auto;
+    max-width: 100%;
+    max-height: min(34rem, 75vh);
+    margin-inline: auto;
+  }
+  .diary-photo-cut {
+    position: relative;
+    overflow: hidden;
+    margin-inline: auto;
+    border-radius: 1rem;
+    background: var(--sheet-2);
+    aspect-ratio: var(--cut-ratio);
+    width: min(100%, calc(min(34rem, 75vh) * var(--cut-ratio)));
+  }
+  .diary-photo .diary-photo-cut img {
+    border-radius: 0;
+    background: transparent;
+  }
   .diary-photo figcaption {
     margin-top: 0.55em;
     text-align: center;

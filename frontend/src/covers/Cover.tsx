@@ -3,13 +3,14 @@
  * Every day has a cover: its own photo, or one of the illustrations (`drawings.tsx`). As the mock's `Cover.tsx`: the
  * picture itself, and the picker with the day's photos, what fits the day, a search and filters over all of them.
  */
-import { Check, ImageIcon, ImagePlus, Images, Loader2, Search, Trash2 } from 'lucide-react'
+import { Check, Crop, ImageIcon, ImagePlus, Images, Loader2, Search, Trash2 } from 'lucide-react'
 import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { immichThumbUrl, photoUrl, type ImmichPhoto, type Photo } from '../api/client'
 import { Dialog } from '../components/Dialog'
 import { errorText } from '../lib/errors'
+import { coverCropOf, coverStyle, isCoverMiddle, type CoverCrop } from '../lib/textPhoto'
 import { PHOTO_ACCEPT } from '../lib/upload'
 import { Illustration, useIlluName } from './drawings'
 import { ALL_ILLUS, GROUPS, ILLU, isIllustration, MOTIFS, PHOTO, photoOf, SEASONS, seasonOf, suggestIllus, TIMES, type Season, type Time } from './suggest'
@@ -20,21 +21,32 @@ export function defaultCover(date: string, tags: string[], photos: Photo[], time
 }
 
 /** A cover as a picture: an own photo (the large one or its smaller copy) or an illustration. A photo of a day shared
- * by somebody else comes through the share (`src`), never through the owner's own address. */
+ * by somebody else comes through the share (`src`), never through the owner's own address. A photo with its own cut
+ * (`crop`, `lib/textPhoto.ts`) shows that part in every frame, whatever its shape: the frame holds on to the same
+ * point of the photo and zooms around it. */
 export function CoverImage({
   cover,
+  crop = null,
   className = '',
   large = false,
   alt = '',
   src = photoUrl,
 }: {
   cover: string
+  crop?: CoverCrop | null
   className?: string
   large?: boolean
   alt?: string
   src?: (id: string, preview: boolean) => string
 }) {
   const photo = photoOf(cover)
+  const cut = photo ? coverCropOf(crop) : null
+  if (photo && cut && !isCoverMiddle(cut))
+    return (
+      <span className={`block overflow-hidden ${className}`} data-cover-crop>
+        <img src={src(photo, !large)} alt={alt} className="block h-full w-full object-cover" style={coverStyle(cut)} draggable={false} />
+      </span>
+    )
   if (photo) return <img src={src(photo, !large)} alt={alt} className={`object-cover ${className}`} draggable={false} />
   return <Illustration id={isIllustration(cover) ? cover.slice(ILLU.length) : 'baum.abend.herbst'} className={className} />
 }
@@ -55,6 +67,7 @@ export function CoverPicker({
   onMoreImmich,
   taking = null,
   problem = null,
+  onCrop,
 }: {
   date: string
   tags: string[]
@@ -78,6 +91,8 @@ export function CoverPicker({
   taking?: string | null
   /** What went wrong taking a photo of Immich. */
   problem?: { code: string; values: Record<string, unknown> } | null
+  /** Opens the editor of the cut, offered while the cover is a photo (the page closes this dialog for it). */
+  onCrop?: () => void
 }) {
   const { t } = useTranslation()
   const illuName = useIlluName()
@@ -123,6 +138,11 @@ export function CoverPicker({
   return (
     <Dialog title={t('covers.title')} onClose={onClose} wide>
       <p className="-mt-2 mb-4 text-sm text-ink-2">{t('covers.intro', { count: ALL_ILLUS.length })}</p>
+      {onCrop && photoOf(value) && (
+        <button type="button" onClick={onCrop} className="mb-4 inline-flex h-9 items-center gap-1.5 rounded-full bg-accent-soft px-4 text-sm font-semibold text-accent hover:brightness-[0.98]" data-cover-crop-open>
+          <Crop size={15} aria-hidden /> {t('cover.crop.open')}
+        </button>
+      )}
       {problem && (
         <p role="alert" className="mb-4 rounded-xl border border-bad/40 bg-bad/10 px-3 py-2 text-sm text-bad">
           {errorText(problem.code, problem.values)}

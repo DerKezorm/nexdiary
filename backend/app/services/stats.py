@@ -275,7 +275,8 @@ def _value_view(value: dict[str, Any]) -> dict[str, str]:
 def _day_card(item: dict[str, Any] | None, rating: int | None = None) -> dict[str, Any] | None:
     if item is None:
         return None
-    card = {"date": item["date"], "title": item["title"], "excerpt": item["excerpt"], "cover": item["cover"]}
+    card = {"date": item["date"], "title": item["title"], "excerpt": item["excerpt"], "cover": item["cover"],
+            "cover_crop": item.get("cover_crop")}
     if rating is not None:
         card["value"] = rating
     return card

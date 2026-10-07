@@ -5,13 +5,14 @@
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 
+import type { CoverCropValue } from '../api/client'
 import { CoverImage } from '../covers/Cover'
 
-export function YearAgo({ day, roomy = false }: { day: { date: string; title: string; cover: string; excerpt?: string }; roomy?: boolean }) {
+export function YearAgo({ day, roomy = false }: { day: { date: string; title: string; cover: string; cover_crop?: CoverCropValue | null; excerpt?: string }; roomy?: boolean }) {
   const { t } = useTranslation()
   return (
     <Link to={`/tag/${day.date}`} className={`card flex items-center gap-4 hover:border-accent ${roomy ? 'p-5' : 'mt-6 p-4'}`}>
-      <CoverImage cover={day.cover} className={`h-16 shrink-0 ${roomy ? 'w-24 rounded-xl' : 'w-20 rounded-lg'}`} />
+      <CoverImage cover={day.cover} crop={day.cover_crop} className={`h-16 shrink-0 ${roomy ? 'w-24 rounded-xl' : 'w-20 rounded-lg'}`} />
       <div className="min-w-0">
         <div className="text-xs font-bold tracking-wide text-accent uppercase">{t('entry.yearAgo')}</div>
         <div className="truncate font-display text-lg font-semibold">{day.title || t('journal.untitled')}</div>

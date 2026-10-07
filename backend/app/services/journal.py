@@ -34,12 +34,14 @@ def _item(day: str, content: dict[str, Any] | None, photo_ids: set[str], first: 
           shared_with: list[dict[str, Any]], locked: bool) -> dict[str, Any]:
     shown = content or diary.empty_day()
     rating = shown["values"].get(first["id"]) if first else None
+    cover, chosen = diary.effective_cover(day, shown, photo_ids)
     return {
         "date": day,
         "title": shown["title"],
         "excerpt": diary.excerpt(shown["text"]),
         "tags": shown["tags"],
-        "cover": diary.effective_cover(day, shown, photo_ids)[0],
+        "cover": cover,
+        "cover_crop": diary.shown_crop(shown, chosen),
         "written_by": shown["written_by"],
         "first_value": {"name": first["name"], "value": rating} if first and isinstance(rating, int) else None,
         "shared_with": shared_with,

@@ -110,6 +110,8 @@ async function click(element: Element | null | undefined): Promise<void> {
 }
 
 const button = (label: string, inside: ParentNode = box) => [...inside.querySelectorAll('button')].find((candidate) => candidate.textContent === label)
+/** The tooltip of a chart: drawn into the body, outside every card. */
+const tip = () => document.querySelector<HTMLElement>('[data-chart-tip]')
 const panel = (title: string) => [...box.querySelectorAll('section')].find((section) => section.querySelector('h2')?.textContent === title)
 
 beforeEach(async () => {
@@ -210,16 +212,16 @@ describe('the year as a calendar', () => {
     const today = squares.find((square) => square.getAttribute('data-date') === '2026-10-06')!
     expect(today.getAttribute('stroke')).toBe('var(--ink)')
     await click(today)
-    expect(panel('Dein halbes Jahr')!.textContent).toContain('Dienstag, 6. Oktober')
-    expect(panel('Dein halbes Jahr')!.textContent).toContain('Laune 9')
+    expect(tip()!.textContent).toContain('Dienstag, 6. Oktober')
+    expect(tip()!.textContent).toContain('Laune 9')
     expect(box.querySelectorAll('img[src="x"]')).toHaveLength(0)
     expect((window as { __xss?: number }).__xss).toBeUndefined()
     // A day without a page says so.
     await click(squares.find((square) => square.getAttribute('data-date') === '2026-10-03'))
-    expect(panel('Dein halbes Jahr')!.textContent).toContain('nichts geschrieben')
+    expect(tip()!.textContent).toContain('nichts geschrieben')
     // A second tap on the same square takes the tip away.
     await click(squares.find((square) => square.getAttribute('data-date') === '2026-10-03'))
-    expect(panel('Dein halbes Jahr')!.textContent).not.toContain('nichts geschrieben')
+    expect(tip()).toBeNull()
   })
 
   it('shades by the value, and by "written" in the other mode', async () => {
@@ -248,16 +250,15 @@ describe('one value over time', () => {
     await act(async () => {
       svg.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: 720 }))
     })
-    const tip = panel('Laune im Verlauf')!.querySelector('[role="status"]')!
-    expect(tip.textContent).toBe('Dienstag, 6. OktoberLaune 8 · Schnitt 7,0')
+    expect(tip()!.textContent).toBe('Dienstag, 6. OktoberLaune 8 · Schnitt 7,0')
     await act(async () => {
       svg.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 26 + (686 * 88) / 89 }))
     })
-    expect(panel('Laune im Verlauf')!.querySelector('[role="status"]')!.textContent).toBe('Montag, 5. OktoberLaune 6 · Schnitt 6,0')
+    expect(tip()!.textContent).toBe('Montag, 5. OktoberLaune 6 · Schnitt 6,0')
     await act(async () => {
       svg.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: 26 + (686 * 87) / 89 }))
     })
-    expect(panel('Laune im Verlauf')!.querySelector('[role="status"]')!.textContent).toContain('kein Wert · Schnitt –')
+    expect(tip()!.textContent).toContain('kein Wert · Schnitt –')
   })
 
   it('breaks the line where the mean has no week behind it and draws a dot for each rating', async () => {
@@ -296,11 +297,11 @@ describe('the line and the finger', () => {
     await act(async () => {
       svg.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: 700 }))
     })
-    expect(panel('Laune im Verlauf')!.querySelector('[role="status"]')).not.toBeNull()
+    expect(tip()).not.toBeNull()
     await leave('touch')
-    expect(panel('Laune im Verlauf')!.querySelector('[role="status"]')).not.toBeNull()
+    expect(tip()).not.toBeNull()
     await leave('mouse')
-    expect(panel('Laune im Verlauf')!.querySelector('[role="status"]')).toBeNull()
+    expect(tip()).toBeNull()
   })
 })
 
@@ -351,6 +352,81 @@ describe('dates and weekdays on the axes follow the language', () => {
     expect(texts).not.toContain('Mo')
     expect(texts).not.toContain('We')
     expect([...panel('Your weekdays')!.querySelectorAll('.flex.h-44 > div')].map((bar) => bar.lastElementChild!.textContent)).toEqual(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
+  })
+})
+
+describe('the tooltips stay in the window', () => {
+  const TIP = { width: 256, height: 48 }
+
+  /** jsdom lays nothing out: sizes are told here. The window is `width` wide; the square pointed at is `square`. */
+  function layout(width: number, square: Partial<DOMRect>): void {
+    Object.defineProperty(document.documentElement, 'clientWidth', { value: width, configurable: true })
+    Object.defineProperty(document.documentElement, 'clientHeight', { value: 800, configurable: true })
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      return (this.hasAttribute('data-chart-tip') ? { left: 0, top: 0, ...TIP } : { left: 0, top: 0, width: 0, height: 0 }) as DOMRect
+    })
+    vi.spyOn(SVGElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: SVGElement) {
+      return { left: 0, top: 0, width: 0, height: 0, ...(this.hasAttribute('data-date') ? square : {}) } as DOMRect
+    })
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  const lastSquare = () => [...box.querySelectorAll('rect')].find((square) => square.getAttribute('data-date') === '2026-10-06')!
+
+  it('keeps a tooltip at the right edge of a wide window inside it', async () => {
+    layout(1440, { left: 1425, top: 300, width: 15, height: 15 })
+    await show()
+    await click(lastSquare())
+    const style = tip()!.style
+    // Centred over the square it would reach beyond the window: pushed back by the margin.
+    expect(parseFloat(style.left)).toBe(1440 - TIP.width - 8)
+    expect(parseFloat(style.top)).toBe(300 - 6 - TIP.height)
+  })
+
+  it('keeps it inside a 390 px window too, and under the square when there is no room above', async () => {
+    layout(390, { left: 370, top: 20, width: 15, height: 15 })
+    await show()
+    await click(lastSquare())
+    const style = tip()!.style
+    expect(parseFloat(style.left)).toBe(390 - TIP.width - 8)
+    expect(parseFloat(style.top)).toBe(20 + 15 + 6)
+  })
+
+  it('is not in the scrolling card at all: the tooltip hangs on the body and is fixed', async () => {
+    layout(1440, { left: 1425, top: 300, width: 15, height: 15 })
+    await show()
+    await click(lastSquare())
+    const scroller = lastSquare().closest('.overflow-x-auto')!
+    expect(scroller).not.toBeNull()
+    expect(scroller.querySelector('[role="status"]')).toBeNull()
+    expect(tip()!.parentElement).toBe(document.body)
+    expect(box.contains(tip())).toBe(false)
+    expect(tip()!.className).toContain('fixed')
+    // The chart of the value does the same.
+    await click(lastSquare())
+    expect(tip()).toBeNull()
+    const svg = panel('Laune im Verlauf')!.querySelector('svg')!
+    svg.getBoundingClientRect = () => ({ left: 0, top: 100, width: 720, height: 220, right: 720, bottom: 320, x: 0, y: 100, toJSON: () => ({}) })
+    await act(async () => {
+      svg.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: 720 }))
+    })
+    expect(tip()!.parentElement).toBe(document.body)
+    expect(panel('Laune im Verlauf')!.querySelector('[role="status"]')).toBeNull()
+    expect(parseFloat(tip()!.style.left) + TIP.width).toBeLessThanOrEqual(1440 - 8)
+  })
+
+  it('goes away when the page or the card is scrolled, for it would point at the wrong place', async () => {
+    layout(1440, { left: 100, top: 300, width: 15, height: 15 })
+    await show()
+    await click(lastSquare())
+    expect(tip()).not.toBeNull()
+    await act(async () => {
+      window.dispatchEvent(new Event('scroll'))
+    })
+    expect(tip()).toBeNull()
   })
 })
 

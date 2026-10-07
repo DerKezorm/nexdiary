@@ -43,7 +43,8 @@
     "today": "Today",
     "journal": "Journal",
     "stats": "Statistics",
-    "shared": "Shared"
+    "shared": "Shared",
+    "photos": "Photos"
   },
   "today": {
     "moreNote": "More for this note",
@@ -1044,7 +1045,28 @@
     "imageDay": "From the photos of this day",
     "imageDayTitle": "Insert a photo of this day",
     "imageDayNone": "There is no photo for this day yet.",
-    "imageDayPick": "Insert photo"
+    "imageDayPick": "Insert photo",
+    "crop": {
+      "open": "Crop",
+      "title": "Crop image",
+      "hint": "Drag the frame or its corners; two fingers make it larger or smaller. With the keyboard, the arrow keys move it and plus and minus change its size.",
+      "area": "Crop area",
+      "corner": {
+        "nw": "Top left corner",
+        "ne": "Top right corner",
+        "sw": "Bottom left corner",
+        "se": "Bottom right corner"
+      },
+      "shape": "Aspect ratio",
+      "free": "Free",
+      "original": "Original",
+      "upright": "Portrait",
+      "rotate": "Rotate",
+      "reset": "Reset",
+      "done": "Done",
+      "loading": "Loading the photo.",
+      "failed": "The photo cannot be loaded."
+    }
   },
   "write": {
     "finishTitle": "Write the day up",
@@ -1157,6 +1179,19 @@
     "deleteYes": "Delete",
     "moreImmich": "More from Immich"
   },
+  "cover": {
+    "crop": {
+      "open": "Adjust framing",
+      "short": "Framing",
+      "title": "Framing of the cover",
+      "hint": "Drag the photo into place and zoom with the slider, two fingers or the mouse wheel. With the keyboard, the arrow keys move it and plus and minus zoom.",
+      "area": "Move the photo in the frame",
+      "zoom": "Zoom",
+      "previews": "How it shows in lists and cards",
+      "reset": "Reset",
+      "done": "Done"
+    }
+  },
   "photos": {
     "title": "Photos of today",
     "count_one": "{{count}} photo",
@@ -1175,6 +1210,61 @@
     "allImmich": "All photos",
     "takeOrPick": "Take or choose a photo",
     "fromImmichNote": "From Immich"
+  },
+  "library": {
+    "title": "My photos",
+    "intro": "All your photos in one place, the newest first. You see where each one is used, and can delete what is superfluous.",
+    "storage": "{{used}} used",
+    "storageOf": "{{used}} of {{limit}} used",
+    "count_one": "{{count}} photo",
+    "count_other": "{{count}} photos",
+    "share": "{{percent}} percent of your space used",
+    "filter": "Which photos",
+    "all": "All",
+    "unused": "Not used",
+    "choose": "Select",
+    "delete": "Delete",
+    "deleteChosen_one": "Delete 1 photo",
+    "deleteChosen_other": "Delete {{count}} photos",
+    "loading": "Loading your photos.",
+    "none": "You have no photos yet. They appear here as soon as you upload one or take one from Immich.",
+    "noneUnused": "Nothing superfluous. Every photo is used.",
+    "more": "Load more",
+    "photoOf": "Photo of {{day}}",
+    "useCover": "Cover of {{day}}",
+    "useText": "In the text of {{day}}",
+    "useNote": "On a note of {{day}}",
+    "notUsed": "Not used"
+  },
+  "photoView": {
+    "title": "Photo, large view",
+    "counter": "{{n}} of {{total}}",
+    "previous": "Previous photo",
+    "next": "Next photo",
+    "delete": "Delete photo",
+    "failed": "The photo cannot be loaded.",
+    "open": "View photo large"
+  },
+  "photoDelete": {
+    "title_one": "Delete photo?",
+    "title_other": "Delete {{count}} photos?",
+    "checking": "One moment, checking where the photo is used.",
+    "unused": "The photo is deleted from the server with its original and its preview. This cannot be undone.",
+    "stillUsed": "The photo is still used:",
+    "useCover": "Cover of {{day}}",
+    "useText": "Picture in the text of {{day}}",
+    "useNote": "On a note of {{day}}",
+    "everywhere": "It is removed everywhere: the cover falls back to the suggestion, the picture block disappears from the text, the note keeps its words. This cannot be undone.",
+    "locked": "This day is locked for good. Its photo cannot be deleted.",
+    "many": "{{count}} photos are deleted from the server with their originals and previews. This cannot be undone.",
+    "manyUsed_one": "One of them is still used (cover, text or note) and disappears there too.",
+    "manyUsed_other": "{{count}} of them are still used (cover, text or note) and disappear there too.",
+    "manyLocked_one": "One belongs to a locked day and stays.",
+    "manyLocked_other": "{{count}} belong to locked days and stay.",
+    "someStayed_one": "One stayed, because its day is locked for good.",
+    "someStayed_other": "{{count}} stayed, because their days are locked for good.",
+    "confirm_one": "Delete photo",
+    "confirm_other": "Delete {{count}} photos"
   },
   "errors": {
     "day_locked": "This day is locked for good and cannot be changed any more.",

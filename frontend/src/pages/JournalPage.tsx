@@ -311,7 +311,7 @@ function Meta({ e }: { e: Shown }) {
 
 function Picture({ e, className }: { e: Shown; className: string }) {
   if (!e.cover) return <span className={`block bg-sheet-2 ${className}`} />
-  return <CoverImage cover={e.cover} className={className} />
+  return <CoverImage cover={e.cover} crop={e.cover_crop} className={className} />
 }
 
 function BlogGrid({ list, q }: { list: Shown[]; q: string }) {

@@ -14,7 +14,9 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { photoUrl, type Question } from '../api/client'
 import { LogoMark } from '../components/Logo'
 import { NightDialog, NightHint } from '../components/NightChoice'
+import { useOwnPhotoViewer } from '../components/ownPhotoViewer'
 import { PendingPhoto, usePendingPhoto } from '../components/PendingPhoto'
+import { PhotoTile } from '../components/PhotoViews'
 import { PhotoSourceButton } from '../components/PhotoSource'
 import { longDate, timeOf } from '../lib/dates'
 import { errorText } from '../lib/errors'
@@ -46,6 +48,8 @@ export function QuickPage() {
   const list = useRef<HTMLDivElement>(null)
   const pending = usePendingPhoto(today)
   const notes = today.data?.notes ?? []
+  const viewOwn = useOwnPhotoViewer(() => void today.load())
+  const photos = today.data?.photos ?? []
 
   // The newest note stands right above the field, like the last message in a chat.
   useEffect(() => {
@@ -104,7 +108,15 @@ export function QuickPage() {
                   <span className="pt-0.5 text-xs font-bold text-muted tabular-nums">{timeOf(note.created_at, me?.profile?.timezone)}</span>
                   <div className="min-w-0 flex-1">
                     {note.unreadable ? <p className="text-muted italic">{t('today.unreadable')}</p> : note.text && <p className="leading-relaxed break-words whitespace-pre-wrap">{note.text}</p>}
-                    {note.photo_id && <img src={photoUrl(note.photo_id, true)} alt={t('photos.alt')} className="mt-2 h-20 w-28 rounded-lg object-cover" draggable={false} />}
+                    {note.photo_id && (
+                      <PhotoTile
+                        src={photoUrl(note.photo_id, true)}
+                        alt={t('photos.alt')}
+                        onOpen={(opener) => viewOwn(photos.map((photo) => ({ id: photo.id })), Math.max(0, photos.findIndex((photo) => photo.id === note.photo_id)), opener)}
+                        className="mt-2 h-20 w-28 rounded-lg"
+                        imageClassName="h-full w-full"
+                      />
+                    )}
                   </div>
                   <button type="button" onClick={() => void today.deleteNote(note.id)} className="self-start rounded-full p-1 text-muted/60 hover:text-ink" aria-label={t('today.deleteNote')}>
                     <X size={15} />

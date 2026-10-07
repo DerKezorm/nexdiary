@@ -354,6 +354,10 @@ class Photo(Base):
     #: Taken for a note (a raw note of the day), not for the page: it goes with the notes, never with the photos of
     #: the day, whether or not a note still holds it. Set once, never taken back.
     on_note: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
+    #: Taken for a picture in the text of the page (the picture button of the editor): such a photo goes when the page
+    #: is saved or its draft thrown away and nothing holds it any more (``diary.tidy_text_photos``). Chosen again on
+    #: purpose (a photo of the day, a cover), it stays for good.
+    for_text: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
 
 
 class Draft(Base):

@@ -97,9 +97,10 @@ def test_a_photo_in_the_text_of_a_deleted_day_or_a_gone_photo_is_no_trouble_for_
     kept = shot(client)["id"]
     assert save(client, f"{picture(gone)}\n\nUnd {picture(kept)}").status_code == 200
     assert client.delete(f"/api/photos/{gone}").status_code == 204
-    # The page still reads; the next save drops the picture that is gone and keeps the other.
-    assert gone in client.get(f"/api/days/{DAY}").json()["text"]
-    saved = save(client, client.get(f"/api/days/{DAY}").json()["text"] + " Mehr.")
+    # Deleting the photo took its picture out of the page; the other stays.
+    assert gone not in client.get(f"/api/days/{DAY}").json()["text"]
+    # A page that still names a photo that is gone (sent by a tab that did not know) loses it on saving.
+    saved = save(client, f"{picture(gone)}\n\nUnd {picture(kept)} Mehr.")
     assert saved.status_code == 200 and gone not in saved.json()["text"] and kept in saved.json()["text"]
 
 

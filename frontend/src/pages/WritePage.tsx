@@ -24,16 +24,18 @@
  * or not ("Mit KI ausformuliert" in the statistics): that is how it came about. The draft keeps it, the notes stay.
  * Beside the text the questions to insert ("Weiterschreiben?").
  */
-import { Check, ImageIcon, Loader2, Lock, Shuffle, Sparkles } from 'lucide-react'
+import { Check, Crop, ImageIcon, Loader2, Lock, Shuffle, Sparkles, ZoomIn } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 
-import { aiApi, ApiError, diaryApi, immichApi, photosApi, photoUrl, promptsApi, type AiLength, type DayChange, type DayPage, type DraftIn, type ImmichEntry, type ImmichPhoto, type Note, type Photo, type Question } from '../api/client'
+import { aiApi, ApiError, diaryApi, immichApi, photosApi, photoUrl, promptsApi, type AiLength, type CoverCropValue, type DayChange, type DayPage, type DraftIn, type ImmichEntry, type ImmichPhoto, type Note, type Photo, type Question } from '../api/client'
+import { CoverCropDialog } from '../components/CropEditor'
 import { DayPhotoPicker } from '../components/DayPhotoPicker'
 import { Dialog } from '../components/Dialog'
 import { ImmichPicker } from '../components/ImmichPicker'
 import { LockDialog, LockedMark } from '../components/LockDay'
+import { useOwnPhotoViewer } from '../components/ownPhotoViewer'
 import { TagPicker } from '../components/TagPicker'
 import { CoverImage, CoverPicker, defaultCover } from '../covers/Cover'
 import { timeOfHour, type Time } from '../covers/suggest'
@@ -42,6 +44,7 @@ import { copyText } from '../lib/copy'
 import { aiHint } from '../lib/aiProviders'
 import { longDate, timeOf } from '../lib/dates'
 import { errorText } from '../lib/errors'
+import { coverCropOf } from '../lib/textPhoto'
 import { uploadPhoto } from '../lib/upload'
 import { useAiState } from '../state/ai'
 import { useAuth } from '../state/auth'
@@ -52,16 +55,17 @@ const DRAFT_PAUSE_MS = 1500
 const DRAFT_LONGEST_MS = 8000
 
 type Problem = { code: string; values?: Record<string, unknown> }
-type Page = { title: string; text: string; tags: string[]; cover: string | null }
+/** `cover_crop` belongs to the cover: it is sent with it, and a new cover starts without one. */
+type Page = { title: string; text: string; tags: string[]; cover: string | null; cover_crop: CoverCropValue | null }
 type Field = keyof Page
-const FIELDS: Field[] = ['title', 'text', 'tags', 'cover']
+const FIELDS: Field[] = ['title', 'text', 'tags', 'cover', 'cover_crop']
 /** keepalive carries at most 64 KB per page; a larger draft goes out as an ordinary request and the page warns. */
 const KEEPALIVE_MAX = 60_000
-const EMPTY: Page = { title: '', text: '', tags: [], cover: null }
+const EMPTY: Page = { title: '', text: '', tags: [], cover: null, cover_crop: null }
 
 /** The page as the server holds it, with the cover only when one was chosen. */
 function pageOf(day: DayPage | null): Page {
-  return day ? { title: day.title, text: day.text, tags: day.tags, cover: day.cover_chosen ? day.cover : null } : EMPTY
+  return day ? { title: day.title, text: day.text, tags: day.tags, cover: day.cover_chosen ? day.cover : null, cover_crop: day.cover_chosen ? coverCropOf(day.cover_crop) : null } : EMPTY
 }
 
 function same(a: Page[Field], b: Page[Field]): boolean {
@@ -134,7 +138,7 @@ export default function WritePage() {
   const [day, setDay] = useState<DayPage | null>(null)
   const [notes, setNotes] = useState<Note[]>([])
   const [photos, setPhotos] = useState<Photo[]>([])
-  const [page, setPage] = useState<Page>({ title: '', text: '', tags: [], cover: null })
+  const [page, setPage] = useState<Page>(EMPTY)
   const [base, setBase] = useState(-1)
   /** A new editor when another version is loaded into it. */
   const [editorKey, setEditorKey] = useState(0)
@@ -145,6 +149,8 @@ export default function WritePage() {
   const [copied, setCopied] = useState(false)
   const [editorEmpty, setEditorEmpty] = useState(true)
   const [picking, setPicking] = useState(false)
+  /** The cut of the cover photo being chosen. */
+  const [cropping, setCropping] = useState(false)
   /** Where a picture for the text or the cover is picked from: the whole collection of the own Immich, or the photos
    * kept for the day. */
   const [chooser, setChooser] = useState<'text' | 'cover' | 'day' | null>(null)
@@ -194,6 +200,8 @@ export default function WritePage() {
    * else the illustration that fits. */
   const dayPhotos = photos.filter((photo) => !photo.on_note && !notes.some((note) => note.photo_id === photo.id))
   const shownCover = page.cover ?? defaultCover(date, page.tags, dayPhotos, time)
+  /** The photo the cover is, when it is one of the day's (its cut can be chosen). */
+  const coverPhoto = shownCover.startsWith('photo:') ? (photos.find((photo) => `photo:${photo.id}` === shownCover) ?? null) : null
 
   // --- Loading ------------------------------------------------------------------------------------------------------
 
@@ -209,7 +217,7 @@ export default function WritePage() {
         const server = pageOf(found)
         // A draft is writing that was never saved (a save ends it): it comes back, and names where it started.
         if (draft) {
-          const kept: Page = { title: draft.title, text: draft.text, tags: draft.tags, cover: draft.cover }
+          const kept: Page = { title: draft.title, text: draft.text, tags: draft.tags, cover: draft.cover, cover_crop: draft.cover ? coverCropOf(draft.cover_crop) : null }
           const from = { by: draft.written_by === 'ai' ? ('ai' as const) : null, length: draft.ai_length ?? ('long' as const) }
           setPage(kept)
           setOrigin(from)
@@ -263,7 +271,7 @@ export default function WritePage() {
     longest.current = undefined
     if (!pending.current || done.current) return
     const { page: now, base: from, origin: came } = latest.current
-    const draft: DraftIn = { title: now.title, text: now.text, tags: now.tags, cover: now.cover, base_revision: from, ...(came.by === 'ai' ? { written_by: 'ai' as const, ai_length: came.length } : {}) }
+    const draft: DraftIn = { title: now.title, text: now.text, tags: now.tags, cover: now.cover, ...(now.cover && now.cover_crop ? { cover_crop: now.cover_crop } : {}), base_revision: from, ...(came.by === 'ai' ? { written_by: 'ai' as const, ai_length: came.length } : {}) }
     const body = JSON.stringify(draft)
     pending.current = false
     if (body === sentDraft.current) return
@@ -282,8 +290,10 @@ export default function WritePage() {
     flushing.current = flush
   })
 
-  const changed = (next: Partial<Page>) => {
-    for (const field of Object.keys(next) as Field[]) touched.current.add(field)
+  const changed = (asked: Partial<Page>) => {
+    // Another cover begins without a cut.
+    const next = 'cover' in asked && !('cover_crop' in asked) ? { ...asked, cover_crop: null } : asked
+    for (const field of Object.keys(asked) as Field[]) touched.current.add(field)
     const merged = { ...latest.current.page, ...next }
     latest.current = { ...latest.current, page: merged }
     setPage(merged)
@@ -340,8 +350,13 @@ export default function WritePage() {
    * never without one), and who wrote it for a new page. */
   const changeOf = (now: Page, against: DayPage | null, from: number) => {
     const change: DayChange = { base_revision: from }
-    for (const field of touched.current) if (field !== 'cover') Object.assign(change, { [field]: now[field] })
-    if (touched.current.has('cover') || !against?.cover_chosen) change.cover = now.cover ?? defaultCover(date, now.tags, dayPhotos, time)
+    for (const field of touched.current) if (field !== 'cover' && field !== 'cover_crop') Object.assign(change, { [field]: now[field] })
+    if (touched.current.has('cover') || touched.current.has('cover_crop') || !against?.cover_chosen) {
+      change.cover = now.cover ?? defaultCover(date, now.tags, dayPhotos, time)
+      // Another cover starts without a cut on the server; the same one keeps its cut unless one is sent (none included).
+      const crop = now.cover ? now.cover_crop : null
+      if (change.cover.startsWith('photo:') && (crop || touched.current.has('cover_crop') || change.cover === against?.cover)) change.cover_crop = crop
+    }
     // Begun from a suggestion of the AI: written with the AI, however much was changed after.
     if (latest.current.origin.by === 'ai') change.written_by = 'ai'
     else if (!against?.written_by) change.written_by = 'self'
@@ -381,7 +396,7 @@ export default function WritePage() {
           return save(current.revision, current)
         }
         setCopied(false)
-        setConflict(current ?? { ...(day as DayPage), date, revision: -1, title: '', text: '', tags: [], cover: '', cover_chosen: false })
+        setConflict(current ?? { ...(day as DayPage), date, revision: -1, title: '', text: '', tags: [], cover: '', cover_chosen: false, cover_crop: null })
       } else setProblem(codeOf(error))
     } finally {
       savingNow.current = false
@@ -469,6 +484,13 @@ export default function WritePage() {
     return photo.id
   }
 
+  /** The big view of the photos of the notes; a photo deleted there leaves the page's lists. */
+  const viewNotePhotos = useOwnPhotoViewer((id) => {
+    setPhotos((current) => current.filter((item) => item.id !== id))
+    setNotes((current) => current.map((note) => (note.photo_id === id ? { ...note, photo_id: null } : note)))
+    if (latest.current.page.cover === `photo:${id}`) changed({ cover: null })
+  })
+
   const keepPhotoHere = (photo: Photo) => setPhotos((current) => (current.some((item) => item.id === photo.id) ? current : [...current, photo]))
 
   /** A photo from the device (camera or file) into the text, as a block of its own where the caret is. */
@@ -476,7 +498,8 @@ export default function WritePage() {
     setImaging(true)
     setProblem(null)
     try {
-      const photo = await uploadPhoto(file, date)
+      // Made for the text: if the picture leaves the text again, the photo is not kept (the server tidies up on saving).
+      const photo = await uploadPhoto(file, date, false, true)
       keepPhotoHere(photo)
       editor.current?.insertPhoto(photo.id)
     } catch (error) {
@@ -488,7 +511,7 @@ export default function WritePage() {
 
   /** A photo of the whole collection of the own Immich into the text; it becomes a photo of this day. */
   const pickForText = async (entry: ImmichEntry) => {
-    const photo = await immichApi.take(entry.id, date, false, true)
+    const photo = await immichApi.take(entry.id, date, false, true, true)
     keepPhotoHere(photo)
     editor.current?.insertPhoto(photo.id)
   }
@@ -788,14 +811,21 @@ export default function WritePage() {
                 className="mb-5 block w-full resize-none overflow-hidden bg-transparent font-display text-3xl leading-tight font-semibold tracking-tight text-ink placeholder:text-muted/60 focus:outline-none sm:text-4xl"
               />
               <div className="relative mb-6 overflow-hidden rounded-2xl">
-                <CoverImage cover={shownCover} large className="aspect-[16/8] w-full" alt={t('write.coverLabel')} />
-                <button
-                  type="button"
-                  onClick={() => setPicking(true)}
-                  className="absolute right-3 bottom-3 inline-flex items-center gap-1.5 rounded-full bg-black/45 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur hover:bg-black/60"
-                >
-                  <ImageIcon size={14} aria-hidden /> {t('write.changeCover')}
-                </button>
+                <CoverImage cover={shownCover} crop={page.cover ? page.cover_crop : null} large className="aspect-[16/8] w-full" alt={t('write.coverLabel')} />
+                <span className="absolute right-3 bottom-3 flex gap-2">
+                  {coverPhoto && (
+                    <button type="button" onClick={() => setCropping(true)} className="inline-flex items-center gap-1.5 rounded-full bg-black/45 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur hover:bg-black/60" data-cover-crop-open>
+                      <Crop size={14} aria-hidden /> {t('cover.crop.short')}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setPicking(true)}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-black/45 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur hover:bg-black/60"
+                  >
+                    <ImageIcon size={14} aria-hidden /> {t('write.changeCover')}
+                  </button>
+                </span>
               </div>
               <DiaryEditor
                 key={editorKey}
@@ -847,16 +877,29 @@ export default function WritePage() {
                     {note.prompt && <span className="block font-serif text-accent italic">{note.prompt}</span>}
                     {note.text}
                     {note.photo_id && (
-                      <button
-                        type="button"
-                        onClick={() => editor.current?.insertPhoto(note.photo_id as string)}
-                        disabled={!loaded || formulating}
-                        title={t('write.noteInsert')}
-                        aria-label={t('write.noteInsert')}
-                        className="mt-1.5 block overflow-hidden rounded-lg ring-accent transition hover:ring-2 focus-visible:ring-2 disabled:opacity-50"
-                      >
-                        <img src={photoUrl(note.photo_id, true)} alt={t('photos.alt')} className="h-16 w-24 object-cover" draggable={false} />
-                      </button>
+                      <span className="relative mt-1.5 block w-24">
+                        <button
+                          type="button"
+                          onClick={() => editor.current?.insertPhoto(note.photo_id as string)}
+                          disabled={!loaded || formulating}
+                          title={t('write.noteInsert')}
+                          aria-label={t('write.noteInsert')}
+                          className="block overflow-hidden rounded-lg ring-accent transition hover:ring-2 focus-visible:ring-2 disabled:opacity-50"
+                        >
+                          <img src={photoUrl(note.photo_id, true)} alt={t('photos.alt')} className="h-16 w-24 object-cover object-center" draggable={false} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            const withPhotos = notes.filter((item) => item.photo_id)
+                            viewNotePhotos(withPhotos.map((item) => ({ id: item.photo_id as string })), Math.max(0, withPhotos.findIndex((item) => item.id === note.id)), event.currentTarget)
+                          }}
+                          className="absolute right-1 bottom-1 rounded-full bg-black/55 p-1 text-white hover:bg-black/70"
+                          aria-label={t('photoView.open')}
+                        >
+                          <ZoomIn size={13} aria-hidden />
+                        </button>
+                      </span>
                     )}
                   </span>
                 </li>
@@ -930,6 +973,25 @@ export default function WritePage() {
                 }
               : undefined
           }
+          onCrop={() => {
+            setPicking(false)
+            setCropping(true)
+          }}
+        />
+      )}
+
+      {cropping && coverPhoto && (
+        <CoverCropDialog
+          src={photoUrl(coverPhoto.id, true)}
+          value={page.cover ? page.cover_crop : null}
+          width={coverPhoto.width}
+          height={coverPhoto.height}
+          onClose={() => setCropping(false)}
+          // The cover shown (the suggestion too) becomes the chosen one, with its cut.
+          onDone={(crop) => {
+            setCropping(false)
+            changed({ cover: shownCover, cover_crop: crop })
+          }}
         />
       )}
 

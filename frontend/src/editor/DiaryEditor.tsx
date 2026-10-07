@@ -28,9 +28,11 @@ import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'reac
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 
+import { photoUrl } from '../api/client'
+import { TextCropDialog } from '../components/CropEditor'
 import { PHOTO_ACCEPT } from '../lib/upload'
 import { tame } from '../lib/markdown'
-import { insertPhoto } from './photo'
+import { CUT_EVENT, insertPhoto, type CutRequest } from './photo'
 import { diaryPlugins, HEADING_LEVEL } from './setup'
 
 export type DiaryEditorHandle = {
@@ -115,6 +117,8 @@ export function DiaryEditor({
   const [empty, setEmpty] = useState(!value.trim())
   const [active, setActive] = useState<Active>(NOTHING)
   const [ready, setReady] = useState(false)
+  /** The photo of the text whose cut is being chosen ("Zuschneiden" on its block). */
+  const [cutting, setCutting] = useState<CutRequest | null>(null)
   // The first text only: the editor is not controlled after it started.
   const first = useRef(value)
   const shownLabel = useRef(label)
@@ -196,6 +200,18 @@ export function DiaryEditor({
       editor.current = null
       if (instance) void instance.destroy()
     }
+  }, [])
+
+  // "Zuschneiden" on a photo's block asks here; the dialog answers it.
+  useEffect(() => {
+    const element = root.current
+    if (!element) return
+    const asked = (event: Event) => {
+      const request = (event as CustomEvent<CutRequest>).detail
+      if (request && typeof request.apply === 'function') setCutting(request)
+    }
+    element.addEventListener(CUT_EVENT, asked)
+    return () => element.removeEventListener(CUT_EVENT, asked)
   }, [])
 
   const run = (action: (commands: CommandManager) => void) => {
@@ -297,6 +313,18 @@ export function DiaryEditor({
         )}
         <div ref={root} data-diary-editor />
       </div>
+      {cutting && (
+        <TextCropDialog
+          src={photoUrl(cutting.id, true)}
+          value={cutting.cut}
+          onClose={() => setCutting(null)}
+          onDone={(cut) => {
+            const request = cutting
+            setCutting(null)
+            request.apply(cut)
+          }}
+        />
+      )}
     </div>
   )
 }

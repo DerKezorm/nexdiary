@@ -291,6 +291,8 @@ export type DayPage = {
   /** Always one: `illu:<motif>.<time>.<season>` or `photo:<id>`; the suggestion while none was chosen. */
   cover: string
   cover_chosen: boolean
+  /** The part of a photo cover that shows (`lib/textPhoto.ts`); null: the middle. */
+  cover_crop?: CoverCropValue | null
   written_by: 'ai' | 'self' | null
   words: number
   /** Counts every change; a save names the one it started from (`base_revision`). */
@@ -303,7 +305,10 @@ export type DayPage = {
 }
 
 /** `on_note`: taken for a note; it goes with the notes, never with the photos of the day. */
-export type Photo = { id: string; date: string; source: 'upload' | 'immich'; width: number; height: number; created_at: string; on_note: boolean }
+/** Where a cover photo holds on to the frame (thousandths of the photo) and how far it zooms (percent). */
+export type CoverCropValue = { x: number; y: number; zoom: number }
+
+export type Photo = { id: string; date: string; source: 'upload' | 'immich'; width: number; height: number; created_at: string; on_note: boolean; for_text?: boolean }
 
 /** Between 0:00 and 3:59 (`active`): the two days a note may belong to, and what the person answered (null: not yet). */
 export type Night = { active: false } | { active: true; today: string; yesterday: string; choice: 'yesterday' | 'today' | null }
@@ -331,6 +336,8 @@ export type DayChange = {
   values?: Record<string, number | null>
   written_by?: 'ai' | 'self' | null
   cover?: string | null
+  /** Only with a photo cover; a new cover without it has none. */
+  cover_crop?: CoverCropValue | null
   /** The revision the writing started from (-1: there was no page): a newer page is not overwritten unseen. */
   base_revision?: number
 }
@@ -341,6 +348,7 @@ export type Draft = {
   text: string
   tags: string[]
   cover: string | null
+  cover_crop?: CoverCropValue | null
   written_by?: 'ai' | 'self' | null
   ai_length?: AiLength | null
   base_revision: number
@@ -423,11 +431,24 @@ export const promptsApi = {
 
 /** Photos of a day: uploaded as they are, drawn anew by the server without anything but their pixels. */
 export const photosApi = {
-  upload: (file: Blob, uploadId: string, date?: string, forNote = false) =>
-    api<Photo>('/api/photos', { method: 'POST', raw: file, query: { upload_id: uploadId, ...(date ? { date } : {}), ...(forNote ? { note: true } : {}) } }),
+  upload: (file: Blob, uploadId: string, date?: string, forNote = false, forText = false) =>
+    api<Photo>('/api/photos', { method: 'POST', raw: file, query: { upload_id: uploadId, ...(date ? { date } : {}), ...(forNote ? { note: true } : {}), ...(forText ? { text: true } : {}) } }),
   list: (date: string) => api<Photo[]>('/api/photos', { query: { date } }),
   remove: (id: string) => api<void>(`/api/photos/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  /** Where a photo is used: the cover of its day, its text, notes. Asked before it is deleted. */
+  uses: (id: string) => api<PhotoUses>(`/api/photos/${encodeURIComponent(id)}/uses`),
+  /** Deletes several at once; a photo of a locked day stays (`locked`). */
+  removeMany: (ids: string[]) => api<PhotoDeletion>('/api/photos/delete', { method: 'POST', body: { ids } }),
+  /** All own photos, newest day first, a page at a time; `unused` keeps those that nothing uses. */
+  library: (before = '', unused = false, limit = 60) => api<LibraryPage>('/api/photos/library', { query: { limit, ...(before ? { before } : {}), ...(unused ? { unused: 1 } : {}) } }),
+  storage: () => api<PhotoStorage>('/api/photos/storage'),
 }
+
+export type PhotoUses = { cover: boolean; text: boolean; notes: { id: string; date: string }[]; date: string; locked: boolean }
+export type PhotoDeletion = { deleted: string[]; locked: string[]; missing: string[] }
+export type LibraryPhoto = Photo & { uses: { cover: boolean; text: boolean; notes: { id: string; date: string }[] } }
+export type LibraryPage = { photos: LibraryPhoto[]; next: string | null }
+export type PhotoStorage = { used: number; limit: number | null; count: number }
 
 /** The own Immich, as its card shows it. With the operator's bolt closed only `allowed: false`; the key never comes
  * back, only whether one is stored. */
@@ -454,10 +475,10 @@ export const immichApi = {
   disconnect: () => api<void>('/api/immich', { method: 'DELETE' }),
   probe: () => api<ImmichProbe>('/api/immich/probe', { method: 'POST' }),
   photos: (date?: string) => api<ImmichDay>('/api/immich/photos', { query: { date } }),
-  take: (asset: string, date?: string, note = false, anywhen = false) =>
+  take: (asset: string, date?: string, note = false, anywhen = false, forText = false) =>
     api<Photo>(`/api/immich/photos/${encodeURIComponent(asset)}`, {
       method: 'POST',
-      body: { ...(date ? { date } : {}), ...(note ? { note: true } : {}), ...(anywhen ? { anywhen: true } : {}) },
+      body: { ...(date ? { date } : {}), ...(note ? { note: true } : {}), ...(anywhen ? { anywhen: true } : {}), ...(forText ? { text: true } : {}) },
     }),
   /** The whole collection, newest first; `until` (a day or a month) starts with what was taken up to its end. */
   timeline: (page = 1, until = '') => api<ImmichPage>('/api/immich/timeline', { query: { page, ...(until ? { until } : {}) } }),
@@ -515,6 +536,7 @@ export type JournalDay = {
   excerpt: string
   tags: string[]
   cover: string
+  cover_crop?: CoverCropValue | null
   written_by: 'ai' | 'self' | null
   /** The first value asked, as rated that day. */
   first_value: { name: string; value: number } | null
@@ -531,9 +553,9 @@ export type SearchHit = { date: string; kind: 'title' | 'text' | 'tag' | 'note';
 export type SearchResult = { results: SearchHit[]; more: boolean; days: Record<string, JournalDay> }
 
 export type DayShares = { date: string; people: Recipient[]; with_values: boolean; with_notes: boolean }
-export type SharedByMe = { date: string; title: string; cover: string; people: Recipient[]; unreadable: boolean }
+export type SharedByMe = { date: string; title: string; cover: string; cover_crop?: CoverCropValue | null; people: Recipient[]; unreadable: boolean }
 
-export type SharedItem = { from: Person; date: string; title: string; excerpt: string; cover: string; new: boolean; heart: string | null }
+export type SharedItem = { from: Person; date: string; title: string; excerpt: string; cover: string; cover_crop?: CoverCropValue | null; new: boolean; heart: string | null }
 
 export type SharedDay = {
   from: Person
@@ -542,6 +564,7 @@ export type SharedDay = {
   text: string
   tags: string[]
   cover: string
+  cover_crop?: CoverCropValue | null
   photos: { id: string; width: number; height: number }[]
   with_values: boolean
   with_notes: boolean
@@ -566,7 +589,7 @@ export const journalApi = {
 /** A value as the statistics name it, with the words at its two ends. */
 export type StatsValue = { id: string; name: string; low: string; high: string }
 /** A day the statistics point to: the best or the worst one, or the one a year ago. */
-export type StatsDay = { date: string; title: string; excerpt: string; cover: string; value?: number }
+export type StatsDay = { date: string; title: string; excerpt: string; cover: string; cover_crop?: CoverCropValue | null; value?: number }
 /** A comparison of two groups of days by the main value: how many days each, their means, the difference. */
 export type StatsCompare = { a_n: number; b_n: number; a_mean: number; b_mean: number; diff: number; similar: boolean }
 export type StatsTogether = ({ kind: 'value'; name: string } | { kind: 'weekend' } | { kind: 'tag'; tag: string }) & StatsCompare

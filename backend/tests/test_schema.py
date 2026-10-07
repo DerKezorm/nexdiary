@@ -50,9 +50,17 @@ def fresh_schema_sql() -> str:
     return "".join(" ".join(row[0].split()) + ";\n" for row in rows)
 
 
+def drop_v12(connection: sqlite3.Connection) -> None:
+    """Takes away what version 12 added (whether a photo was taken for a picture in the text)."""
+    # The migration tests of older versions take the photos away before they get here: nothing left to change then.
+    if any(row[1] == "for_text" for row in connection.execute("PRAGMA table_info(photos)")):
+        connection.execute("ALTER TABLE photos DROP COLUMN for_text")
+
+
 def drop_v11(connection: sqlite3.Connection) -> None:
-    """Takes away what version 11 added (the mark of a draft the automatic writing made, the mark of the day it last
-    tried for)."""
+    """Takes away what version 11 and everything after it added (the mark of a draft the automatic writing made, the
+    mark of the day it last tried for)."""
+    drop_v12(connection)
     connection.execute("DROP TABLE auto_marks")
     # The migration tests of older versions take the drafts away before they get here: nothing left to change then.
     if any(row[1] == "auto" for row in connection.execute("PRAGMA table_info(drafts)")):

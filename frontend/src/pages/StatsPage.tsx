@@ -5,15 +5,17 @@
  * about is the first one the person asks for, under whatever name they gave it.
  */
 import { BookOpen, CalendarDays, Flame, Heart, Image, PenLine, Sparkles, Trophy } from 'lucide-react'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 
 import { ApiError, statsApi, type Stats, type StatsDay, type StatsExtremes, type StatsRange, type StatsSpan, type StatsValue } from '../api/client'
+import { ChartTip } from '../components/ChartTip'
 import { YearAgo } from '../components/YearAgo'
 import { CoverImage } from '../covers/Cover'
 import { addDays, longDate, monthName, shortDay, weekdayName, weekdayShort } from '../lib/dates'
 import { errorText } from '../lib/errors'
+import type { Box } from '../lib/tip'
 import { Segment } from './settings/ui'
 
 
@@ -140,7 +142,9 @@ function YearCalendar({ data }: { data: Stats }) {
   const { t, i18n } = useTranslation()
   const value = data.value
   const [mode, setMode] = useState<'value' | 'written'>(value ? 'value' : 'written')
-  const [hover, setHover] = useState<{ date: string; x: number; y: number } | null>(null)
+  /** The square pointed at, and where it is in the window: the tooltip is drawn there, outside the card. */
+  const [hover, setHover] = useState<{ date: string; anchor: Box } | null>(null)
+  const dismiss = useCallback(() => setHover(null), [])
   const { calendar, today } = data
   const byDate = new Map(calendar.days.map((day) => [day.date, day]))
   const cell = 15
@@ -165,11 +169,8 @@ function YearCalendar({ data }: { data: Stats }) {
     if (box.current) box.current.scrollLeft = box.current.scrollWidth
   }, [])
   const show = (date: string, target: SVGRectElement) => {
-    const svg = target.ownerSVGElement as SVGSVGElement
-    const r = svg.getBoundingClientRect()
     const c = target.getBoundingClientRect()
-    // Measured in the page, drawn in the card; kept inside the card so that a square at its edge shows its tooltip.
-    setHover({ date, x: Math.max(90, Math.min(c.left - r.left + c.width / 2, r.width - 90)), y: c.top - r.top })
+    setHover({ date, anchor: { left: c.left, top: c.top, width: c.width, height: c.height } })
   }
   // Monday, Wednesday and Friday, named in the language of the page.
   const labels = [0, 2, 4] as const
@@ -230,22 +231,18 @@ function YearCalendar({ data }: { data: Stats }) {
             }),
           )}
         </svg>
-        {hover && (
-          <div
-            role="status"
-            className={`pointer-events-none absolute z-10 max-w-[16rem] -translate-x-1/2 rounded-lg bg-ink px-3 py-1.5 text-xs text-paper shadow-soft ${hover.y < 60 ? '' : '-translate-y-full'}`}
-            style={{ left: hover.x, top: hover.y < 60 ? hover.y + cell + 6 : hover.y - 6 }}
-          >
-            <span className="font-semibold">{longDate(hover.date, i18n.language)}</span>
-            <br />
-            <span className="block truncate">
-              {hovered
-                ? `${hovered.title || t('journal.untitled')}${hovered.value !== null && value ? ` · ${t('stats.calendar.withValue', { name: value.name, value: hovered.value })}` : ''}`
-                : t('stats.calendar.nothingWritten')}
-            </span>
-          </div>
-        )}
       </div>
+      {hover && (
+        <ChartTip anchor={hover.anchor} onDismiss={dismiss}>
+          <span className="font-semibold">{longDate(hover.date, i18n.language)}</span>
+          <br />
+          <span className="line-clamp-4 block">
+            {hovered
+              ? `${hovered.title || t('journal.untitled')}${hovered.value !== null && value ? ` · ${t('stats.calendar.withValue', { name: value.name, value: hovered.value })}` : ''}`
+              : t('stats.calendar.nothingWritten')}
+          </span>
+        </ChartTip>
+      )}
       <div className="mt-3 flex items-center justify-end gap-1.5 text-xs text-muted">
         {mode === 'value' && value ? value.low || '1' : t('stats.calendar.nothing')}
         {opacity.map((o, i) => (
@@ -265,6 +262,12 @@ function ValueOverTime({ data }: { data: Stats }) {
   const [id, setId] = useState(data.value?.id ?? '')
   const [range, setRange] = useState<StatsRange>('90')
   const [hover, setHover] = useState<number | null>(null)
+  /** The dot pointed at, in window coordinates: the tooltip is drawn there, outside the card. */
+  const [anchor, setAnchor] = useState<Box | null>(null)
+  const dismiss = useCallback(() => {
+    setHover(null)
+    setAnchor(null)
+  }, [])
   const [narrow, setNarrow] = useState(() => window.innerWidth < 640)
   useEffect(() => {
     const on = () => setNarrow(window.innerWidth < 640)
@@ -298,7 +301,11 @@ function ValueOverTime({ data }: { data: Stats }) {
   const point = (clientX: number, svg: SVGSVGElement) => {
     const r = svg.getBoundingClientRect()
     const px = ((clientX - r.left) / r.width) * W
-    setHover(Math.max(0, Math.min(n - 1, Math.round(((px - pad.l) / (W - pad.l - pad.r)) * (n - 1)))))
+    const i = Math.max(0, Math.min(n - 1, Math.round(((px - pad.l) / (W - pad.l - pad.r)) * (n - 1))))
+    setHover(i)
+    // The tooltip points at the day's line over the plot, in window coordinates (the svg is scaled to its card).
+    const scale = r.width / W
+    setAnchor({ left: r.left + x(i) * scale, top: r.top + pad.t * scale, width: 0, height: (H - pad.t - pad.b) * scale })
   }
   return (
     <Panel
@@ -339,7 +346,7 @@ function ValueOverTime({ data }: { data: Stats }) {
           onPointerMove={(e) => point(e.clientX, e.currentTarget)}
           onPointerDown={(e) => point(e.clientX, e.currentTarget)}
           // A finger that lifts leaves the tooltip standing; only a mouse that leaves takes it away.
-          onPointerLeave={(e) => e.pointerType === 'mouse' && setHover(null)}
+          onPointerLeave={(e) => e.pointerType === 'mouse' && dismiss()}
         >
           {[1, 4, 7, 10].map((v) => (
             <g key={v}>
@@ -365,18 +372,14 @@ function ValueOverTime({ data }: { data: Stats }) {
             </>
           )}
         </svg>
-        {at && hover !== null && (
-          <div
-            role="status"
-            className="pointer-events-none absolute top-0 rounded-lg bg-ink px-3 py-1.5 text-xs text-paper shadow-soft"
-            style={{ left: `clamp(0px, calc(${(x(hover) / W) * 100}% - 70px), calc(100% - 150px))` }}
-          >
-            <span className="font-semibold">{longDate(at.date, i18n.language)}</span>
-            <br />
-            {at.value !== null ? `${found.name} ${at.value}` : t('stats.series.noValue')} · {t('stats.series.mean', { mean: format.decimal(at.mean) })}
-          </div>
-        )}
       </div>
+      {at && anchor && (
+        <ChartTip anchor={anchor} onDismiss={dismiss}>
+          <span className="font-semibold">{longDate(at.date, i18n.language)}</span>
+          <br />
+          {at.value !== null ? `${found.name} ${at.value}` : t('stats.series.noValue')} · {t('stats.series.mean', { mean: format.decimal(at.mean) })}
+        </ChartTip>
+      )}
     </Panel>
   )
 }
@@ -531,7 +534,7 @@ function BestWorst({ data }: { data: Stats }) {
     day && value ? (
       <Link to={`/tag/${day.date}`} className="group overflow-hidden rounded-2xl border border-line bg-sheet-2/40 hover:border-accent">
         <div className="relative">
-          <CoverImage cover={day.cover} className="aspect-[16/8] w-full" />
+          <CoverImage cover={day.cover} crop={day.cover_crop} className="aspect-[16/8] w-full" />
           <span className="absolute top-3 left-3 rounded-full bg-black/45 px-3 py-1 text-xs font-bold text-white backdrop-blur">{label}</span>
           <span className="absolute right-3 bottom-3 rounded-full bg-sheet px-3 py-1 text-sm font-bold text-ink">{t('stats.extremes.badge', { name: value.name, value: day.value })}</span>
         </div>

@@ -185,6 +185,8 @@ describe('pictures in the text', () => {
     const upload = calls.find((call) => call.method === 'POST' && call.url.startsWith('/api/photos?'))!
     expect(upload.url).toContain(`date=${DATE}`)
     expect(upload.url).not.toContain('note=')
+    // Made for the text: the server tidies it away again if it leaves the text.
+    expect(upload.url).toContain('text=true')
     expect(box.querySelector('figure.diary-photo-edit img')?.getAttribute('src')).toBe(`/api/photos/${NEW_PHOTO}`)
   })
 
@@ -199,7 +201,8 @@ describe('pictures in the text', () => {
     await act(async () => tile.click())
     await idle()
     const take = calls.find((call) => call.method === 'POST' && call.url === `/api/immich/photos/${ASSET}`)!
-    expect(take.body).toEqual({ date: DATE, anywhen: true })
+    // For the text: the server tidies the photo away again when it leaves the text.
+    expect(take.body).toEqual({ date: DATE, anywhen: true, text: true })
     expect(document.querySelector('[role=dialog]')).toBeNull()
     expect(box.querySelector('figure.diary-photo-edit img')?.getAttribute('src')).toBe(`/api/photos/${NEW_PHOTO}`)
   })

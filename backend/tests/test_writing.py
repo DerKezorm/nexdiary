@@ -51,7 +51,8 @@ def test_a_draft_is_kept_comes_back_and_ends_with_the_save(client: TestClient, a
     assert kept.status_code == 200
     back = client.get(f"/api/days/{DATE}/draft").json()
     assert back == {"title": "Kastanien", "text": "Die Nacht war kurz.", "tags": ["herbst"],
-                    "cover": "illu:wald.abend.herbst", "written_by": None, "ai_length": None, "base_revision": -1,
+                    "cover": "illu:wald.abend.herbst", "cover_crop": None, "written_by": None, "ai_length": None,
+                    "base_revision": -1,
                     "updated_at": NOON.isoformat(), "auto": False}
     # A draft is not a page: the day is not written yet, the streak does not count it.
     assert client.get(f"/api/days/{DATE}").status_code == 404

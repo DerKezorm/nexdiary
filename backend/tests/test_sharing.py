@@ -147,8 +147,8 @@ def test_a_shared_day_shows_text_tags_cover_and_photos_and_nothing_else(family: 
     assert body["from"] == {"id": family.jule_id, "name": "jule", "display_name": "", "avatar": None}
     assert [photo["id"] for photo in body["photos"]] == [family.day_photo], "the day's photos, the cover apart"
     assert "values" not in body and "notes" not in body
-    assert set(body) == {"from", "date", "title", "text", "tags", "cover", "photos", "with_values", "with_notes",
-                         "heart", "shared_at"}
+    assert set(body) == {"from", "date", "title", "text", "tags", "cover", "cover_crop", "photos", "with_values",
+                         "with_notes", "heart", "shared_at"}
     # Not in any answer Ben can get: neither the names of Jule's values nor her notes. And none is kept by a browser
     # or a proxy.
     answers = everything_ben_gets(family)
@@ -399,7 +399,7 @@ def test_a_day_is_new_until_it_was_opened(family: Family) -> None:
     assert ben.get("/api/shared/count").json() == {"new": 1}
     listed = ben.get("/api/shared").json()
     assert [(item["date"], item["new"]) for item in listed] == [(DAY, False), (OTHER_DAY, True)]
-    assert set(listed[0]) == {"from", "date", "title", "excerpt", "cover", "new", "heart"}
+    assert set(listed[0]) == {"from", "date", "title", "excerpt", "cover", "cover_crop", "new", "heart"}
     # The person it comes from is named by their own id (the one the address of the day takes), never the share's.
     assert {item["from"]["id"] for item in listed} == {family.jule_id}
     assert listed[0]["from"] == {"id": family.jule_id, "name": "jule", "display_name": "", "avatar": None}

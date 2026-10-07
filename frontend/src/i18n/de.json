@@ -43,7 +43,8 @@
     "today": "Heute",
     "journal": "Tagebuch",
     "stats": "Statistik",
-    "shared": "Geteilt"
+    "shared": "Geteilt",
+    "photos": "Fotos"
   },
   "today": {
     "moreNote": "Mehr zur Notiz",
@@ -1044,7 +1045,28 @@
     "imageDay": "Aus den Fotos dieses Tages",
     "imageDayTitle": "Foto dieses Tages einfügen",
     "imageDayNone": "Für diesen Tag gibt es noch kein Foto.",
-    "imageDayPick": "Foto einfügen"
+    "imageDayPick": "Foto einfügen",
+    "crop": {
+      "open": "Zuschneiden",
+      "title": "Bild zuschneiden",
+      "hint": "Zieh den Rahmen oder seine Ecken, mit zwei Fingern wird er größer oder kleiner. Mit der Tastatur verschieben die Pfeiltasten, Plus und Minus ändern die Größe.",
+      "area": "Ausschnitt",
+      "corner": {
+        "nw": "Ecke oben links",
+        "ne": "Ecke oben rechts",
+        "sw": "Ecke unten links",
+        "se": "Ecke unten rechts"
+      },
+      "shape": "Seitenverhältnis",
+      "free": "Frei",
+      "original": "Original",
+      "upright": "Hochformat",
+      "rotate": "Drehen",
+      "reset": "Zurücksetzen",
+      "done": "Fertig",
+      "loading": "Das Foto wird geladen.",
+      "failed": "Das Foto lässt sich nicht laden."
+    }
   },
   "write": {
     "finishTitle": "Den Tag aufschreiben",
@@ -1157,6 +1179,19 @@
     "deleteYes": "Löschen",
     "moreImmich": "Weitere aus Immich"
   },
+  "cover": {
+    "crop": {
+      "open": "Ausschnitt anpassen",
+      "short": "Ausschnitt",
+      "title": "Ausschnitt des Titelbilds",
+      "hint": "Zieh das Foto an die richtige Stelle und zoome mit dem Regler, zwei Fingern oder dem Mausrad. Mit der Tastatur verschieben die Pfeiltasten, Plus und Minus zoomen.",
+      "area": "Foto im Ausschnitt verschieben",
+      "zoom": "Zoom",
+      "previews": "So erscheint es in Listen und Karten",
+      "reset": "Zurücksetzen",
+      "done": "Fertig"
+    }
+  },
   "photos": {
     "title": "Fotos von heute",
     "count_one": "{{count}} Foto",
@@ -1175,6 +1210,61 @@
     "allImmich": "Alle Fotos",
     "takeOrPick": "Foto aufnehmen oder wählen",
     "fromImmichNote": "Aus Immich"
+  },
+  "library": {
+    "title": "Meine Fotos",
+    "intro": "Alle deine Fotos an einem Ort, die neuesten zuerst. Du siehst, wo jedes steht, und kannst Überflüssiges löschen.",
+    "storage": "{{used}} belegt",
+    "storageOf": "{{used}} von {{limit}} belegt",
+    "count_one": "{{count}} Foto",
+    "count_other": "{{count}} Fotos",
+    "share": "{{percent}} Prozent deines Platzes belegt",
+    "filter": "Welche Fotos",
+    "all": "Alle",
+    "unused": "Nicht verwendet",
+    "choose": "Auswählen",
+    "delete": "Löschen",
+    "deleteChosen_one": "1 Foto löschen",
+    "deleteChosen_other": "{{count}} Fotos löschen",
+    "loading": "Deine Fotos werden geladen.",
+    "none": "Du hast noch keine Fotos. Sie erscheinen hier, sobald du eins hochlädst oder aus Immich übernimmst.",
+    "noneUnused": "Nichts Überflüssiges. Jedes Foto wird gebraucht.",
+    "more": "Mehr laden",
+    "photoOf": "Foto vom {{day}}",
+    "useCover": "Titelbild von {{day}}",
+    "useText": "Im Text von {{day}}",
+    "useNote": "An Notiz vom {{day}}",
+    "notUsed": "Nicht verwendet"
+  },
+  "photoView": {
+    "title": "Foto in Großansicht",
+    "counter": "{{n}} von {{total}}",
+    "previous": "Vorheriges Foto",
+    "next": "Nächstes Foto",
+    "delete": "Foto löschen",
+    "failed": "Das Foto lässt sich nicht laden.",
+    "open": "Foto groß ansehen"
+  },
+  "photoDelete": {
+    "title_one": "Foto löschen?",
+    "title_other": "{{count}} Fotos löschen?",
+    "checking": "Einen Moment, ich sehe nach, wo das Foto steht.",
+    "unused": "Das Foto wird mit Original und Vorschau vom Server gelöscht. Das lässt sich nicht rückgängig machen.",
+    "stillUsed": "Das Foto wird noch verwendet:",
+    "useCover": "Titelbild vom {{day}}",
+    "useText": "Bild im Text vom {{day}}",
+    "useNote": "An einer Notiz vom {{day}}",
+    "everywhere": "Es wird überall entfernt: Das Titelbild fällt auf den Vorschlag zurück, der Bildblock verschwindet aus dem Text, die Notiz behält ihre Worte. Das lässt sich nicht rückgängig machen.",
+    "locked": "Dieser Tag ist für immer verschlossen. Sein Foto lässt sich nicht löschen.",
+    "many": "{{count}} Fotos werden mit Original und Vorschau vom Server gelöscht. Das lässt sich nicht rückgängig machen.",
+    "manyUsed_one": "Eines davon wird noch verwendet (Titelbild, Text oder Notiz) und verschwindet dort auch.",
+    "manyUsed_other": "{{count}} davon werden noch verwendet (Titelbild, Text oder Notiz) und verschwinden dort auch.",
+    "manyLocked_one": "Eines gehört zu einem verschlossenen Tag und bleibt.",
+    "manyLocked_other": "{{count}} gehören zu verschlossenen Tagen und bleiben.",
+    "someStayed_one": "Eines ist geblieben, weil sein Tag für immer verschlossen ist.",
+    "someStayed_other": "{{count}} sind geblieben, weil ihre Tage für immer verschlossen sind.",
+    "confirm_one": "Foto löschen",
+    "confirm_other": "{{count}} Fotos löschen"
   },
   "errors": {
     "day_locked": "Dieser Tag ist für immer verschlossen und lässt sich nicht mehr ändern.",

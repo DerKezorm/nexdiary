@@ -176,8 +176,9 @@ def shared_by_me(db: Session, owner_id: int, dek: bytes) -> list[dict[str, Any]]
     for row in rows:
         content = diary._readable_content(owner_id, dek, row.date, row.content_enc)
         shown = content or diary.empty_day()
-        out.append({"date": row.date, "title": shown["title"],
-                    "cover": diary.effective_cover(row.date, shown, photo_ids)[0],
+        cover, chosen = diary.effective_cover(row.date, shown, photo_ids)
+        out.append({"date": row.date, "title": shown["title"], "cover": cover,
+                    "cover_crop": diary.shown_crop(shown, chosen),
                     "people": shared[row.date], "unreadable": content is None})
     return out
 
@@ -222,15 +223,16 @@ def _note_photo_ids(db: Session, owner_id: int, day: str) -> set[str]:
 def visible_photos(db: Session, owner_id: int, day: str, content: dict[str, Any],
                    with_notes: bool) -> tuple[str, list[dict[str, Any]], set[str]]:
     """What of the owner's photos a shared day shows: the cover (always; only a photo of that very day can be one),
-    the photos taken for the day itself (never one taken for a note, whether a note still holds it or not), and with
-    ``with_notes`` the photos the day's notes hold. The cover, the photos to list (the cover not among them) and every
-    id that may be fetched through the share."""
+    the photos taken for the day itself (never one taken for a note, whether a note still holds it or not, and never
+    one taken for the text that the text no longer shows), the pictures of the text, and with ``with_notes`` the photos
+    the day's notes hold. The cover, the photos to list (the cover and the pictures of the text not among them) and
+    every id that may be fetched through the share."""
     rows = db.execute(select(Photo.uid, Photo.date, Photo.source, Photo.width, Photo.height, Photo.created_at,
-                             Photo.on_note)
+                             Photo.on_note, Photo.for_text)
                       .where(Photo.user_id == owner_id, Photo.date == day)
                       .order_by(Photo.created_at, Photo.id)).all()
     cover, _chosen = diary.effective_cover(day, content, {row.uid for row in rows})
-    of_the_day = [photos.view(row) for row in rows if not row.on_note]
+    of_the_day = [photos.view(row) for row in rows if not row.on_note and not row.for_text]
     allowed = {item["id"] for item in of_the_day}
     cover_photo = covers.photo_of(cover)
     if cover_photo is not None:
@@ -273,6 +275,7 @@ def shared_day(db: Session, viewer_id: int, owner_id: int, day: str) -> dict[str
     share = _share_for(db, viewer_id, owner_id, day)
     dek, content = _open_day(db, owner_id, day)
     cover, listed, allowed = visible_photos(db, owner_id, day, content, bool(share.with_notes))
+    crop = diary.shown_crop(content, covers.photo_of(cover) is not None)
     owner = _person(db, owner_id)
     hearted = db.scalar(select(Heart.at).where(Heart.share_id == share.id))
     out: dict[str, Any] = {
@@ -282,6 +285,7 @@ def shared_day(db: Session, viewer_id: int, owner_id: int, day: str) -> dict[str
         "text": content["text"],
         "tags": content["tags"],
         "cover": cover,
+        "cover_crop": crop,
         "photos": listed,
         "with_values": bool(share.with_values),
         "with_notes": bool(share.with_notes),
@@ -340,6 +344,7 @@ def shared_with_me(db: Session, viewer_id: int) -> list[dict[str, Any]]:
             "title": content["title"],
             "excerpt": diary.excerpt(content["text"]),
             "cover": cover,
+            "cover_crop": diary.shown_crop(content, covers.photo_of(cover) is not None),
             "new": row.seen is None,
             "heart": row.heart.isoformat() if row.heart else None,
         })

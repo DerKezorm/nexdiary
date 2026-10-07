@@ -1,21 +1,43 @@
-import { BarChart3, BookOpen, Heart, PenLine, SquarePen } from 'lucide-react'
+import { BarChart3, BookOpen, Heart, Images, PenLine, SquarePen } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, NavLink, Outlet, useLocation, useMatch, useNavigate } from 'react-router-dom'
 
+import { photosApi } from '../api/client'
 import { useAuth } from '../state/auth'
 import { SharedProvider, useShared } from '../state/shared'
 
 import { AccountMenu } from './AccountMenu'
+import { LightboxProvider } from './Lightbox'
+import { PhotoDeleteProvider } from './PhotoDelete'
 import { Wordmark } from './Logo'
 import { WhatsNewBanner } from './WhatsNew'
 
 const NAV = [
   { to: '/', label: 'nav.today', icon: PenLine },
   { to: '/tagebuch', label: 'nav.journal', icon: BookOpen },
+  { to: '/fotos', label: 'nav.photos', icon: Images },
   { to: '/statistik', label: 'nav.stats', icon: BarChart3 },
   { to: '/geteilt', label: 'nav.shared', icon: Heart },
 ]
+
+/** Whether the person has a photo at all: "My photos" shows in the menu from the first one. Asked again on each
+ * page change (a photo may have come or gone), a single count. */
+function useHasPhotos(): boolean {
+  const { pathname } = useLocation()
+  const [has, setHas] = useState(false)
+  useEffect(() => {
+    let alive = true
+    photosApi.storage().then(
+      (found) => alive && setHas(found.count > 0),
+      () => undefined,
+    )
+    return () => {
+      alive = false
+    }
+  }, [pathname])
+  return has
+}
 
 /** The frame of the mock: a sidebar on a large screen, a header and a bar at the bottom on a phone. */
 /** Below this width nexdiary counts as on a phone (the breakpoint of the mock, `md`). */
@@ -81,7 +103,11 @@ function Toast() {
 export function AppShell() {
   return (
     <SharedProvider>
-      <Frame />
+      <PhotoDeleteProvider>
+        <LightboxProvider>
+          <Frame />
+        </LightboxProvider>
+      </PhotoDeleteProvider>
     </SharedProvider>
   )
 }
@@ -90,6 +116,8 @@ function Frame() {
   const { t } = useTranslation()
   const { unseen } = useShared()
   useQuickStart()
+  const hasPhotos = useHasPhotos()
+  const menu = NAV.filter((item) => item.to !== '/fotos' || hasPhotos)
   // While writing, the page is the writing: "Save" takes the place of the menu bar on a phone.
   const writing = useMatch('/tag/:date/schreiben') !== null
   return (
@@ -99,7 +127,7 @@ function Frame() {
           <Wordmark />
         </div>
         <nav className="space-y-1" aria-label={t('app.mainMenu')}>
-          {NAV.map(({ to, label, icon: Icon }) => (
+          {menu.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
@@ -137,7 +165,7 @@ function Frame() {
 
       <Toast />
       <nav hidden={writing} className={`fixed inset-x-0 bottom-0 z-30 border-t border-line bg-sheet/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden ${writing ? 'hidden' : 'flex'}`} aria-label={t('app.mainMenu')}>
-        {NAV.map(({ to, label, icon: Icon }) => (
+        {menu.map(({ to, label, icon: Icon }) => (
           <NavLink key={to} to={to} end={to === '/'} className={({ isActive }) => `relative flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[0.7rem] font-bold ${isActive ? 'text-accent' : 'text-muted'}`}>
             <Icon size={21} /> {t(label)}
             {to === '/geteilt' && unseen > 0 && <span className="absolute top-1.5 left-1/2 ml-2 h-2 w-2 rounded-full bg-accent" role="img" aria-label={t('shared.badge', { count: unseen })} />}

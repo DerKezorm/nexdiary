@@ -12,6 +12,9 @@ import { Markdown } from '../components/Markdown'
 import { flatten, type MdNode } from '../editor/flatten'
 import { parseBlocks, plainText, tame, textPhotoIds } from './markdown'
 
+const opened: { photos: { id: string; src: string; caption?: string }[]; index: number; opener: unknown }[] = []
+vi.mock('../components/Lightbox', () => ({ useLightbox: () => ({ open: (photos: never[], index: number, opener: unknown) => opened.push({ photos, index, opener }) }) }))
+
 const ID = 'a1'.repeat(16)
 const OTHER = '0f'.repeat(16)
 
@@ -30,6 +33,7 @@ function show(element: React.ReactNode): HTMLDivElement {
 beforeAll(() => changeLanguage('de', false))
 
 afterEach(() => {
+  opened.length = 0
   act(() => root?.unmount())
   box?.remove()
   root = box = null
@@ -137,5 +141,133 @@ describe('the editor’s pass over a page', () => {
     expect(JSON.stringify(tree.children?.slice(1))).not.toContain('diaryPhoto')
     expect(JSON.stringify(tree)).not.toContain('example.com')
     expect(tree.children?.[2]).toEqual({ type: 'paragraph', children: [text('fremd')] })
+  })
+})
+
+/** The picture's size once it has loaded, as a browser would give it. */
+function load(img: HTMLImageElement, width: number, height: number): void {
+  Object.defineProperty(img, 'naturalWidth', { value: width, configurable: true })
+  Object.defineProperty(img, 'naturalHeight', { value: height, configurable: true })
+  act(() => {
+    img.dispatchEvent(new Event('load'))
+  })
+}
+
+describe('a cut photo in the text', () => {
+  it('reads the cut after the id, and only its exact form', () => {
+    expect(parseBlocks(`![Mia](photo:${ID}#crop=100,200,300,400&rot=90)`)).toEqual([{ kind: 'photo', id: ID, caption: 'Mia', cut: { crop: { x: 100, y: 200, w: 300, h: 400 }, rot: 90 } }])
+    expect(parseBlocks(`![](photo:${ID}#rot=270)`)).toEqual([{ kind: 'photo', id: ID, caption: '', cut: { crop: null, rot: 270 } }])
+    // Anything else after the id: the photo, whole.
+    for (const fragment of ['#rot=45', '#crop=1,2,3,4', '#crop=1.5,2,30,40', '#crop=-1,2,30,40', '#rot=90&rot=90', '#rot=90&crop=1,2,30,40', '#x=1', '#', `#rot=90${'0'.repeat(70)}`, '#crop=0,0,1000,1000']) {
+      expect(parseBlocks(`![x](photo:${ID}${fragment})`), fragment).toEqual([{ kind: 'photo', id: ID, caption: 'x' }])
+    }
+    expect(textPhotoIds(`![a](photo:${ID}#rot=90)\n\n![b](photo:${ID})`)).toEqual([ID])
+  })
+
+  it.each([
+    ['a space in it', `![x](photo:${ID}#crop=1, 2,30,40)`],
+    ['a bracket in it', `![x](photo:${ID}#crop=(1),2,30,40)`],
+    ['far too long', `![x](photo:${ID}#${'a'.repeat(201)})`],
+    ['a query before it', `![x](photo:${ID}?a#rot=90)`],
+  ])('takes a fragment with %s for no picture, only its characters', (_name, markdown) => {
+    expect(parseBlocks(markdown).some((block) => block.kind === 'photo')).toBe(false)
+  })
+
+  it('shows the cut out of the original, in the cut’s shape, from numbers only', () => {
+    const out = show(<Markdown text={`![Mia](photo:${ID}#crop=500,0,500,1000)`} />)
+    const img = out.querySelector<HTMLImageElement>('figure img')!
+    // Out of sight until it can be shown cut: the whole picture never flashes up first.
+    expect(img.style.visibility).toBe('hidden')
+    expect(img.getAttribute('src')).toBe(`/api/photos/${ID}`)
+    load(img, 4000, 3000)
+    const frame = out.querySelector<HTMLElement>('.diary-photo-cut')!
+    expect(frame.style.getPropertyValue('--cut-ratio')).toBe('0.66667')
+    expect(img.style.visibility).toBe('')
+    expect([img.style.position, img.style.left, img.style.top, img.style.width, img.style.height, img.style.transform]).toEqual(['absolute', '0%', '50%', '200%', '100%', 'translate(-50%, -50%)'])
+  })
+
+  it('turns the original around its middle before it cuts', () => {
+    const out = show(<Markdown text={`![](photo:${ID}#crop=0,0,1000,500&rot=90)`} />)
+    const img = out.querySelector<HTMLImageElement>('figure img')!
+    load(img, 4000, 3000)
+    expect(out.querySelector<HTMLElement>('.diary-photo-cut')!.style.getPropertyValue('--cut-ratio')).toBe('1.5')
+    expect([img.style.left, img.style.top, img.style.width, img.style.height, img.style.transform]).toEqual(['50%', '100%', '133.3333%', '150%', 'translate(-50%, -50%) rotate(90deg)'])
+  })
+
+  it('shows a photo without a cut in its own shape and right away', () => {
+    const out = show(<Markdown text={`![](photo:${ID})`} />)
+    const img = out.querySelector<HTMLImageElement>('figure img')!
+    expect(img.getAttribute('style')).toBeNull()
+    load(img, 3000, 4000)
+    expect(out.querySelector<HTMLElement>('.diary-photo-cut')!.style.getPropertyValue('--cut-ratio')).toBe('0.75')
+    expect(img.style.transform).toBe('translate(-50%, -50%)')
+  })
+
+  it.each([
+    ['a style', `#crop=1,2,30,40");background:url(https://example.com/x)`],
+    ['an attribute', `#rot=90"onerror="window.__xss=1`],
+    ['a tag', '#rot=90<script>window.__xss=1</script>'],
+    ['a custom property', '#--cut-ratio:1;rot=90'],
+  ])('never lets %s out of the fragment', (_name, fragment) => {
+    const out = show(<Markdown text={`Text.\n\n![x](photo:${ID}${fragment})`} />)
+    for (const img of out.querySelectorAll('img')) {
+      expect(img.getAttribute('src')).toBe(`/api/photos/${ID}`)
+      load(img, 400, 300)
+    }
+    expect(out.querySelectorAll('script')).toHaveLength(0)
+    for (const element of out.querySelectorAll<HTMLElement>('[style]')) expect(element.getAttribute('style')).not.toMatch(/url\(|script|onerror|background/)
+    for (const element of out.querySelectorAll('*')) expect(element.getAttributeNames().filter((name) => name.startsWith('on'))).toEqual([])
+    expect((window as { __xss?: number }).__xss).toBeUndefined()
+  })
+
+  it('opens the big view with every photo of the text, the tapped one first, whole', () => {
+    const out = show(<Markdown text={`![Mia](photo:${ID}#rot=90)\n\nText.\n\n![Ben](photo:${OTHER}#crop=0,0,500,500)`} photo={(id) => `/api/shared/3/2026-10-05/photos/${id}`} />)
+    const buttons = out.querySelectorAll<HTMLButtonElement>('figure button')
+    expect([...buttons].map((button) => button.getAttribute('aria-label'))).toEqual(['Mia', 'Ben'])
+    act(() => buttons[1].click())
+    expect(opened).toHaveLength(1)
+    expect(opened[0].index).toBe(1)
+    expect(opened[0].opener).toBe(buttons[1])
+    expect(opened[0].photos).toEqual([
+      { id: ID, src: `/api/shared/3/2026-10-05/photos/${ID}`, caption: 'Mia', alt: 'Mia' },
+      { id: OTHER, src: `/api/shared/3/2026-10-05/photos/${OTHER}`, caption: 'Ben', alt: 'Ben' },
+    ])
+  })
+
+  it('names a photo without a caption for the big view', () => {
+    const out = show(<Markdown text={`![](photo:${ID})`} />)
+    expect(out.querySelector('figure button')?.getAttribute('aria-label')).toBe('Foto groß ansehen')
+  })
+
+  it('keeps the cut when it tames a long text, in the canonical form, and drops what is not one', () => {
+    const long = `${'*a* '.repeat(1100)}\n\n![x](photo:${ID}#crop=1,2,30,40&rot=180)\n\n![y](photo:${OTHER}#rot=45)`
+    const tamed = tame(long)
+    expect(tamed).toContain(`![x](photo:${ID}#crop=1,2,30,40&rot=180)`)
+    expect(tamed).toContain(`![y](photo:${OTHER})`)
+    expect(tamed).not.toContain('rot=45')
+  })
+})
+
+describe('the editor’s pass over a cut photo', () => {
+  const image = (url: string, alt = 'x'): MdNode => ({ type: 'image', url, alt })
+
+  it('keeps a canonical cut, drops any other fragment and keeps the photo', () => {
+    const tree = flatten({
+      type: 'root',
+      children: [
+        { type: 'paragraph', children: [image(`photo:${ID}#crop=1,2,30,40&rot=90`)] },
+        { type: 'paragraph', children: [image(`photo:${ID}#rot=90&crop=1,2,30,40`)] },
+        { type: 'paragraph', children: [image(`photo:${ID}#crop=1,2,30,40");background:url(x)`)] },
+        { type: 'paragraph', children: [image(`photo:${ID}#`)] },
+        { type: 'paragraph', children: [image(`photo:${ID}?x#rot=90`)] },
+      ],
+    })
+    expect(tree.children?.slice(0, 4)).toEqual([
+      { type: 'diaryPhoto', id: ID, alt: 'x', cut: 'crop=1,2,30,40&rot=90' },
+      { type: 'diaryPhoto', id: ID, alt: 'x' },
+      { type: 'diaryPhoto', id: ID, alt: 'x' },
+      { type: 'diaryPhoto', id: ID, alt: 'x' },
+    ])
+    expect(tree.children?.[4]).toEqual({ type: 'paragraph', children: [{ type: 'text', value: 'x' }] })
   })
 })

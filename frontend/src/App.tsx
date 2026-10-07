@@ -7,6 +7,7 @@ import { AccountPage } from './pages/AccountPage'
 import { ForgotPage, InvitePage, LoginPage, ResetPage, SetupPage } from './pages/AuthPages'
 import { EntryPage } from './pages/EntryPage'
 import { JournalPage } from './pages/JournalPage'
+import { LibraryPage } from './pages/LibraryPage'
 import { QuickPage } from './pages/QuickPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { SharedEntryPage, SharedPage } from './pages/SharedPage'
@@ -57,6 +58,7 @@ export default function App() {
       >
         <Route index element={<TodayPage />} />
         <Route path="tagebuch" element={<JournalPage />} />
+        <Route path="fotos" element={<LibraryPage />} />
         <Route path="statistik" element={<StatsPage />} />
         <Route path="geteilt" element={<SharedPage />} />
         <Route path="geteilt/:from/:date" element={<SharedEntryPage />} />

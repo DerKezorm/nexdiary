@@ -251,7 +251,8 @@ describe('a day read', () => {
     coverOnNote = true
     await show('/tag/2026-10-04')
     const grid = [...box.querySelectorAll('article img')].map((image) => image.getAttribute('src'))
-    expect(grid).toContain(`/api/photos/${DAY_PHOTO}/preview`)
+    // A photo of the day stands large, from the original, in the shape it has.
+    expect(grid).toContain(`/api/photos/${DAY_PHOTO}`)
     expect(grid.some((src) => src?.includes('f'.repeat(32)))).toBe(false)
     await click([...box.querySelectorAll('button')].find((button) => button.textContent?.includes('Teilen')))
     expect(box.querySelector('[role=dialog]')?.textContent).toContain('Das Titelbild ist ein Foto aus deinen Notizen und wird mitgezeigt.')
@@ -265,7 +266,7 @@ describe('a day read', () => {
     expect(figure.querySelector('figcaption')?.textContent).toBe('Der See')
     const grid = [...box.querySelectorAll('article img')].map((image) => image.getAttribute('src'))
     expect(grid.filter((src) => src?.includes(DAY_PHOTO))).toEqual([`/api/photos/${DAY_PHOTO}`])
-    expect(grid).toContain(`/api/photos/${'9'.repeat(32)}/preview`)
+    expect(grid).toContain(`/api/photos/${'9'.repeat(32)}`)
   })
 
   it('picks a cover from the whole collection of Immich: the photo becomes one of the day and its cover', async () => {

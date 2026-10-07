@@ -53,6 +53,13 @@ class NightIn(Strict):
     choice: Literal["yesterday", "today"]
 
 
+class CoverCropIn(Strict):
+    #: The middle of what the cover shows, in per mille of the photo; how far it is zoomed in, in per cent.
+    x: int = Field(strict=True, ge=0, le=diary.PERMILLE)
+    y: int = Field(strict=True, ge=0, le=diary.PERMILLE)
+    zoom: int = Field(strict=True, ge=diary.ZOOM_MIN, le=diary.ZOOM_MAX)
+
+
 class DayIn(Strict):
     title: str | None = Field(default=None, max_length=diary.TITLE_MAX * 4)
     text: str | None = Field(default=None, max_length=diary.TEXT_MAX * 2)
@@ -64,6 +71,9 @@ class DayIn(Strict):
     written_by: Literal["ai", "self"] | None = None
     #: ``illu:<motif>.<time>.<season>`` or ``photo:<id>`` of an own photo; null: the suggestion again.
     cover: str | None = Field(default=None, max_length=diary.COVER_MAX)
+    #: The part of a photo cover shown; null: all of it. Kept only with a photo for the cover; a new cover sent without
+    #: it starts without one.
+    cover_crop: CoverCropIn | None = None
     #: The revision the writer started from (-1: there was no page). Sent, the page is changed only onto exactly
     #: that, else ``day_changed``; and a saved text ends the day's draft.
     base_revision: int | None = Field(default=None, ge=-1)
@@ -75,6 +85,7 @@ class DraftIn(Strict):
     tags: list[Annotated[str, Field(max_length=diary.TAG_MAX * 4)]] | None = Field(default=None,
                                                                                   max_length=diary.TAGS_MAX * 2)
     cover: str | None = Field(default=None, max_length=diary.COVER_MAX)
+    cover_crop: CoverCropIn | None = None
     #: "ai" while the writing began as a suggestion of the AI, and the length it was asked for.
     written_by: Literal["ai", "self"] | None = None
     ai_length: Literal["short", "long"] | None = None
@@ -223,13 +234,19 @@ def put_day(date: str, payload: DayIn, request: Request, account: Account, db: D
     dek = _values_ready(db, account, request)
     if not diary.day_exists(db, account.id, key):
         brakes.take("new_day", account.id)
-    fields = {name: getattr(payload, name) for name in payload.model_fields_set if name != "base_revision"}
+    dumped = payload.model_dump()
+    fields = {name: dumped[name] for name in payload.model_fields_set if name != "base_revision"}
     patch = diary.clean_day_patch(db, account.id, key, fields)
     saved = diary.change_day(db, account.id, dek, key, lambda content: diary.merge(content, patch),
                              base_revision=payload.base_revision,
                              discard_draft=payload.base_revision is not None)
+    if "text" in patch or "cover" in patch:
+        # A photo deleted on another device while this save was under way leaves no picture behind.
+        saved = diary.settle_photos(db, account.id, dek, key, saved)
     if "text" in patch:
         diary.adopt_text_photos(db, account.id, key, saved["text"])
+    # The photos taken for the text that nothing holds any more go now, their files after the commit.
+    photos.remove_files(diary.tidy_text_photos(db, account.id, dek, key))
     return saved
 
 
@@ -262,7 +279,9 @@ def put_draft(date: str, payload: DraftIn, account: Account, db: DbSession) -> d
 
 @router.delete("/days/{date}/draft", status_code=204, summary="Throw away the draft of a day")
 def delete_draft(date: str, account: Account, db: DbSession) -> None:
-    diary.delete_draft(db, account.id, diary.check_date(account, date))
+    """The photos taken for its text that nothing else holds go with it."""
+    removed = diary.delete_draft(db, account.id, vault.dek_for(account.id), diary.check_date(account, date))
+    photos.remove_files(removed)
 
 
 @router.put("/days/{date}/values", summary="Rate values of a day; null takes a rating back")
