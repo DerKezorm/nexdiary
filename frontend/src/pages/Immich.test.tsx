@@ -14,6 +14,7 @@ import '../i18n'
 import { changeLanguage } from '../i18n'
 import { ImmichCard, ImmichServerCard } from './settings/ImmichCards'
 import { TodayPage } from './TodayPage'
+import { idle } from '../test/wait'
 
 const me: { name: string; display_name: string; profile: Profile } = {
   name: 'jule',
@@ -69,12 +70,9 @@ async function show(element: React.ReactNode): Promise<void> {
   document.body.appendChild(box)
   root = createRoot(box)
   await act(async () => root.render(<MemoryRouter>{element}</MemoryRouter>))
-  await settle()
+  await idle()
 }
 
-async function settle(): Promise<void> {
-  await act(async () => new Promise((resolve) => setTimeout(resolve, 10)))
-}
 
 function button(text: string): HTMLButtonElement | undefined {
   return [...document.querySelectorAll<HTMLButtonElement>('button')].find((item) => item.textContent?.trim() === text || item.getAttribute('aria-label') === text)
@@ -130,7 +128,7 @@ describe('the own Immich card', () => {
     set(url, 'https://photos.example.com')
     set(key, 'made-for-this-test')
     await act(async () => button('Speichern und prüfen')!.click())
-    await settle()
+    await idle()
     const saved = calls.find((call) => call.url === '/api/immich' && call.method === 'PUT')
     expect(saved?.body).toEqual({ url: 'https://photos.example.com', suggest: true, key: 'made-for-this-test' })
     expect(calls.some((call) => call.url === '/api/immich/probe')).toBe(true)
@@ -145,7 +143,7 @@ describe('the operator card', () => {
   it('opens Immich and keeps one host per line', async () => {
     await show(<ImmichServerCard />)
     await act(async () => box.querySelector<HTMLButtonElement>('button[role="switch"]')!.click())
-    await settle()
+    await idle()
     expect(calls.find((call) => call.method === 'PUT')?.body).toEqual({ allowed: true })
     const area = box.querySelector('textarea')!
     const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!
@@ -154,7 +152,7 @@ describe('the operator card', () => {
       area.dispatchEvent(new Event('input', { bubbles: true }))
     })
     await act(async () => button('Speichern')!.click())
-    await settle()
+    await idle()
     expect(calls.filter((call) => call.method === 'PUT').at(-1)?.body).toEqual({ hosts: ['photos.example.com', 'immich.example.com:2283'] })
     expect(box.textContent).toContain('2 Personen haben Immich verbunden.')
   })
@@ -185,14 +183,14 @@ describe('the photos of today from Immich', () => {
     expect(box.textContent).toContain('aus Immich · 0 gewählt')
     expect(calls.some((call) => call.method === 'POST' && call.url.startsWith('/api/immich/photos/'))).toBe(false)
     await act(async () => tiles()[0].click())
-    await settle()
+    await idle()
     expect(calls.filter((call) => call.method === 'POST' && call.url === `/api/immich/photos/${A1}`)).toHaveLength(1)
     expect(tiles()[0].getAttribute('aria-pressed')).toBe('true')
     expect(box.textContent).toContain('aus Immich · 1 gewählt')
     // Shown as its tile, not a second time among the own photos.
     expect(box.querySelectorAll(`img[src="/api/photos/${PHOTO.id}/preview"]`)).toHaveLength(0)
     await act(async () => tiles()[0].click())
-    await settle()
+    await idle()
     expect(calls.some((call) => call.method === 'DELETE' && call.url === `/api/photos/${PHOTO.id}`)).toBe(true)
     expect(box.textContent).toContain('aus Immich · 0 gewählt')
   })
@@ -236,7 +234,7 @@ describe('the cover picker', () => {
     expect(tile).toBeTruthy()
     expect(document.body.textContent).toContain('Deine Fotos von diesem Tag')
     await act(async () => tile!.click())
-    await settle()
+    await idle()
     expect(taken.map((entry) => entry.id)).toEqual([A1])
     expect(chosen).toEqual([`photo:${PHOTO.id}`])
   })

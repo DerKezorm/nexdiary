@@ -12,6 +12,7 @@ import '../i18n'
 import { changeLanguage } from '../i18n'
 import { storedPalette } from '../lib/theme'
 import { AccountPage } from './AccountPage'
+import { idle } from '../test/wait'
 
 const setMe = vi.fn()
 const me: Me = {
@@ -69,7 +70,7 @@ function choice(name: string): HTMLButtonElement {
 
 async function click(target: HTMLElement): Promise<void> {
   await act(async () => target.click())
-  await act(async () => new Promise((resolve) => setTimeout(resolve, 10)))
+  await idle()
 }
 
 describe('the themes of the account', () => {

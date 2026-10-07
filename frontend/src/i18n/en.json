@@ -212,15 +212,6 @@
       "best": "Best day",
       "worst": "Worst day",
       "badge": "{{name}} {{value}}/10"
-    },
-    "weekdayShort": {
-      "mo": "Mo",
-      "tu": "Tu",
-      "we": "We",
-      "th": "Th",
-      "fr": "Fr",
-      "sa": "Sa",
-      "su": "Su"
     }
   },
   "shared": {
@@ -654,7 +645,9 @@
       "removeButton": "Remove",
       "removed": "Passkey removed.",
       "added": "Passkey added.",
-      "unavailable": "Passkeys work only over https (or localhost) and in browsers that know them."
+      "unavailable": "Passkeys work only over https (or localhost) and in browsers that know them.",
+      "noAddressOperator": "Enter the public address first (<settings>Settings → Sign-in</settings>).",
+      "noAddressMember": "Your operator has to enter the public address first."
     }
   },
   "twofactor": {

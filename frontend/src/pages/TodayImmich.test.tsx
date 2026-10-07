@@ -13,6 +13,7 @@ import '../i18n'
 import { changeLanguage } from '../i18n'
 import { QuickPage } from './QuickPage'
 import { TodayPage } from './TodayPage'
+import { idle } from '../test/wait'
 
 const me: { name: string; display_name: string; profile: Profile } = {
   name: 'jule',
@@ -64,9 +65,6 @@ function serve(): void {
 let root: Root
 let box: HTMLDivElement
 
-async function settle(ms = 20): Promise<void> {
-  await act(async () => new Promise((resolve) => setTimeout(resolve, ms)))
-}
 
 async function show(element: React.ReactNode): Promise<void> {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -74,7 +72,7 @@ async function show(element: React.ReactNode): Promise<void> {
   document.body.appendChild(box)
   root = createRoot(box)
   await act(async () => root.render(<MemoryRouter>{element}</MemoryRouter>))
-  await settle(40)
+  await idle()
 }
 
 const named = (text: string) => [...document.querySelectorAll<HTMLButtonElement>('button, [role=menuitem]')].find((item) => item.textContent?.trim() === text || item.getAttribute('aria-label') === text)
@@ -113,7 +111,7 @@ describe('the photos of today', () => {
     await show(<TodayPage now={new Date(2026, 9, 6, 19, 30)} />)
     const tile = box.querySelector<HTMLButtonElement>('button[aria-pressed]')!
     await act(async () => tile.click())
-    await settle()
+    await idle()
     expect(takes().map((call) => [call.url, call.body])).toEqual([[`/api/immich/photos/${NEW1}`, { date: '2026-10-06', anywhen: true }]])
     expect(tile.getAttribute('aria-pressed')).toBe('true')
   })
@@ -121,10 +119,10 @@ describe('the photos of today', () => {
   it('opens the whole collection with "Alle Fotos" and keeps what is taken there for today', async () => {
     await show(<TodayPage now={new Date(2026, 9, 6, 19, 30)} />)
     await act(async () => named('Alle Fotos')!.click())
-    await settle(40)
+    await idle()
     expect(document.querySelector('[role=dialog]')?.textContent).toContain('Aus Immich wählen')
     await act(async () => document.querySelector<HTMLButtonElement>('[data-immich-tiles] button:has(img)')!.click())
-    await settle(40)
+    await idle()
     expect(takes().map((call) => [call.url, call.body])).toEqual([[`/api/immich/photos/${OLD}`, { date: '2026-10-06', anywhen: true }]])
     expect(document.querySelector('[role=dialog]')).toBeNull()
     expect(box.querySelector(`img[src="/api/photos/${KEPT}/preview"]`)).toBeTruthy()
@@ -164,9 +162,9 @@ describe('the camera button of a note', () => {
     await show(<TodayPage now={new Date(2026, 9, 6, 19, 30)} />)
     await act(async () => camera('Foto anhängen').click())
     await act(async () => named('Aus Immich')!.click())
-    await settle(40)
+    await idle()
     await act(async () => document.querySelector<HTMLButtonElement>('[data-immich-tiles] button:has(img)')!.click())
-    await settle(40)
+    await idle()
     expect(takes().map((call) => [call.url, call.body])).toEqual([[`/api/immich/photos/${OLD}`, { date: '2026-10-06', note: true, anywhen: true }]])
     expect(box.querySelector(`img[alt="Foto"][src="/api/photos/${KEPT}/preview"]`)).toBeTruthy()
     const field = box.querySelector<HTMLTextAreaElement>('textarea')!
@@ -175,7 +173,7 @@ describe('the camera button of a note', () => {
       field.dispatchEvent(new Event('input', { bubbles: true }))
     })
     await act(async () => box.querySelector<HTMLButtonElement>('button[aria-label="Notieren"]')!.click())
-    await settle(40)
+    await idle()
     expect(calls.find((call) => call.method === 'POST' && call.url === '/api/notes')?.body).toMatchObject({ text: 'Alte Aufnahme', photo_id: KEPT })
   })
 
@@ -184,9 +182,9 @@ describe('the camera button of a note', () => {
     await act(async () => camera('Foto aufnehmen').click())
     expect(document.querySelector('[data-photo-menu]')).toBeTruthy()
     await act(async () => named('Aus Immich')!.click())
-    await settle(40)
+    await idle()
     await act(async () => document.querySelector<HTMLButtonElement>('[data-immich-tiles] button:has(img)')!.click())
-    await settle(40)
+    await idle()
     expect(takes()[0].body).toEqual({ date: '2026-10-06', note: true, anywhen: true })
   })
 })

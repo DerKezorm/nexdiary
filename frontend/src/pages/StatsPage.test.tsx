@@ -10,6 +10,7 @@ import type { Stats } from '../api/client'
 import '../i18n'
 import { changeLanguage } from '../i18n'
 import { StatsPage } from './StatsPage'
+import { idle } from '../test/wait'
 
 const MOOD = { id: 'v1', name: 'Laune', low: 'mies', high: 'super' }
 const SLEEP = { id: 'v2', name: 'Schlaf', low: 'kaum', high: 'erholt' }
@@ -84,7 +85,6 @@ function serve(): void {
 let root: Root
 let box: HTMLDivElement
 
-const settle = () => act(async () => new Promise((resolve) => setTimeout(resolve, 20)))
 
 async function show(): Promise<void> {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -98,7 +98,7 @@ async function show(): Promise<void> {
       </MemoryRouter>,
     ),
   )
-  await settle()
+  await idle()
 }
 
 async function click(element: Element | null | undefined): Promise<void> {
@@ -106,7 +106,7 @@ async function click(element: Element | null | undefined): Promise<void> {
   await act(async () => {
     element.dispatchEvent(new MouseEvent('click', { bubbles: true }))
   })
-  await settle()
+  await idle()
 }
 
 const button = (label: string, inside: ParentNode = box) => [...inside.querySelectorAll('button')].find((candidate) => candidate.textContent === label)
@@ -322,6 +322,35 @@ describe('the best and the worst day', () => {
     // A day without a title is called so, and has its text.
     expect(every[1].textContent).toContain('Ohne Titel')
     expect(every[1].textContent).toContain('Laune 1/10')
+  })
+})
+
+describe('dates and weekdays on the axes follow the language', () => {
+  const svgTexts = () => [...box.querySelectorAll('svg text')].map((text) => text.textContent ?? '')
+  /** The labels along the time axis of the value chart: a day and a month, not the plain numbers of the scale. */
+  const axisDates = () => svgTexts().filter((text) => /\d/.test(text) && !/^\d+$/.test(text))
+
+  it('in German: day, dot, month; Mo, Mi, Fr by the calendar and Mo to So under the bars', async () => {
+    await show()
+    const dates = axisDates()
+    expect(dates.length).toBeGreaterThan(1)
+    for (const text of dates) expect(text).toMatch(/^\d{1,2}\. \p{L}+\.?$/u)
+    expect(svgTexts()).toEqual(expect.arrayContaining(['Mo', 'Mi', 'Fr']))
+    expect([...panel('Deine Wochentage')!.querySelectorAll('.flex.h-44 > div')].map((bar) => bar.lastElementChild!.textContent)).toEqual(['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'])
+  })
+
+  it('in English: month, then day, never the German order; Mon, Wed, Fri by the calendar and Mon to Sun under the bars', async () => {
+    await changeLanguage('en', false)
+    await show()
+    const dates = axisDates()
+    expect(dates.length).toBeGreaterThan(1)
+    for (const text of dates) expect(text).toMatch(/^[A-Z][a-z]{2,4}\.? \d{1,2}$/)
+    expect(dates.some((text) => text.includes('.') && /\d\./.test(text))).toBe(false)
+    const texts = svgTexts()
+    expect(texts).toEqual(expect.arrayContaining(['Mon', 'Wed', 'Fri']))
+    expect(texts).not.toContain('Mo')
+    expect(texts).not.toContain('We')
+    expect([...panel('Your weekdays')!.querySelectorAll('.flex.h-44 > div')].map((bar) => bar.lastElementChild!.textContent)).toEqual(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
   })
 })
 

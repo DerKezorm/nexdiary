@@ -10,6 +10,7 @@ import type { Profile } from '../api/client'
 import '../i18n'
 import { changeLanguage } from '../i18n'
 import { JournalPage } from './JournalPage'
+import { idle } from '../test/wait'
 
 const auth = vi.hoisted(() => {
   const listeners = new Set<() => void>()
@@ -74,7 +75,7 @@ async function show(): Promise<void> {
   document.body.appendChild(box)
   root = createRoot(box)
   await act(async () => root.render(<MemoryRouter><JournalPage /></MemoryRouter>))
-  await act(async () => new Promise((resolve) => setTimeout(resolve, 30)))
+  await idle()
 }
 
 const pill = (name: string) => [...box.querySelectorAll<HTMLButtonElement>('[data-look-switch] button')].find((item) => item.getAttribute('aria-label') === name)!
@@ -108,14 +109,14 @@ describe('the switch between blog and timeline', () => {
     // The blog has the day as a large card, the timeline puts it under the name of its month.
     expect(box.querySelector('section h2')).toBeNull()
     await act(async () => pill('Zeitleiste').click())
-    await act(async () => new Promise((resolve) => setTimeout(resolve, 20)))
+    await idle()
     expect(calls.filter((call) => call.url === '/api/me/preferences').map((call) => call.body)).toEqual([{ journal: 'timeline' }])
     expect(auth.me.profile.journal).toBe('timeline')
     expect(pill('Zeitleiste').getAttribute('aria-pressed')).toBe('true')
     expect(pill('Blog').getAttribute('aria-pressed')).toBe('false')
     expect(box.textContent).toContain('Oktober 2026')
     await act(async () => pill('Blog').click())
-    await act(async () => new Promise((resolve) => setTimeout(resolve, 20)))
+    await idle()
     expect(auth.me.profile.journal).toBe('blog')
   })
 
@@ -129,7 +130,7 @@ describe('the switch between blog and timeline', () => {
     refuse = true
     await show()
     await act(async () => pill('Zeitleiste').click())
-    await act(async () => new Promise((resolve) => setTimeout(resolve, 20)))
+    await idle()
     expect(auth.me.profile.journal).toBe('blog')
     expect(pill('Blog').getAttribute('aria-pressed')).toBe('true')
   })

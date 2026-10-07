@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import '../i18n'
 import { changeLanguage } from '../i18n'
 import { ShareDialog } from './ShareDialog'
+import { eventually, idle } from '../test/wait'
 
 const NAMES = ['anna', 'ben', 'carla', 'dirk', 'emma', 'fritz', 'gabi', 'hanna', 'ida']
 let count = NAMES.length
@@ -43,7 +44,7 @@ async function show(): Promise<void> {
   await act(async () => {
     root.render(<ShareDialog date="2026-10-04" shares={{ date: '2026-10-04', people: [], with_values: false, with_notes: false }} onClose={() => undefined} onShared={() => undefined} />)
   })
-  await act(async () => new Promise((resolve) => setTimeout(resolve, 10)))
+  await idle()
 }
 
 const people = () => [...box.querySelectorAll('button[aria-pressed]')].map((button) => button.textContent)
@@ -61,7 +62,7 @@ it('offers a field to find a person when there are many, and keeps the chosen on
   expect(people()).toEqual(['Hhanna'])
   await act(async () => (box.querySelector('button[aria-pressed]') as HTMLElement).click())
   await act(async () => ([...box.querySelectorAll('button')].find((button) => button.textContent === 'Teilen') as HTMLElement).click())
-  expect(sent).toEqual([{ to: [2, 9], with_values: false, with_notes: false }])
+  await eventually(() => expect(sent).toEqual([{ to: [2, 9], with_values: false, with_notes: false }]), 'the share being sent')
 })
 
 it('has no such field for a few people', async () => {

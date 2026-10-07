@@ -8,6 +8,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import '../i18n'
 import { Markdown } from '../components/Markdown'
 import { DiaryEditor, type DiaryEditorHandle } from '../editor/DiaryEditor'
+import { until } from '../test/wait'
 import { MAX_DEPTH, MAX_MARKS, parseBlocks, plainText, tame, type Inline } from './markdown'
 
 let root: Root
@@ -186,12 +187,7 @@ describe('what the editor writes', () => {
     await act(async () => {
       editorRoot.render(<DiaryEditor ref={handle} value={source} onChange={() => undefined} placeholder="" label="Text" />)
     })
-    for (let i = 0; i < 50 && !editorBox.querySelector('[contenteditable]'); i++) {
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 20))
-      })
-    }
-    const editable = editorBox.querySelector<HTMLElement>('[contenteditable]')!
+    const editable = await until(() => editorBox.querySelector<HTMLElement>('[contenteditable]'), 'the editor starting')
     const written = handle.current!.getMarkdown()!
     expect(written).toBeTruthy()
     expect(tame(written)).toBe(written)
@@ -212,12 +208,7 @@ describe('what the editor writes', () => {
     await act(async () => {
       editorRoot.render(<DiaryEditor value={'>'.repeat(20_000) + '\n\n' + '*_'.repeat(3000)} onChange={() => undefined} placeholder="" label="Text" />)
     })
-    for (let i = 0; i < 100 && !editorBox.querySelector('[contenteditable]'); i++) {
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 20))
-      })
-    }
-    expect(editorBox.querySelector('[contenteditable]')).not.toBeNull()
+    await until(() => editorBox.querySelector('[contenteditable]'), 'the editor starting')
     // Without taming it, remark needs half a minute here or overflows its stack; with it, about one second.
     expect(performance.now() - started).toBeLessThan(8000)
     expect(editorBox.querySelectorAll('blockquote').length).toBeLessThanOrEqual(MAX_DEPTH)

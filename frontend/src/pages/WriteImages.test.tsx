@@ -11,6 +11,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import '../i18n'
 import { changeLanguage } from '../i18n'
 import WritePage from './WritePage'
+import { idle } from '../test/wait'
 
 vi.mock('../state/auth', () => ({
   useAuth: () => ({ me: { name: 'jule', display_name: 'Jule', profile: { mode: 'light', layout: 'page', quick_start: false, journal: 'blog', timezone: 'Europe/Berlin', timezone_source: 'manual' } } }),
@@ -83,9 +84,6 @@ function serve(): void {
 let root: Root
 let box: HTMLDivElement
 
-async function settle(ms = 30): Promise<void> {
-  await act(async () => new Promise((resolve) => setTimeout(resolve, ms)))
-}
 
 async function show(): Promise<void> {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -102,8 +100,8 @@ async function show(): Promise<void> {
       </MemoryRouter>,
     ),
   )
-  for (let i = 0; i < 60 && !box.querySelector('[contenteditable=true]'); i++) await settle(20)
-  await settle(40)
+  for (let i = 0; i < 60 && !box.querySelector('[contenteditable=true]'); i++) await idle()
+  await idle()
 }
 
 function button(text: string): HTMLButtonElement {
@@ -144,10 +142,10 @@ describe('pictures in the text', () => {
     await act(async () => button('Aus den Fotos dieses Tages').click())
     expect(document.querySelectorAll('[data-day-photos] button')).toHaveLength(1)
     await act(async () => document.querySelector<HTMLButtonElement>('[data-day-photos] button')!.click())
-    await settle()
+    await idle()
     expect(box.querySelectorAll('figure.diary-photo-edit img')[0].getAttribute('src')).toBe(`/api/photos/${DAY_PHOTO}`)
     await act(async () => button('Speichern').click())
-    await settle(60)
+    await idle()
     expect(puts()).toHaveLength(1)
     expect(puts()[0].body?.text).toBe(`![](photo:${DAY_PHOTO})`)
   })
@@ -164,10 +162,10 @@ describe('pictures in the text', () => {
     await show()
     expect(box.textContent).toContain('Antippen fügt es in den Text ein.')
     await act(async () => button('In den Text einfügen').click())
-    await settle()
+    await idle()
     expect(box.querySelectorAll('figure.diary-photo-edit')).toHaveLength(1)
     await act(async () => button('Speichern').click())
-    await settle(60)
+    await idle()
     expect(puts()[0].body?.text).toBe(`![](photo:${NOTE_PHOTO})`)
   })
 
@@ -183,7 +181,7 @@ describe('pictures in the text', () => {
     const file = new File(['x'], 'foto.jpg', { type: 'image/jpeg' })
     Object.defineProperty(input, 'files', { value: [file], configurable: true })
     await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
-    await settle(60)
+    await idle()
     const upload = calls.find((call) => call.method === 'POST' && call.url.startsWith('/api/photos?'))!
     expect(upload.url).toContain(`date=${DATE}`)
     expect(upload.url).not.toContain('note=')
@@ -195,11 +193,11 @@ describe('pictures in the text', () => {
     await show()
     await act(async () => button('Bild einfügen').click())
     await act(async () => button('Aus Immich').click())
-    await settle(60)
+    await idle()
     const tile = document.querySelector<HTMLButtonElement>('[data-immich-tiles] button:has(img)')!
     expect(tile).toBeTruthy()
     await act(async () => tile.click())
-    await settle(60)
+    await idle()
     const take = calls.find((call) => call.method === 'POST' && call.url === `/api/immich/photos/${ASSET}`)!
     expect(take.body).toEqual({ date: DATE, anywhen: true })
     expect(document.querySelector('[role=dialog]')).toBeNull()
@@ -213,11 +211,11 @@ describe('pictures in the text', () => {
     await show()
     await act(async () => button('Titelbild ändern').click())
     await act(async () => button('Weitere aus Immich').click())
-    await settle(60)
+    await idle()
     await act(async () => document.querySelector<HTMLButtonElement>('[data-immich-tiles] button:has(img)')!.click())
-    await settle(60)
+    await idle()
     await act(async () => button('Speichern').click())
-    await settle(60)
+    await idle()
     expect(puts()[0].body?.cover).toBe(`photo:${NEW_PHOTO}`)
   })
 })
@@ -241,7 +239,7 @@ describe('a draft the morning writing made', () => {
     draft = waiting()
     await show()
     await act(async () => button('Abnehmen').click())
-    await settle(60)
+    await idle()
     expect(puts()).toHaveLength(1)
     expect(puts()[0].body).toMatchObject({ title: 'Kastanien', text: 'Ich war mit Mia im Park.', written_by: 'ai', base_revision: -1 })
     expect(draft).toBeNull()
@@ -252,7 +250,7 @@ describe('a draft the morning writing made', () => {
     draft = waiting()
     await show()
     await act(async () => button('Verwerfen').click())
-    await settle(60)
+    await idle()
     expect(draft).toBeNull()
     expect(calls.some((call) => call.method === 'DELETE' && call.url === `/api/days/${DATE}/draft`)).toBe(true)
     expect(puts()).toHaveLength(0)

@@ -13,6 +13,7 @@ import { createRef } from 'react'
 
 import { DiaryEditor, type DiaryEditorHandle } from './DiaryEditor'
 import { diaryPlugins, filesDropped, onlyFilesPasted, textOnly } from './setup'
+import { eventually, until } from '../test/wait'
 
 let root: Root
 let box: HTMLDivElement
@@ -25,14 +26,7 @@ async function show(value: string, onChange: (markdown: string) => void = () => 
   await act(async () => {
     root.render(<DiaryEditor ref={handle} value={value} onChange={onChange} placeholder="Schreib einfach los …" label="Text des Tages" />)
   })
-  for (let i = 0; i < 50 && !box.querySelector('[contenteditable]'); i++) {
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 20))
-    })
-  }
-  const editable = box.querySelector<HTMLElement>('[contenteditable]')
-  if (!editable) throw new Error('the editor did not start')
-  return editable
+  return await until(() => box.querySelector<HTMLElement>('[contenteditable]'), 'the editor starting')
 }
 
 beforeAll(async () => {
@@ -92,12 +86,13 @@ describe('the editor', () => {
     await act(async () => {
       editable.focus()
       editable.dispatchEvent(paste)
-      await new Promise((resolve) => setTimeout(resolve, 400))
     })
+    await eventually(() => {
+      expect(editable.querySelectorAll('h2')).toHaveLength(1)
+      expect(markdown).toContain('## Titel')
+    }, 'the pasted heading')
     expect(editable.querySelectorAll('h1, img, a, script')).toHaveLength(0)
-    expect(editable.querySelectorAll('h2')).toHaveLength(1)
     expect(editable.querySelector('strong')?.textContent).toBe('fetter')
-    expect(markdown).toContain('## Titel')
     expect(markdown).not.toContain('javascript')
     expect((window as { __xss?: number }).__xss).toBeUndefined()
   })
@@ -109,8 +104,7 @@ describe('the editor', () => {
     act(() => handle.current!.insertHeading('Was war schön?'))
     expect(handle.current!.getMarkdown()).toBe('Erster Satz.\n\n## Was war schön?')
     expect(changes).toEqual([])
-    await act(async () => new Promise((resolve) => setTimeout(resolve, 400)))
-    expect(changes.at(-1)?.trimEnd()).toBe('Erster Satz.\n\n## Was war schön?')
+    await eventually(() => expect(changes.at(-1)?.trimEnd()).toBe('Erster Satz.\n\n## Was war schön?'), 'the change being reported')
   })
   it('takes no file pasted or dropped: the browser does not put the picture in either', async () => {
     const editable = await show('Text.')

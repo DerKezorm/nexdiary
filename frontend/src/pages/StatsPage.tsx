@@ -12,11 +12,10 @@ import { Link } from 'react-router-dom'
 import { ApiError, statsApi, type Stats, type StatsDay, type StatsExtremes, type StatsRange, type StatsSpan, type StatsValue } from '../api/client'
 import { YearAgo } from '../components/YearAgo'
 import { CoverImage } from '../covers/Cover'
-import { addDays, longDate, monthName, weekdayName } from '../lib/dates'
+import { addDays, longDate, monthName, shortDay, weekdayName, weekdayShort } from '../lib/dates'
 import { errorText } from '../lib/errors'
 import { Segment } from './settings/ui'
 
-const WEEKDAY_KEYS = ['mo', 'tu', 'we', 'th', 'fr', 'sa', 'su'] as const
 
 function Tile({ icon: Icon, label, value, sub }: { icon: typeof Flame; label: string; value: ReactNode; sub?: string }) {
   return (
@@ -146,7 +145,7 @@ function YearCalendar({ data }: { data: Stats }) {
   const byDate = new Map(calendar.days.map((day) => [day.date, day]))
   const cell = 15
   const gap = 3
-  const left = 26
+  const left = 28
   const top = 18
   const cols = Array.from({ length: calendar.weeks }, (_, w) => Array.from({ length: 7 }, (_, d) => addDays(calendar.start, w * 7 + d)))
   const level = (date: string) => {
@@ -172,7 +171,8 @@ function YearCalendar({ data }: { data: Stats }) {
     // Measured in the page, drawn in the card; kept inside the card so that a square at its edge shows its tooltip.
     setHover({ date, x: Math.max(90, Math.min(c.left - r.left + c.width / 2, r.width - 90)), y: c.top - r.top })
   }
-  const labels = ['mo', 'we', 'fr'] as const
+  // Monday, Wednesday and Friday, named in the language of the page.
+  const labels = [0, 2, 4] as const
   return (
     <Panel
       title={t('stats.calendar.title')}
@@ -200,9 +200,9 @@ function YearCalendar({ data }: { data: Stats }) {
               </text>
             ) : null
           })}
-          {labels.map((key, i) => (
-            <text key={key} x={0} y={top + (i * 2 + 1) * (cell + gap) - 4} className="fill-[var(--muted)] text-[9px]">
-              {t(`stats.weekdayShort.${key}`)}
+          {labels.map((weekday, i) => (
+            <text key={weekday} x={0} y={top + (i * 2 + 1) * (cell + gap) - 4} className="fill-[var(--muted)] text-[9px]">
+              {weekdayShort(weekday, i18n.language)}
             </text>
           ))}
           {cols.map((days, w) =>
@@ -352,7 +352,7 @@ function ValueOverTime({ data }: { data: Stats }) {
           {values.map((_, i) =>
             i % Math.ceil(n / (narrow ? 3 : 6)) === 0 ? (
               <text key={dateAt(i)} x={x(i)} y={H - 6} textAnchor="middle" className="fill-[var(--muted)] text-[10px]">
-                {Number(dateAt(i).slice(8, 10))}. {monthName(dateAt(i), i18n.language).slice(0, 3)}
+                {shortDay(dateAt(i), i18n.language)}
               </text>
             ) : null,
           )}
@@ -404,7 +404,7 @@ function Weekdays({ data }: { data: Stats }) {
               >
                 <span className={`text-xs font-bold tabular-nums ${hover === i || i === best ? 'text-ink' : 'text-muted'}`}>{format.decimal(day.mean)}</span>
                 <div className="w-full max-w-12 rounded-t-[4px] bg-accent transition-opacity" style={{ height: `${((day.mean ?? 0) / 10) * 100}%`, opacity: i === best || hover === i ? 1 : 0.55 }} />
-                <span className="text-xs font-semibold text-muted">{t(`stats.weekdayShort.${WEEKDAY_KEYS[i]}`)}</span>
+                <span className="text-xs font-semibold text-muted">{weekdayShort(i, i18n.language)}</span>
               </div>
             ))}
           </div>

@@ -12,6 +12,7 @@ import { changeLanguage } from '../i18n'
 import { EntryPage } from './EntryPage'
 import { JournalPage } from './JournalPage'
 import { AccountsCard } from './settings/ServerCards'
+import { idle } from '../test/wait'
 
 vi.mock('../state/auth', () => ({
   useAuth: () => ({ me: { id: 1, name: 'jule', display_name: 'Jule', sign_in: 'password', profile: { mode: 'light', layout: 'page', journal: 'blog', timezone: 'Europe/Berlin' } } }),
@@ -56,9 +57,6 @@ function serve(): void {
 let root: Root
 let box: HTMLDivElement
 
-async function settle(ms = 20): Promise<void> {
-  await act(async () => new Promise((resolve) => setTimeout(resolve, ms)))
-}
 
 async function mount(element: React.ReactNode): Promise<void> {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -66,7 +64,7 @@ async function mount(element: React.ReactNode): Promise<void> {
   document.body.appendChild(box)
   root = createRoot(box)
   await act(async () => root.render(element))
-  await settle(40)
+  await idle()
 }
 
 const entry = () =>
@@ -119,7 +117,7 @@ describe('reading a day', () => {
       input.dispatchEvent(new Event('input', { bubbles: true }))
     })
     await act(async () => confirm.click())
-    await settle(40)
+    await idle()
     expect(calls.filter((call) => call.url.endsWith('/lock'))).toHaveLength(1)
     expect(document.querySelector('[role=dialog]')).toBeNull()
     expect(box.querySelector('[data-locked-mark]')).not.toBeNull()
@@ -181,14 +179,14 @@ describe('the accounts of the operator', () => {
     expect(boxes.map((item) => item.checked)).toEqual([true, true, true, false])
     expect(boxes.map((item) => item.getAttribute('aria-label'))).toEqual(['KI erlaubt: Jule', 'Immich erlaubt: Jule', 'KI erlaubt: ben', 'Immich erlaubt: ben'])
     await act(async () => boxes[2].click())
-    await settle(30)
+    await idle()
     const puts = calls.filter((call) => call.method === 'PUT' && call.url.endsWith('/permissions'))
     expect(puts).toHaveLength(1)
     expect(puts[0]).toMatchObject({ url: '/api/accounts/2/permissions', body: { ai_allowed: false } })
     expect(Object.keys(puts[0].body!)).toEqual(['ai_allowed'])
     expect(box.querySelectorAll<HTMLInputElement>('[data-permissions] input')[2].checked).toBe(false)
     await act(async () => box.querySelectorAll<HTMLInputElement>('[data-permissions] input')[3].click())
-    await settle(30)
+    await idle()
     expect(calls.filter((call) => call.method === 'PUT' && call.url.endsWith('/permissions')).at(-1)).toMatchObject({ body: { immich_allowed: true } })
   })
 })

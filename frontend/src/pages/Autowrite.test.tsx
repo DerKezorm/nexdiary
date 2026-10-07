@@ -14,6 +14,7 @@ import { changeLanguage } from '../i18n'
 import { AutoDraftCard, CatchUpCard } from '../components/CatchUp'
 import { AccountPage, AutoWrite } from './AccountPage'
 import { AiCard } from './settings/AiCard'
+import { idle } from '../test/wait'
 
 const auth = vi.hoisted(() => ({
   listeners: new Set<() => void>(),
@@ -87,7 +88,7 @@ async function mount(element: React.ReactNode): Promise<void> {
   document.body.appendChild(box)
   root = createRoot(box)
   await act(async () => root.render(<MemoryRouter initialEntries={['/konto?tab=ai']}>{element}</MemoryRouter>))
-  await act(async () => new Promise((resolve) => setTimeout(resolve, 30)))
+  await idle()
 }
 
 function Harness({ to = '', model = 'llama3.1:8b' }: { to?: string; model?: string }) {
@@ -151,7 +152,7 @@ describe('the switch of the person', () => {
     await mount(<Harness to="api.example.com" />)
     await act(async () => toggle().click())
     await act(async () => named('Einschalten').click())
-    await act(async () => new Promise((resolve) => setTimeout(resolve, 20)))
+    await idle()
     expect(puts().map((call) => call.body)).toEqual([{ on: true, confirmed: true }])
     expect(document.querySelector('[role=dialog]')).toBeNull()
     expect(auth.me.profile.autowrite).toMatchObject({ on: true })
@@ -168,7 +169,7 @@ describe('the switch of the person', () => {
     expect(box.querySelector('select')?.value).toBe('06:30')
     expect(box.querySelector('[role=radio][aria-checked=true]')?.textContent).toBe('kurz')
     await act(async () => toggle().click())
-    await act(async () => new Promise((resolve) => setTimeout(resolve, 20)))
+    await idle()
     expect(puts().map((call) => call.body)).toEqual([{ on: false }])
     expect(document.querySelector('[role=dialog]')).toBeNull()
   })
@@ -183,7 +184,7 @@ describe('the switch of the person', () => {
       select.dispatchEvent(new Event('change', { bubbles: true }))
     })
     await act(async () => [...box.querySelectorAll<HTMLButtonElement>('[role=radio]')].find((item) => item.textContent === 'kurz')!.click())
-    await act(async () => new Promise((resolve) => setTimeout(resolve, 20)))
+    await idle()
     expect(puts().map((call) => call.body)).toEqual([{ time: '08:30' }, { length: 'short' }])
   })
 
@@ -198,7 +199,7 @@ describe('the switch of the person', () => {
     await mount(<Harness to="api.example.com" />)
     await act(async () => toggle().click())
     await act(async () => named('Einschalten').click())
-    await act(async () => new Promise((resolve) => setTimeout(resolve, 20)))
+    await idle()
     expect(document.querySelector('[role=dialog]')?.textContent).toContain('Dein Betreiber hat das automatische Ausformulieren nicht erlaubt.')
     expect(auth.me.profile.autowrite).toBeUndefined()
   })
@@ -230,7 +231,7 @@ describe('the second bolt of the operator', () => {
     const bolt = [...box.querySelectorAll<HTMLButtonElement>('button[role=switch]')].find((item) => item.closest('div')?.textContent?.includes('Automatisches Ausformulieren erlauben'))!
     expect(bolt.getAttribute('aria-checked')).toBe('false')
     await act(async () => bolt.click())
-    await act(async () => new Promise((resolve) => setTimeout(resolve, 20)))
+    await idle()
     expect(calls.filter((call) => call.method === 'PUT' && call.url === '/api/settings/ai').map((call) => call.body)).toEqual([{ auto_allowed: true }])
   })
 

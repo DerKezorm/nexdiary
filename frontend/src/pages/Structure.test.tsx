@@ -12,6 +12,7 @@ import '../i18n'
 import { changeLanguage } from '../i18n'
 import { AccountPage } from './AccountPage'
 import { SettingsPage } from './SettingsPage'
+import { idle } from '../test/wait'
 
 const asked = vi.hoisted(() => ({ role: 'operator' as 'operator' | 'member' }))
 const me = (): Me =>
@@ -46,7 +47,7 @@ async function show(entry: string): Promise<void> {
       </MemoryRouter>,
     ),
   )
-  await act(async () => new Promise((resolve) => setTimeout(resolve, 20)))
+  await idle()
 }
 
 const where = () => box.querySelector('[data-testid="where"]')!.textContent

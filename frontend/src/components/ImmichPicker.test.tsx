@@ -12,6 +12,7 @@ import { ApiError } from '../api/client'
 import '../i18n'
 import { changeLanguage } from '../i18n'
 import { ImmichPicker } from './ImmichPicker'
+import { idle } from '../test/wait'
 
 vi.mock('../state/auth', () => ({ useAuth: () => ({ me: { name: 'jule', profile: { timezone: 'Europe/Berlin' } } }) }))
 
@@ -54,9 +55,6 @@ const picked: string[] = []
 let pick: (found: ImmichEntry) => Promise<void>
 let closed = 0
 
-async function settle(ms = 20): Promise<void> {
-  await act(async () => new Promise((resolve) => setTimeout(resolve, ms)))
-}
 
 async function show(day = '2026-10-06'): Promise<void> {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -64,7 +62,7 @@ async function show(day = '2026-10-06'): Promise<void> {
   document.body.appendChild(box)
   root = createRoot(box)
   await act(async () => root.render(<ImmichPicker date={day} onClose={() => closed++} onPick={(found) => pick(found)} />))
-  await settle(40)
+  await idle()
 }
 
 const tiles = () => [...document.querySelectorAll<HTMLButtonElement>('[data-immich-tiles] button:has(img)')]
@@ -102,7 +100,7 @@ describe('the whole collection', () => {
   it('loads the next page when asked, with the photos before it, and stops where there is no more', async () => {
     await show()
     await act(async () => named('Mehr laden').click())
-    await settle()
+    await idle()
     expect(tiles()).toHaveLength(4)
     expect(urls().filter((url) => url.startsWith('/api/immich/timeline'))).toEqual(['/api/immich/timeline?page=1', '/api/immich/timeline?page=2'])
     expect([...document.querySelectorAll('[data-immich-tiles] h3')].at(-1)?.textContent).toBe('Dezember 2025')
@@ -113,7 +111,7 @@ describe('the whole collection', () => {
     timeline = (page) => (page === 1 ? { photos: [entry(1, '2026-10-05T10:00:00+00:00')], next: 2 } : { photos: [entry(1, '2026-10-05T10:00:00+00:00'), entry(2, '2026-10-04T10:00:00+00:00')], next: null })
     await show()
     await act(async () => named('Mehr laden').click())
-    await settle()
+    await idle()
     expect(tiles()).toHaveLength(2)
   })
 
@@ -130,22 +128,22 @@ describe('the whole collection', () => {
       })
     }
     set(day, '2025-08-03')
-    await settle()
+    await idle()
     expect(urls().at(-1)).toBe('/api/immich/timeline?page=1&until=2025-08-03')
     await act(async () => named('Einen Tag später').click())
-    await settle()
+    await idle()
     expect(urls().at(-1)).toBe('/api/immich/timeline?page=1&until=2025-08-04')
     await act(async () => named('Einen Tag früher').click())
-    await settle()
+    await idle()
     expect(urls().at(-1)).toBe('/api/immich/timeline?page=1&until=2025-08-03')
     set(document.querySelector<HTMLInputElement>('input[type=month]')!, '2026-09')
-    await settle()
+    await idle()
     expect(urls().at(-1)).toBe('/api/immich/timeline?page=1&until=2026-09')
     await act(async () => named('Zu diesem Tag').click())
-    await settle()
+    await idle()
     expect(urls().at(-1)).toBe('/api/immich/timeline?page=1&until=2026-10-06')
     await act(async () => named('Zu den neuesten').click())
-    await settle()
+    await idle()
     expect(urls().at(-1)).toBe('/api/immich/timeline?page=1')
     expect(tiles()).toHaveLength(3)
   })
@@ -172,7 +170,7 @@ describe('taking a photo', () => {
     await show()
     expect(picked).toEqual([])
     await act(async () => tiles()[1].click())
-    await settle()
+    await idle()
     expect(picked).toEqual([id(2)])
     expect(closed).toBe(1)
   })
@@ -183,13 +181,13 @@ describe('taking a photo', () => {
     }
     await show()
     await act(async () => tiles()[0].click())
-    await settle()
+    await idle()
     expect(closed).toBe(0)
     expect(document.querySelector('[role=alert]')?.textContent).toContain('nexdiary nicht übernehmen')
     // And it can be tried again.
     pick = async (found) => void picked.push(found.id)
     await act(async () => tiles()[0].click())
-    await settle()
+    await idle()
     expect(picked).toEqual([id(1)])
   })
 
@@ -205,7 +203,7 @@ describe('taking a photo', () => {
     expect(picked).toEqual([id(1)])
     expect(tiles().every((tile) => tile.disabled)).toBe(true)
     await act(async () => release())
-    await settle()
+    await idle()
     expect(closed).toBe(1)
   })
 })
@@ -214,11 +212,11 @@ describe('albums', () => {
   it('lists the albums and opens one, with a way back', async () => {
     await show()
     await act(async () => named('Alben').click())
-    await settle()
+    await idle()
     expect(document.querySelector('[data-immich-albums]')?.textContent).toContain('Sommer')
     expect(document.querySelector('[data-immich-albums]')?.textContent).toContain('3 Fotos')
     await act(async () => document.querySelector<HTMLButtonElement>('[data-immich-albums] button')!.click())
-    await settle()
+    await idle()
     expect(urls().at(-1)).toBe(`/api/immich/albums/${id(500)}/photos?page=1`)
     expect(tiles()).toHaveLength(1)
     await act(async () => named('Alle Alben').click())
@@ -251,7 +249,7 @@ describe('the search', () => {
     expect(urls().some((url) => url === '/api/immich/search')).toBe(false)
     type('strand')
     await act(async () => named('Suchen').click())
-    await settle()
+    await idle()
     const sent = calls.find((call) => call.url === '/api/immich/search')!
     expect(sent.method).toBe('POST')
     expect(sent.body).toEqual({ q: 'strand', page: 1 })
@@ -266,7 +264,7 @@ describe('the search', () => {
     await act(async () => named('Suche').click())
     type('nichts')
     await act(async () => named('Suchen').click())
-    await settle()
+    await idle()
     expect(document.body.textContent).toContain('Die intelligente Suche ist in Immich nicht eingeschaltet')
     expect(document.body.textContent).toContain('Dazu gibt es keine Fotos.')
   })
@@ -285,7 +283,7 @@ describe('the search', () => {
     await act(async () => named('Suche').click())
     type('strand')
     await act(async () => named('Suchen').click())
-    await settle()
+    await idle()
     expect(document.querySelector('[role=alert]')).toBeTruthy()
   })
 })

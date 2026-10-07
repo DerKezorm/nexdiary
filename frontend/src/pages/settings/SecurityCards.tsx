@@ -4,7 +4,8 @@
  */
 import { Fingerprint, Laptop, ShieldCheck, Smartphone, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
-import { useTranslation } from 'react-i18next'
+import { Trans, useTranslation } from 'react-i18next'
+import { Link } from 'react-router-dom'
 
 import { api, ApiError, authApi, passkeyApi, type Me, type Passkey, type SignedSession } from '../../api/client'
 import { Dialog } from '../../components/Dialog'
@@ -247,7 +248,8 @@ export function PasskeysCard({ me }: { me: Me }) {
   useEffect(() => {
     authApi.methods().then((found) => setOffered(found.passkeys !== false), () => undefined)
   }, [])
-  const available = passkeysAvailable() && offered
+  const inBrowser = passkeysAvailable()
+  const available = inBrowser && offered
   return (
     <Card icon={Fingerprint} title={t('me.passkeys.title')} text={t('me.passkeys.text')}>
       {list.length > 0 && (
@@ -285,7 +287,18 @@ export function PasskeysCard({ me }: { me: Me }) {
           <Button primary={list.length === 0} disabled={!available} onClick={() => setAdding(true)}>
             <Fingerprint size={16} /> {t('me.passkeys.add')}
           </Button>
-          {!available && <p className="mt-2 text-xs text-muted">{t('me.passkeys.unavailable')}</p>}
+          {!available && (
+            <p className="mt-2 text-xs text-muted" data-testid="passkeys-unavailable">
+              {/* The browser cannot (no https, no API): that is said first. Otherwise the server has no public address. */}
+              {!inBrowser ? (
+                t('me.passkeys.unavailable')
+              ) : me.role === 'operator' ? (
+                <Trans i18nKey="me.passkeys.noAddressOperator" components={{ settings: <Link to="/einstellungen?tab=signin" className="font-semibold text-accent underline-offset-2 hover:underline" /> }} />
+              ) : (
+                t('me.passkeys.noAddressMember')
+              )}
+            </p>
+          )}
         </div>
       )}
       <Feedback problem={null} done={done} />

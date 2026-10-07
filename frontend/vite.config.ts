@@ -29,6 +29,9 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     css: false,
+    setupFiles: ['src/test/setup.ts'],
+    // The waits in the tests give up with a message of their own after 10 s; this is only the last resort.
+    testTimeout: 30_000,
     exclude: ['node_modules/**', 'dist/**'],
   },
   server: {

@@ -15,6 +15,7 @@ import { ForgotPage, LoginPage, ResetPage } from './AuthPages'
 import { ReadinessCard } from './settings/ReadinessCards'
 import { PasskeysCard } from './settings/SecurityCards'
 import { AccountsCard, ApiTokensCard, BackupsCard, type ServerSettings } from './settings/ServerCards'
+import { idle } from '../test/wait'
 
 const me: Me = {
   id: 1, name: 'jule', display_name: 'Jule', role: 'operator', sign_in: 'password', email: 'jule@example.com', language: 'de',
@@ -53,9 +54,6 @@ function serve(): void {
 let root: Root
 let box: HTMLDivElement
 
-async function settle(): Promise<void> {
-  await act(async () => new Promise((resolve) => setTimeout(resolve, 10)))
-}
 
 async function show(element: React.ReactNode, at = '/login', path = '*'): Promise<void> {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -71,7 +69,7 @@ async function show(element: React.ReactNode, at = '/login', path = '*'): Promis
       </MemoryRouter>,
     ),
   )
-  await settle()
+  await idle()
 }
 
 function button(text: string, within: ParentNode = document): HTMLButtonElement | undefined {
@@ -81,7 +79,7 @@ function button(text: string, within: ParentNode = document): HTMLButtonElement 
 async function click(target: HTMLElement | undefined): Promise<void> {
   expect(target).toBeTruthy()
   await act(async () => target!.click())
-  await settle()
+  await idle()
 }
 
 async function type(input: HTMLInputElement | null | undefined, value: string): Promise<void> {
@@ -91,7 +89,7 @@ async function type(input: HTMLInputElement | null | undefined, value: string): 
     setter.call(input, value)
     input!.dispatchEvent(new Event('input', { bubbles: true }))
   })
-  await settle()
+  await idle()
 }
 
 function field(label: string, within: ParentNode = box): HTMLInputElement | null {
@@ -102,7 +100,7 @@ function field(label: string, within: ParentNode = box): HTMLInputElement | null
 async function submit(form: HTMLFormElement | null): Promise<void> {
   expect(form).toBeTruthy()
   await act(async () => form!.requestSubmit())
-  await settle()
+  await idle()
 }
 
 beforeEach(async () => {

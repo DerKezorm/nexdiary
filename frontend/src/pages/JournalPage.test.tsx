@@ -12,6 +12,7 @@ import '../i18n'
 import { changeLanguage } from '../i18n'
 import { EntryPage } from './EntryPage'
 import { JournalPage, searchEntries } from './JournalPage'
+import { idle, until } from '../test/wait'
 
 const me: { profile: Partial<Profile> } = { profile: { journal: 'blog', timezone: 'Europe/Berlin' } }
 vi.mock('../state/auth', () => ({ useAuth: () => ({ me }) }))
@@ -104,14 +105,13 @@ async function show(path: string): Promise<void> {
       </MemoryRouter>,
     )
   })
-  await settle()
+  await idle()
 }
 
-const settle = () => act(async () => new Promise((resolve) => setTimeout(resolve, 30)))
 
 async function click(element: Element | null | undefined): Promise<void> {
   await act(async () => (element as HTMLElement).click())
-  await settle()
+  await idle()
 }
 
 beforeAll(async () => {
@@ -177,7 +177,9 @@ describe('the journal', () => {
         input.dispatchEvent(new Event('input', { bubbles: true }))
       }
     })
-    await act(async () => new Promise((resolve) => setTimeout(resolve, 450)))
+    // The search goes out when the typing rests: that request is the event waited for.
+    await until(() => calls.some((call) => call.url.startsWith('/api/search')), 'the search')
+    await idle()
     const searches = calls.filter((call) => call.url.startsWith('/api/search'))
     expect(searches).toEqual([{ method: 'POST', url: '/api/search', body: { q: 'kastanien' } }])
     expect(calls.every((call) => !call.url.includes('kastanien'))).toBe(true)

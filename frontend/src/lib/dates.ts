@@ -77,6 +77,18 @@ export function monthName(day: string, language: string, withYear = false): stri
   return new Intl.DateTimeFormat(language, { month: 'long', ...(withYear ? { year: 'numeric' } : {}), timeZone: 'UTC' }).format(new Date(Date.UTC(year, month - 1, date)))
 }
 
+/** "10. Juli" or "Jul 10": the day and month of a calendar day in the way of the language, as short as it goes (the
+ * axes of a chart). */
+export function shortDay(day: string, language: string): string {
+  const [year, month, date] = parts(day)
+  return new Intl.DateTimeFormat(language, { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(Date.UTC(year, month - 1, date)))
+}
+
+/** "Mo" or "Mon": the short name of a weekday (0 for Monday), in the language. */
+export function weekdayShort(index: number, language: string): string {
+  return new Intl.DateTimeFormat(language, { weekday: 'short', timeZone: 'UTC' }).format(new Date(Date.UTC(2024, 0, 1 + index)))
+}
+
 /** The name of a weekday (0 for Monday), in the language. */
 export function weekdayName(index: number, language: string): string {
   // 1 January 2024 was a Monday.

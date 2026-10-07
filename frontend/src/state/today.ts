@@ -5,7 +5,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { ApiError, diaryApi, photosApi, promptsApi, type Note, type Photo, type Question, type TodayData } from '../api/client'
+import { ApiError, diaryApi, photosApi, promptsApi, type Night, type Note, type Photo, type Question, type TodayData } from '../api/client'
 import { newId } from '../lib/ids'
 import { uploadPhoto } from '../lib/upload'
 import { useAuth } from './auth'
@@ -43,14 +43,26 @@ export function useToday() {
   const [asking, setAsking] = useState(false)
   const waiting = useRef<((choice: 'yesterday' | 'today' | null) => void) | null>(null)
 
-  const load = useCallback(async () => {
-    try {
-      setData(await diaryApi.today())
-      setProblem(null)
-    } catch (error) {
-      setProblem(codeOf(error))
-      setProblemValues(valuesOf(error))
-    }
+  /** The night as the last answer of `/api/today` said it; null while that answer is not here yet (or failed). A note
+   * does not go out on a guess: whether this is a night nobody was asked about is known from that answer only. */
+  const nightState = useRef<Night | null>(null)
+  /** The load in flight (or the last one), so that a note sent before the first answer can wait for it. */
+  const loading = useRef<Promise<void> | null>(null)
+
+  const load = useCallback((): Promise<void> => {
+    const run = (async () => {
+      try {
+        const fresh = await diaryApi.today()
+        nightState.current = fresh.night ?? { active: false }
+        setData(fresh)
+        setProblem(null)
+      } catch (error) {
+        setProblem(codeOf(error))
+        setProblemValues(valuesOf(error))
+      }
+    })()
+    loading.current = run
+    return run
   }, [])
 
   useEffect(() => {
@@ -115,8 +127,17 @@ export function useToday() {
   const addNote = useCallback(async (text: string, photoId: string | null = null, prompt: Question | null = null): Promise<boolean> => {
     const clean = cleanNote(text)
     if ((!clean && !photoId) || sending.current) return false
+    // Not known yet whether this is a night nobody was asked about (the page was just opened, the answer of the server
+    // is on its way): wait for it instead of guessing. The text stays in the field meanwhile. If it cannot be had, the
+    // note does not go out either; the page says why and the text is still there.
+    if (nightState.current === null) {
+      await (loading.current ?? load())
+      if (nightState.current === null) await load()
+      if (nightState.current === null) return false
+    }
     // After midnight and not yet answered: which day do the notes of this night belong to?
-    if (data?.night?.active && data.night.choice === null && !(await askNight())) return false
+    const night = nightState.current
+    if (night.active && night.choice === null && !(await askNight())) return false
     if (sending.current) return false
     sending.current = true
     try {
@@ -151,7 +172,7 @@ export function useToday() {
     } finally {
       sending.current = false
     }
-  }, [shownDate, load, data?.night, askNight])
+  }, [shownDate, load, askNight])
 
   const changeNote = useCallback(async (id: string, text: string) => {
     try {

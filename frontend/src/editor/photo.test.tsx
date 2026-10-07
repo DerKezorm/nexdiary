@@ -9,6 +9,7 @@ import { createRoot, type Root } from 'react-dom/client'
 
 import '../i18n'
 import { changeLanguage } from '../i18n'
+import { flush, until } from '../test/wait'
 import { DiaryEditor, type DiaryEditorHandle, type ImageWays } from './DiaryEditor'
 
 const ID = 'a1'.repeat(16)
@@ -25,14 +26,7 @@ async function show(value: string, handle = createRef<DiaryEditorHandle>(), imag
   await act(async () => {
     root.render(<DiaryEditor ref={handle} value={value} onChange={onChange} placeholder="Schreib einfach los …" label="Text des Tages" images={images} />)
   })
-  for (let i = 0; i < 50 && !box.querySelector('[contenteditable=true]'); i++) {
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 20))
-    })
-  }
-  const editable = box.querySelector<HTMLElement>('[contenteditable=true]')
-  if (!editable) throw new Error('the editor did not start')
-  return editable
+  return await until(() => box.querySelector<HTMLElement>('[contenteditable=true]'), 'the editor starting')
 }
 
 beforeAll(async () => {
@@ -177,8 +171,10 @@ describe('a photo in the text of the editor', () => {
     await act(async () => {
       editable.focus()
       editable.dispatchEvent(paste)
-      await new Promise((resolve) => setTimeout(resolve, 300))
     })
+    // Nothing is to appear, so there is no event to wait for: the paste is handled in the turns it is given.
+    await flush()
+    await flush()
     expect(editable.querySelectorAll('figure, img')).toHaveLength(0)
     expect(markdown(handle)).not.toContain('photo:')
   })

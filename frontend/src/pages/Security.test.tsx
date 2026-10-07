@@ -14,6 +14,7 @@ import { changeLanguage } from '../i18n'
 import { LoginPage } from './AuthPages'
 import { EncryptionCard, ReadinessCard } from './settings/ReadinessCards'
 import { DevicesCard, PasskeysCard, SecondFactorCard } from './settings/SecurityCards'
+import { eventually, idle } from '../test/wait'
 
 const NOW = Date.now()
 const me: Me = {
@@ -57,12 +58,9 @@ async function show(element: React.ReactNode, at = '/login'): Promise<void> {
   document.body.appendChild(box)
   root = createRoot(box)
   await act(async () => root.render(<MemoryRouter initialEntries={[at]}>{element}</MemoryRouter>))
-  await settle()
+  await idle()
 }
 
-async function settle(): Promise<void> {
-  await act(async () => new Promise((resolve) => setTimeout(resolve, 10)))
-}
 
 function button(text: string, within: ParentNode = document): HTMLButtonElement | undefined {
   return [...within.querySelectorAll<HTMLButtonElement>('button')].find((item) => item.textContent?.trim() === text || item.getAttribute('aria-label') === text)
@@ -71,7 +69,7 @@ function button(text: string, within: ParentNode = document): HTMLButtonElement 
 async function click(target: HTMLElement | undefined): Promise<void> {
   expect(target).toBeTruthy()
   await act(async () => target!.click())
-  await settle()
+  await idle()
 }
 
 async function type(input: HTMLInputElement | null | undefined, value: string): Promise<void> {
@@ -81,7 +79,7 @@ async function type(input: HTMLInputElement | null | undefined, value: string): 
     setter.call(input, value)
     input!.dispatchEvent(new Event('input', { bubbles: true }))
   })
-  await settle()
+  await idle()
 }
 
 function field(label: string, within: ParentNode = box): HTMLInputElement | null {
@@ -92,7 +90,7 @@ function field(label: string, within: ParentNode = box): HTMLInputElement | null
 async function submit(form: HTMLFormElement | null): Promise<void> {
   expect(form).toBeTruthy()
   await act(async () => form!.requestSubmit())
-  await settle()
+  await idle()
 }
 
 function passkeysInTheBrowser(on: boolean): void {
@@ -237,6 +235,56 @@ describe('the own account, Security', () => {
     expect(calls.find((call) => call.url === `/api/auth/passkeys/${id}/remove`)!.body).toEqual({ password: 'the own password' })
   })
 
+  describe('the hint under "Passkey anlegen"', () => {
+    const hint = () => box.querySelector('[data-testid="passkeys-unavailable"]')
+
+    it('tells the operator where to enter the public address, with a link there, when the server has none', async () => {
+      passkeysInTheBrowser(true)
+      answers['GET /api/auth/methods'] = { password: true, oidc: false, oidc_name: '', passkeys: false }
+      await show(<PasskeysCard me={me} />, '/konto')
+      expect(hint()!.textContent).toBe('Trag zuerst die öffentliche Adresse ein (Einstellungen → Anmeldung).')
+      expect(hint()!.querySelector('a')!.getAttribute('href')).toBe('/einstellungen?tab=signin')
+      expect(hint()!.textContent).not.toContain('nur über https')
+      expect(button('Passkey anlegen', box)!.disabled).toBe(true)
+    })
+
+    it('tells a member that the operator has to enter it, and links nowhere', async () => {
+      passkeysInTheBrowser(true)
+      answers['GET /api/auth/methods'] = { password: true, oidc: false, oidc_name: '', passkeys: false }
+      await show(<PasskeysCard me={{ ...me, role: 'member' }} />, '/konto')
+      expect(hint()!.textContent).toBe('Dein Betreiber muss erst die öffentliche Adresse eintragen.')
+      expect(hint()!.querySelector('a')).toBeNull()
+    })
+
+    it('says it in English as well, for both', async () => {
+      await changeLanguage('en', false)
+      passkeysInTheBrowser(true)
+      answers['GET /api/auth/methods'] = { password: true, oidc: false, oidc_name: '', passkeys: false }
+      await show(<PasskeysCard me={me} />, '/konto')
+      expect(hint()!.textContent).toBe('Enter the public address first (Settings → Sign-in).')
+      expect(hint()!.querySelector('a')!.getAttribute('href')).toBe('/einstellungen?tab=signin')
+      act(() => root.unmount())
+      box.remove()
+      await show(<PasskeysCard me={{ ...me, role: 'member' }} />, '/konto')
+      expect(hint()!.textContent).toBe('Your operator has to enter the public address first.')
+    })
+
+    it('keeps the old sentence for a browser that cannot (no https, no API), whatever the server says', async () => {
+      passkeysInTheBrowser(false)
+      answers['GET /api/auth/methods'] = { password: true, oidc: false, oidc_name: '', passkeys: true }
+      await show(<PasskeysCard me={me} />, '/konto')
+      expect(hint()!.textContent).toBe('Passkeys gibt es nur über https (oder localhost) und in Browsern, die sie kennen.')
+      expect(hint()!.querySelector('a')).toBeNull()
+    })
+
+    it('says nothing when passkeys can be made', async () => {
+      passkeysInTheBrowser(true)
+      await show(<PasskeysCard me={me} />, '/konto')
+      expect(hint()).toBeNull()
+      expect(button('Passkey anlegen', box)!.disabled).toBe(false)
+    })
+  })
+
   it('cannot turn off the last factor where the operator requires one', async () => {
     await show(<SecondFactorCard me={me} />, '/konto')
     expect(box.textContent).toContain('Ausschalten geht nicht: Der Betreiber verlangt ihn für alle.')
@@ -279,8 +327,10 @@ describe("the operator's checks", () => {
     await type(dialog.querySelector<HTMLInputElement>('input[type="password"]'), 'the own password')
     await type(field('Code aus der App', dialog), '654321')
     await submit(dialog.querySelector('form'))
+    await eventually(() => {
+      expect(saved).toHaveBeenCalled()
+      expect(box.textContent).toContain('Hauptschlüssel als Datei gespeichert.')
+    }, 'the key being saved')
     expect(calls.find((call) => call.url === '/api/settings/master-key')!.body).toEqual({ current_password: 'the own password', code: '654321' })
-    expect(saved).toHaveBeenCalled()
-    expect(box.textContent).toContain('Hauptschlüssel als Datei gespeichert.')
   })
 })

@@ -11,6 +11,7 @@ import type { SharedDay } from '../api/client'
 import '../i18n'
 import { changeLanguage } from '../i18n'
 import { SharedEntryPage, SharedPage } from './SharedPage'
+import { idle } from '../test/wait'
 
 vi.mock('../state/auth', () => ({ useAuth: () => ({ me: { profile: { timezone: 'Europe/Berlin' } } }) }))
 const refresh = vi.fn()
@@ -72,7 +73,7 @@ async function show(path: string): Promise<void> {
       </MemoryRouter>,
     )
   })
-  await act(async () => new Promise((resolve) => setTimeout(resolve, 20)))
+  await idle()
 }
 
 beforeAll(async () => {
@@ -92,11 +93,9 @@ afterEach(() => {
   delete (window as { __xss?: number }).__xss
 })
 
-function click(element: Element | null | undefined): Promise<void> {
-  return act(async () => {
-    ;(element as HTMLElement).click()
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  })
+async function click(element: Element | null | undefined): Promise<void> {
+  await act(async () => (element as HTMLElement).click())
+  await idle()
 }
 
 describe('a day shared with me', () => {

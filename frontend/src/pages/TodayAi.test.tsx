@@ -14,6 +14,7 @@ import { changeLanguage } from '../i18n'
 import { MESSAGES_URL, PROVIDER_NAME } from '../lib/aiProviders'
 import { QuickPage } from './QuickPage'
 import { TodayPage } from './TodayPage'
+import { eventually, idle } from '../test/wait'
 
 const me: { name: string; display_name: string; profile: Profile } = {
   name: 'jule',
@@ -82,7 +83,7 @@ async function show(page: 'today' | 'quick' = 'today'): Promise<void> {
       </MemoryRouter>,
     ),
   )
-  await act(async () => new Promise((resolve) => setTimeout(resolve, 10)))
+  await idle()
 }
 
 function button(text: string): HTMLButtonElement | undefined {
@@ -174,7 +175,7 @@ describe('the question of the day', () => {
     type(box.querySelector<HTMLTextAreaElement>('textarea[aria-label="Deine Antwort auf die Frage des Tages"]')!, 'mit mia im park')
     const card = box.querySelector('section[aria-label="Frage des Tages"]')!
     await act(async () => [...card.querySelectorAll('button')].find((item) => item.textContent === 'Notieren')!.click())
-    await act(async () => new Promise((resolve) => setTimeout(resolve, 20)))
+    await idle()
     const sent = calls.filter((call) => call.url === '/api/notes' && call.method === 'POST')
     expect(sent.map((call) => [call.body!.text, call.body!.prompt, call.body!.prompt_id])).toEqual([['mit mia im park', QUESTION, 'schoen.0']])
     expect(box.querySelector('[data-question]')!.textContent).toBe(NEXT)
@@ -183,8 +184,8 @@ describe('the question of the day', () => {
   it('moves on with "Andere Frage"', async () => {
     await show()
     await act(async () => button('Andere Frage')!.click())
+    await eventually(() => expect(box.querySelector('[data-question]')!.textContent).toBe(NEXT), 'the next question')
     expect(calls.filter((call) => call.url === '/api/prompts/another').map((call) => call.method)).toEqual(['POST'])
-    expect(box.querySelector('[data-question]')!.textContent).toBe(NEXT)
   })
 
   it('is not there when the person switched questions off', async () => {
@@ -202,7 +203,7 @@ describe('the question of the day', () => {
     expect(field.placeholder).toBe('Deine Antwort …')
     type(field, 'kastanien')
     await act(async () => button('Notieren')!.click())
-    await act(async () => new Promise((resolve) => setTimeout(resolve, 20)))
+    await idle()
     const sent = calls.filter((call) => call.url === '/api/notes' && call.method === 'POST')
     expect(sent.map((call) => [call.body!.prompt, call.body!.prompt_id])).toEqual([[QUESTION, 'schoen.0']])
     expect(box.querySelector<HTMLTextAreaElement>('textarea')!.placeholder).toBe('Kurz notieren …')
@@ -228,7 +229,7 @@ describe('text shared into the quick note', () => {
         </BrowserRouter>,
       ),
     )
-    await act(async () => new Promise((resolve) => setTimeout(resolve, 10)))
+    await idle()
     expect(box.querySelector('textarea')!.value).toBe('Kastanien im Park')
     expect(window.location.search).toBe('')
     window.history.replaceState(null, '', '/')

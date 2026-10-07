@@ -13,6 +13,7 @@ import type { Me, PushDevice } from '../../api/client'
 import '../../i18n'
 import { changeLanguage } from '../../i18n'
 import { PushServerCard, RemindersPart, SignInNoticeCard } from './PushCards'
+import { idle } from '../../test/wait'
 
 const setMe = vi.fn()
 const me: Me = {
@@ -110,12 +111,9 @@ async function show(element: React.ReactNode): Promise<void> {
   document.body.appendChild(box)
   root = createRoot(box)
   await act(async () => root.render(<MemoryRouter>{element}</MemoryRouter>))
-  await settle()
+  await idle()
 }
 
-async function settle(): Promise<void> {
-  await act(async () => new Promise((resolve) => setTimeout(resolve, 10)))
-}
 
 function button(text: string): HTMLButtonElement | undefined {
   return [...box.querySelectorAll<HTMLButtonElement>('button')].find((item) => item.textContent?.trim() === text || item.getAttribute('aria-label') === text)
@@ -124,7 +122,7 @@ function button(text: string): HTMLButtonElement | undefined {
 async function click(target: HTMLElement | undefined): Promise<void> {
   expect(target).toBeTruthy()
   await act(async () => target!.click())
-  await settle()
+  await idle()
 }
 
 async function type(input: HTMLInputElement | HTMLTextAreaElement, value: string): Promise<void> {
@@ -134,7 +132,7 @@ async function type(input: HTMLInputElement | HTMLTextAreaElement, value: string
     input.dispatchEvent(new Event('input', { bubbles: true }))
     input.dispatchEvent(new Event('change', { bubbles: true }))
   })
-  await settle()
+  await idle()
 }
 
 const PHONE: PushDevice = { id: 'a'.repeat(32), name: 'Handy (nexdiary vom Startbildschirm)', phone: true, since: '2026-10-02T08:00:00+00:00', last: '2026-10-06T18:30:00+00:00' }
@@ -278,7 +276,7 @@ describe("the operator's card", () => {
     const dialog = document.querySelector('[role="dialog"]')!
     await type(dialog.querySelector<HTMLInputElement>('input[type="password"]')!, 'the own password')
     await act(async () => dialog.querySelector('form')!.requestSubmit())
-    await settle()
+    await idle()
     expect(calls.find((call) => call.url === '/api/settings/push/renew')!.body).toEqual({ current_password: 'the own password' })
     expect(box.textContent).toContain('Neues Schlüsselpaar erzeugt. Alle Geräte sind abgemeldet.')
     expect(box.textContent).toContain('Bereit · 0 Geräte in der Familie angemeldet')

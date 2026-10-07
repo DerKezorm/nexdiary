@@ -9,6 +9,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import '../i18n'
 import script from '../../public/theme.js?raw'
 import { AuthProvider, useAuth } from './auth'
+import { idle } from '../test/wait'
 
 let root: Root
 let box: HTMLDivElement
@@ -39,7 +40,7 @@ async function start(): Promise<void> {
   document.body.appendChild(box)
   root = createRoot(box)
   await act(async () => root.render(<AuthProvider><Probe /></AuthProvider>))
-  await act(async () => new Promise((resolve) => setTimeout(resolve, 20)))
+  await idle()
 }
 
 beforeEach(() => {

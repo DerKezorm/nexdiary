@@ -15,6 +15,7 @@ import { LOCAL_URL, MESSAGES_URL, PROVIDER_NAME } from '../../lib/aiProviders'
 import { AccountPage } from '../AccountPage'
 import { AiCard } from './AiCard'
 import { PromptsCard } from './PromptsCard'
+import { idle } from '../../test/wait'
 
 const me = {
   id: 1, name: 'jule', display_name: 'Jule', role: 'operator', sign_in: 'password', email: '', language: 'de', oidc_linked: false, two_factor: true,
@@ -87,7 +88,7 @@ async function show(element: React.ReactNode, at = '/'): Promise<void> {
   document.body.appendChild(box)
   root = createRoot(box)
   await act(async () => root.render(<MemoryRouter initialEntries={[at]}>{element}</MemoryRouter>))
-  await act(async () => new Promise((resolve) => setTimeout(resolve, 10)))
+  await idle()
 }
 
 function button(text: string): HTMLButtonElement | undefined {
@@ -109,7 +110,7 @@ function type(input: HTMLInputElement, value: string): void {
 async function click(target: HTMLElement | undefined): Promise<void> {
   expect(target).toBeTruthy()
   await act(async () => target!.click())
-  await act(async () => new Promise((resolve) => setTimeout(resolve, 10)))
+  await idle()
 }
 
 beforeEach(async () => {
@@ -182,7 +183,7 @@ describe('the writing prompts under General', () => {
     expect([calls.at(-1)!.method, calls.at(-1)!.url, calls.at(-1)!.body]).toEqual(['PUT', '/api/prompts/sets/menschen', { on: true }])
     type(field('Neue Frage')!, 'Was hat Mia heute gesagt?')
     await act(async () => box.querySelector('form')!.requestSubmit())
-    await act(async () => new Promise((resolve) => setTimeout(resolve, 10)))
+    await idle()
     expect([calls.at(-1)!.method, calls.at(-1)!.url, calls.at(-1)!.body]).toEqual(['POST', '/api/prompts/own', { text: 'Was hat Mia heute gesagt?' }])
     // What the server holds now, the question of the other tab included.
     expect(box.textContent).toContain('Was hat Mia heute gesagt?')

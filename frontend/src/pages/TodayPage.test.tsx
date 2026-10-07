@@ -10,6 +10,7 @@ import type { Profile } from '../api/client'
 import '../i18n'
 import { changeLanguage } from '../i18n'
 import { greetingOf, TodayPage } from './TodayPage'
+import { idle } from '../test/wait'
 
 const me: { name: string; display_name: string; profile: Profile } = {
   name: 'jule',
@@ -86,7 +87,7 @@ async function show(layout: Profile['layout']): Promise<void> {
       </MemoryRouter>,
     ),
   )
-  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  await idle()
 }
 
 beforeEach(async () => {
@@ -144,8 +145,8 @@ describe('today', () => {
     await act(async () => {
       enter(field)
       enter(field)
-      await new Promise((resolve) => setTimeout(resolve, 60))
     })
+    await idle()
     const posts = calls.filter((call) => call.method === 'POST')
     expect(posts).toHaveLength(1)
     expect(field.value).toBe('')
@@ -155,13 +156,13 @@ describe('today', () => {
     typeAndEnter(field, 'zweiter versuch')
     await act(async () => {
       enter(field)
-      await new Promise((resolve) => setTimeout(resolve, 60))
     })
+    await idle()
     expect(field.value).toBe('zweiter versuch')
     await act(async () => {
       enter(field)
-      await new Promise((resolve) => setTimeout(resolve, 60))
     })
+    await idle()
     const tries = calls.filter((call) => call.method === 'POST').slice(1).map((call) => (call.body as { id: string }).id)
     expect(tries).toHaveLength(2)
     expect(tries[0]).toBe(tries[1])
@@ -175,14 +176,14 @@ describe('today', () => {
     typeAndEnter(field, 'erste fassung')
     await act(async () => {
       enter(field)
-      await new Promise((resolve) => setTimeout(resolve, 60))
     })
+    await idle()
     expect(field.value).toBe('erste fassung')
     typeAndEnter(field, 'erste fassung, ergänzt')
     await act(async () => {
       enter(field)
-      await new Promise((resolve) => setTimeout(resolve, 60))
     })
+    await idle()
     const ids = calls.filter((call) => call.method === 'POST').map((call) => (call.body as { id: string }).id)
     expect(ids).toHaveLength(2)
     expect(ids[1]).not.toBe(ids[0])
@@ -197,16 +198,16 @@ describe('today', () => {
     typeAndEnter(field, 'alt')
     await act(async () => {
       enter(field)
-      await new Promise((resolve) => setTimeout(resolve, 60))
     })
+    await idle()
     // The id of the lost send now holds "alt"; force the same id for another text, as an older client would.
     const first = (calls[calls.length - 1].body as { id: string }).id
     held.set(first, 'etwas anderes')
     typeAndEnter(field, 'alt')
     await act(async () => {
       enter(field)
-      await new Promise((resolve) => setTimeout(resolve, 80))
     })
+    await idle()
     const posts = calls.filter((call) => call.method === 'POST').map((call) => call.body as { id: string; text: string })
     expect(posts.map((post) => post.text)).toEqual(['alt', 'alt', 'alt'])
     expect(posts[1].id).toBe(first)
@@ -218,10 +219,10 @@ describe('today', () => {
     await show('page')
     const six = box.querySelector<HTMLButtonElement>('button[aria-label="6 von 10"]')!
     await act(async () => six.click())
-    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+    await idle()
     expect(six.getAttribute('aria-pressed')).toBe('true')
     await act(async () => six.click())
-    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+    await idle()
     const ratings = calls.filter((call) => call.url.endsWith('/values')).map((call) => call.body)
     expect(ratings).toEqual([{ values: { v1: 6 } }, { values: { v1: null } }])
     expect(six.getAttribute('aria-pressed')).toBe('false')

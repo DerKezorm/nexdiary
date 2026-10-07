@@ -212,15 +212,6 @@
       "best": "Bester Tag",
       "worst": "Schlimmster Tag",
       "badge": "{{name}} {{value}}/10"
-    },
-    "weekdayShort": {
-      "mo": "Mo",
-      "tu": "Di",
-      "we": "Mi",
-      "th": "Do",
-      "fr": "Fr",
-      "sa": "Sa",
-      "su": "So"
     }
   },
   "shared": {
@@ -654,7 +645,9 @@
       "removeButton": "Entfernen",
       "removed": "Passkey entfernt.",
       "added": "Passkey angelegt.",
-      "unavailable": "Passkeys gibt es nur über https (oder localhost) und in Browsern, die sie kennen."
+      "unavailable": "Passkeys gibt es nur über https (oder localhost) und in Browsern, die sie kennen.",
+      "noAddressOperator": "Trag zuerst die öffentliche Adresse ein (<settings>Einstellungen → Anmeldung</settings>).",
+      "noAddressMember": "Dein Betreiber muss erst die öffentliche Adresse eintragen."
     }
   },
   "twofactor": {
