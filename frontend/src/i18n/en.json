@@ -143,7 +143,8 @@
       "languages": "Languages",
       "log": "Log",
       "ai": "AI",
-      "immich": "Immich"
+      "immich": "Immich",
+      "push": "Web Push"
     },
     "language": {
       "title": "Language",
@@ -334,7 +335,8 @@
       "profile": "Profile",
       "security": "Security",
       "connections": "Connections",
-      "ai": "AI"
+      "ai": "AI",
+      "reminders": "Reminders"
     },
     "profile": {
       "text": "How the others in the family see you when you share a day with them.",
@@ -383,6 +385,60 @@
       "mine": "AI for me",
       "mineHint": "Off: the button \"Write it up\" disappears for you, and your texts never go to a model.",
       "byOperator": "Set by the operator:"
+    },
+    "push": {
+      "title": "Notifications on your devices",
+      "text": "Reminders come as a push straight to the phone or into the browser, even while nexdiary is closed. You sign up each device on its own.",
+      "since": "since {{date}}",
+      "last": "last {{date}}",
+      "here": "this device",
+      "remove": "Sign the device off",
+      "rename": "Rename the device",
+      "name": "Name of the device",
+      "removed": "{{name}} is signed off.",
+      "renamed": "Name saved.",
+      "thisDevice": "This device",
+      "ready": "Not signed up yet. The browser will ask whether nexdiary may send notifications.",
+      "denied": "The browser blocked notifications for nexdiary. Allow them in the settings of the site (the lock left of the address), then carry on here.",
+      "unsupported": "This browser cannot receive notifications.",
+      "insecure": "This address has no https, so push does not work. Open nexdiary at its https address.",
+      "iphone": "On the iPhone it only works from the app on the home screen. Put nexdiary there and open it from there.",
+      "hintHttps": "Push needs an address with https (or localhost).",
+      "hintIphone": "On the iPhone it only works from the app on the home screen: Share, then “Add to Home Screen”. From iOS 16.4.",
+      "enable": "Turn on for this device",
+      "enabled": "This device gets reminders now.",
+      "deniedNow": "Notifications are not allowed. Without them nexdiary cannot send anything.",
+      "browserSaid": "The browser says: {{message}}",
+      "probe": "Send a test",
+      "probeHint": "Arrives on every device signed up.",
+      "probed": "Test sent.",
+      "probedSome": "Test sent to {{sent}} of {{all}} devices."
+    },
+    "remind": {
+      "title": "When to remind",
+      "text": "A gentle nudge when you have not written yet.",
+      "never": "Never",
+      "daily": "Every day",
+      "pause": "After a pause",
+      "days": "After how many days without an entry",
+      "time": "Time",
+      "skip": "Do not remind me when I have written today",
+      "skipHint": "One note a day is enough.",
+      "withPrompt": "With a question of the day",
+      "withPromptHint": "The reminder brings a writing prompt along, such as “What made you happy today?”",
+      "preview": "This is how it looks",
+      "dailyText": "How was your day?",
+      "pauseText_one": "Nothing written since yesterday. Fancy a few lines?",
+      "pauseText_other": "Nothing written for {{count}} days. Fancy a few lines?",
+      "asked": " Today's question: {{question}}",
+      "example": "What made you happy?",
+      "saved": "Saved."
+    },
+    "devices": {
+      "title": "Signed-in devices",
+      "text": "Where you are signed in. A sign-in ends by itself after 30 days without use.",
+      "notify": "Tell me about a new sign-in",
+      "notifyHint": "By push to your devices and by mail: which device, which browser, roughly from where. If it was not you, one tap signs it off."
     }
   },
   "twofactor": {
@@ -700,6 +756,26 @@
       "connected_other": "{{count}} people have connected Immich.",
       "save": "Save",
       "saved": "Saved."
+    },
+    "push": {
+      "title": "Web Push",
+      "text": "So that reminders reach the phone and the browser. Set up from the start; each person signs up their devices under My account → Reminders.",
+      "ready_one": "Ready · {{count}} device signed up in the family",
+      "ready_other": "Ready · {{count}} devices signed up in the family",
+      "contact": "Contact for the push services",
+      "contactHint": "The services of Google, Apple and Mozilla ask for an address where they reach the operator. It stands in every message, nothing else of yours.",
+      "saved": "Saved.",
+      "keys": "Keys",
+      "keysText": "nexdiary made a key pair of its own at the first start. Making a new one signs every device off; each person has to sign them up again.",
+      "renew": "Make new",
+      "renewTitle": "Make a new key pair?",
+      "renewText": "Every device in the family is signed off. Each person has to sign them up again under My account → Reminders.",
+      "renewed": "New key pair made. Every device is signed off.",
+      "probe": "Test to my devices",
+      "hosts": "More push services",
+      "hostsHint": "Messages go only to the services of Google, Mozilla, Apple and Microsoft. If a browser needs another one, enter its host here, one per line, such as push.example.com.",
+      "save": "Save",
+      "out": "What goes out: an encrypted message to the push service of each browser (Google for Chrome, Apple for Safari, Mozilla for Firefox). Only the device can read it. It holds the reminder only, never an entry."
     }
   },
   "editor": {
@@ -1012,7 +1088,20 @@
     "immich_not_a_picture": "nexdiary cannot take this photo.",
     "immich_other_day": "This photo is from another day.",
     "immich_busy": "Many photos are on their way right now. Try again in a moment.",
-    "immich_too_often": "Too many requests to Immich. Wait a minute."
+    "immich_too_often": "Too many requests to Immich. Wait a minute.",
+    "push_endpoint_invalid": "This is not the address of a push service.",
+    "push_endpoint_refused": "This address is never reached.",
+    "push_service_unknown": "nexdiary sends nothing to this push service. The operator can add it under Settings → Server → Web Push.",
+    "push_unreachable": "The server cannot reach the push service.",
+    "push_keys_invalid": "The keys of this device are not valid.",
+    "push_too_many_devices": "At most {{max}} devices. Sign one off first.",
+    "push_name_invalid": "Use a shorter name without control characters.",
+    "push_no_devices": "Turn it on for this device first.",
+    "push_contact_invalid": "Give an address starting with mailto: or https://.",
+    "push_host_invalid": "This is not a host name: {{entry}}",
+    "push_too_many_hosts": "At most {{max}} more push services.",
+    "push_too_often": "Too much at once. Wait a minute.",
+    "bad_reminder": "nexdiary does not offer this value."
   },
   "entry": {
     "back": "← Journal",

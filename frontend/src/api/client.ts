@@ -126,6 +126,23 @@ export type Profile = {
   timezone_source: 'browser' | 'manual'
   /** The AI for this person (Account, AI); off: no button to write a day up, and the server refuses. */
   ai: boolean
+  /** A push and a mail when the account signs in from a new device. */
+  notify_login?: boolean
+  /** When and how to be reminded (changed with `pushApi.reminder`). */
+  reminder?: Reminder
+}
+
+export type ReminderMode = 'never' | 'daily' | 'pause'
+export type Reminder = {
+  mode: ReminderMode
+  /** `HH:MM` on the person's own clock. */
+  time: string
+  /** After a pause: after so many days without an entry. */
+  days: number
+  /** Every day: not on a day with a note already. */
+  skip_if_written: boolean
+  /** The question of the day comes along. */
+  with_prompt: boolean
 }
 
 export type Me = {
@@ -354,6 +371,26 @@ export const immichApi = {
     api<Photo>(`/api/immich/photos/${encodeURIComponent(asset)}`, { method: 'POST', body: { ...(date ? { date } : {}), ...(note ? { note: true } : {}) } }),
   settings: () => api<ImmichSettings>('/api/settings/immich'),
   saveSettings: (change: { allowed?: boolean; hosts?: string[] }) => api<ImmichSettings>('/api/settings/immich', { method: 'PUT', body: change }),
+}
+
+export type PushDevice = { id: string; name: string; phone: boolean; since: string; last: string | null }
+export type PushState = { key: string; devices: PushDevice[] }
+export type PushResult = { sent: number; gone: number; failed: number }
+export type PushSettings = { devices: number; key: string; contact: string; contact_used: string; known: string[]; hosts: string[] }
+
+/** Web Push: the own devices, a probe, the reminder; the operator's card. */
+export const pushApi = {
+  state: () => api<PushState>('/api/push'),
+  add: (subscription: { endpoint: string; p256dh: string; auth: string; installed: boolean }) =>
+    api<PushDevice>('/api/push/devices', { method: 'POST', body: subscription }),
+  lookup: (endpoint: string) => api<{ id: string | null }>('/api/push/devices/lookup', { method: 'POST', body: { endpoint } }),
+  rename: (id: string, name: string) => api<PushDevice>(`/api/push/devices/${encodeURIComponent(id)}`, { method: 'PUT', body: { name } }),
+  remove: (id: string) => api<void>(`/api/push/devices/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  probe: () => api<PushResult>('/api/push/test', { method: 'POST' }),
+  reminder: (change: Partial<Reminder>) => api<Reminder>('/api/me/reminder', { method: 'PUT', body: change }),
+  settings: () => api<PushSettings>('/api/settings/push'),
+  saveSettings: (change: { contact?: string; hosts?: string[] }) => api<PushSettings>('/api/settings/push', { method: 'PUT', body: change }),
+  renew: (current_password: string) => api<PushSettings>('/api/settings/push/renew', { method: 'POST', body: { current_password } }),
 }
 
 /** The small picture of a photo in the own Immich, through nexdiary. */

@@ -3,7 +3,7 @@
  * the operator with a second row for its parts. The tab is in the address (`?tab=server&sub=backups`), so a link can
  * point at one; a tab someone may not see falls back to General. The own account is `AccountPage.tsx`.
  */
-import { Database, Eye, Globe, HardDrive, Image, KeyRound, Languages, ListChecks, Mail, Palette, Plug, ScrollText, Shield, Smartphone, Sparkles, Users } from 'lucide-react'
+import { BellRing, Database, Eye, Globe, HardDrive, Image, KeyRound, Languages, ListChecks, Mail, Palette, Plug, ScrollText, Shield, Smartphone, Sparkles, Users } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
@@ -16,16 +16,17 @@ import { useAuth } from '../state/auth'
 import { AiCard } from './settings/AiCard'
 import { ImmichCard, ImmichServerCard } from './settings/ImmichCards'
 import { PromptsCard } from './settings/PromptsCard'
+import { PushServerCard } from './settings/PushCards'
 import { AccountsCard, ApiTokensCard, BackupsCard, LanguagesCard, LogCard, MailCard, SignInCard, StorageCard, useServerSettings } from './settings/ServerCards'
 import { Card, Feedback, Segment, TabRow, Toggle, useAction, type Tab } from './settings/ui'
 import { ValuesCard } from './settings/ValuesCard'
 
 type Top = 'general' | 'looks' | 'server'
-type Part = 'accounts' | 'signin' | 'ai' | 'immich' | 'mail' | 'api' | 'backups' | 'languages' | 'log'
+type Part = 'accounts' | 'signin' | 'ai' | 'push' | 'immich' | 'mail' | 'api' | 'backups' | 'languages' | 'log'
 const TOPS: Top[] = ['general', 'looks', 'server']
-const PARTS: Part[] = ['accounts', 'signin', 'ai', 'immich', 'mail', 'api', 'backups', 'languages', 'log']
+const PARTS: Part[] = ['accounts', 'signin', 'ai', 'push', 'immich', 'mail', 'api', 'backups', 'languages', 'log']
 const TOP_ICON = { general: Globe, looks: Eye, server: Shield }
-const PART_ICON = { accounts: Users, signin: KeyRound, ai: Sparkles, immich: Image, mail: Mail, api: Plug, backups: HardDrive, languages: Languages, log: ScrollText }
+const PART_ICON = { accounts: Users, signin: KeyRound, ai: Sparkles, push: BellRing, immich: Image, mail: Mail, api: Plug, backups: HardDrive, languages: Languages, log: ScrollText }
 
 export function SettingsPage() {
   const { t } = useTranslation()
@@ -84,6 +85,8 @@ function ServerPart({ part }: { part: Part }) {
       return <SignInCard server={server} />
     case 'ai':
       return <AiCard />
+    case 'push':
+      return <PushServerCard />
     case 'immich':
       return <ImmichServerCard />
     case 'mail':

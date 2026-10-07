@@ -36,7 +36,18 @@ from app.db import SessionLocal, init_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import MEMBER, OPERATOR, Account, Base, Setting  # noqa: E402
 from app.security import SESSION_COOKIE, brake, hash_password, start_session  # noqa: E402
-from app.services import ai, backups, brakes, diary, immich, totp, updates  # noqa: E402
+from app.services import (  # noqa: E402
+    ai,
+    backups,
+    brakes,
+    diary,
+    immich,
+    notices,
+    push,
+    settings_service,
+    totp,
+    updates,
+)
 
 DATA_DIR = _DATA
 MEDIA = Path(_DATA) / "media"
@@ -67,7 +78,10 @@ def clean_db(schema: None) -> Iterator[None]:
     diary.forget_searches()
     ai.forget()
     immich.forget()
+    notices.forget()
+    push.forget()
     yield
+    notices.settle()
     app.dependency_overrides.clear()
 
 
@@ -122,6 +136,20 @@ def client() -> Iterator[TestClient]:
     # As the interface does: every request names its tab (changes are refused without it).
     with TestClient(app, base_url="http://testserver", headers=TAB) as test_client:
         yield test_client
+
+
+@pytest.fixture
+def push_service(monkeypatch: pytest.MonkeyPatch) -> object:
+    """The stand-in of a push service (``fake_push.py``), added to the operator's list of push services, its name
+    resolving to a public address. The check of where a message may go stays as it is."""
+    from .fake_push import HOST, FakePushService, public_resolver
+
+    fake = FakePushService()
+    monkeypatch.setattr(push, "transport", fake.transport())
+    monkeypatch.setattr(push, "resolver", public_resolver)
+    with SessionLocal() as db:
+        settings_service.save(db, {"push_hosts": [HOST]})
+    return fake
 
 
 @pytest.fixture

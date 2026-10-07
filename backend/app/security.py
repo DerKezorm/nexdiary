@@ -211,25 +211,51 @@ def _server_key() -> bytes:
 
 DEVICE_COOKIE = "nexdiary_device" + get_settings().cookie_name_suffix()
 DEVICE_DAYS = 365
+#: Accounts one browser remembers: a family may share a tablet.
+DEVICE_ACCOUNTS_MAX = 5
 
 
-def device_token(account_id: int) -> str:
-    """A browser that signed in once as this account: it may still sign in while the account is locked against the
-    rest of the world. Signed with the server's key; nothing about it is stored."""
+def _device_entry(account_id: int) -> str:
     nonce = secrets.token_urlsafe(12)
     mark = hashlib.sha256(_server_key() + f"device:{account_id}:{nonce}".encode()).hexdigest()[:32]
     return f"{account_id}.{nonce}.{mark}"
 
 
-def device_of(token: str | None) -> int | None:
-    """The account a device cookie was given to, or None when it is missing or not signed by this server."""
-    if not token or token.count(".") != 2:
+def _entry_account(entry: str) -> int | None:
+    if entry.count(".") != 2:
         return None
-    account, nonce, mark = token.split(".")
-    if not account.isdigit():
+    account, nonce, mark = entry.split(".")
+    if not account.isdigit() or len(account) > 12:
         return None
     expected = hashlib.sha256(_server_key() + f"device:{account}:{nonce}".encode()).hexdigest()[:32]
     return int(account) if secrets.compare_digest(mark, expected) else None
+
+
+def device_token(account_id: int, current: str | None = None) -> str:
+    """A browser that signed in as this account (and as the others it signed in as before, ``current``): it may
+    still sign in while the account is locked against the rest of the world, and signing in from it again is no
+    "new sign-in" (``services/notices.py``). Signed with the server's key; nothing about it is stored."""
+    kept: list[str] = []
+    for entry in (current or "")[:2000].split("~")[: DEVICE_ACCOUNTS_MAX * 2]:
+        account = _entry_account(entry)
+        if account is not None and account != account_id and len(kept) < DEVICE_ACCOUNTS_MAX - 1:
+            kept.append(entry)
+    return "~".join([_device_entry(account_id), *kept])
+
+
+def devices_of(token: str | None) -> frozenset[int]:
+    """The accounts a device cookie was given for, as far as this server signed them; empty when none."""
+    if not token:
+        return frozenset()
+    found = (_entry_account(entry) for entry in token[:2000].split("~")[: DEVICE_ACCOUNTS_MAX * 2])
+    return frozenset(account for account in found if account is not None)
+
+
+def device_of(token: str | None) -> int | None:
+    """The account a device cookie was given to last, or None when it is missing or not signed by this server."""
+    if not token:
+        return None
+    return _entry_account(token[:2000].split("~")[0])
 
 
 def _aad(context: str) -> bytes:

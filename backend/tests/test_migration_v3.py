@@ -38,6 +38,10 @@ def test_a_v2_database_with_a_diary_comes_to_v3_whole(client: TestClient, accoun
             connection.execute(f"DROP TABLE {later}")
         connection.execute("DROP TABLE photos")
         connection.execute("DROP TABLE drafts")
+        # And what version 7 brought: the push devices, the reminder marks, the mark of a first sign-in.
+        connection.execute("DROP TABLE push_devices")
+        connection.execute("DROP TABLE reminder_marks")
+        connection.execute("ALTER TABLE users DROP COLUMN signed_in_before")
         connection.execute("PRAGMA user_version = 2")
         connection.commit()
     made: list[str] = []

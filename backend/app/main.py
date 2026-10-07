@@ -21,7 +21,7 @@ from .config import get_settings
 from .db import SessionLocal, init_db
 from .errors import detail
 from .middleware import GuardMiddleware, RequestContextMiddleware, unhandled_error
-from .routers import about, ai, apitokens, auth, diary, health, immich, invites, oidc, photos, prompts, sharing
+from .routers import about, ai, apitokens, auth, diary, health, immich, invites, oidc, photos, prompts, push, sharing
 from .routers import avatars as avatars_router
 from .routers import backups as backups_router
 from .routers import locales as locales_router
@@ -30,13 +30,13 @@ from .routers import settings as settings_router
 from .routers import totp as totp_router
 from .routers import v1 as v1_router
 from .security import HashingBusy, purge_sessions
-from .services import accounts, backups, locales, logs, pictures, settings_service, totp, vault
+from .services import accounts, backups, locales, logs, notices, pictures, reminders, settings_service, totp, vault
 
 logger = logging.getLogger("nexdiary")
 
 ROUTERS = [
     health, about, locales_router, logs_router, auth, totp_router, oidc, invites, settings_router, backups_router,
-    avatars_router, apitokens, v1_router, diary, photos, sharing, ai, prompts, immich,
+    avatars_router, apitokens, v1_router, diary, photos, sharing, ai, prompts, immich, push,
 ]
 
 
@@ -93,6 +93,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         tasks.append(asyncio.create_task(logs.run_forever(stop)))
         tasks.append(asyncio.create_task(backups.run_forever(stop)))
         tasks.append(asyncio.create_task(_sweep_forever(stop)))
+        tasks.append(asyncio.create_task(reminders.run_forever(stop)))
     logger.info("nexdiary %s started", __version__)
     with SessionLocal() as db:
         accounts.announce_setup_code(db)
@@ -103,6 +104,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        await asyncio.to_thread(notices.settle, 10)
         logger.info("nexdiary stopped")
 
 
@@ -176,6 +178,11 @@ for module in ROUTERS:
     app.include_router(module.router)
 
 
+#: Files a browser asks the server about again each time: the service worker (an old one would keep its old ways for a
+#: day) and the manifest.
+FRESH = ("sw.js", "manifest.webmanifest")
+
+
 def _mount_frontend(target: FastAPI, dist: Path) -> None:
     index = dist / "index.html"
     if not index.exists():
@@ -191,6 +198,8 @@ def _mount_frontend(target: FastAPI, dist: Path) -> None:
             return JSONResponse(status_code=404, content={"detail": detail("not_found", "Not found.")})
         candidate = (dist / path).resolve()
         if path and candidate.is_file() and root in candidate.parents and candidate != start_page:
+            if path in FRESH:
+                return FileResponse(candidate, headers={"Cache-Control": "no-cache"})
             return FileResponse(candidate)
         return FileResponse(index, headers={"Cache-Control": "no-cache"})
 

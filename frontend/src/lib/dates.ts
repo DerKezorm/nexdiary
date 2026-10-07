@@ -37,3 +37,13 @@ export function browserTimeZone(): string {
     return ''
   }
 }
+
+/** "2. Oktober": the day of a moment in the person's time zone, without the year. */
+export function dayOfMoment(moment: string, language: string, timeZone?: string): string {
+  const options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long' }
+  try {
+    return new Intl.DateTimeFormat(language, { ...options, timeZone: timeZone || undefined }).format(new Date(moment))
+  } catch {
+    return new Intl.DateTimeFormat(language, options).format(new Date(moment))
+  }
+}

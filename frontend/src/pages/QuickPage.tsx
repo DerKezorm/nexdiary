@@ -16,6 +16,7 @@ import { LogoMark } from '../components/Logo'
 import { PendingPhoto, usePendingPhoto } from '../components/PendingPhoto'
 import { longDate, timeOf } from '../lib/dates'
 import { errorText } from '../lib/errors'
+import { sharedText } from '../lib/shared'
 import { PHOTO_ACCEPT } from '../lib/upload'
 import { useAiState } from '../state/ai'
 import { useAuth } from '../state/auth'
@@ -26,7 +27,7 @@ export function QuickPage() {
   const { me } = useAuth()
   const today = useToday()
   // Text shared into nexdiary from another app arrives in the address; it is only put into the field.
-  const [text, setText] = useState(() => (new URLSearchParams(window.location.search).get('text') ?? '').slice(0, 5000))
+  const [text, setText] = useState(() => sharedText(window.location.search))
   const [sent, setSent] = useState(false)
   /** The question the next note answers, while the person chose to answer it. */
   const [asking, setAsking] = useState<Question | null>(null)

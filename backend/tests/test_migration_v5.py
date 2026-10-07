@@ -60,6 +60,10 @@ def test_a_v4_database_with_a_diary_comes_to_v5_whole(client: TestClient, accoun
             connection.execute("DROP TABLE immich_links")
             connection.execute("DROP TABLE writing_prompts")
             connection.execute("ALTER TABLE notes DROP COLUMN prompt_ref_enc")
+            # And what version 7 brought: the push devices, the reminder marks, the mark of a first sign-in.
+            connection.execute("DROP TABLE push_devices")
+            connection.execute("DROP TABLE reminder_marks")
+            connection.execute("ALTER TABLE users DROP COLUMN signed_in_before")
             connection.execute("PRAGMA user_version = 4")
             connection.commit()
         before = counts(path)

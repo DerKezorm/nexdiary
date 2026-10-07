@@ -18,7 +18,7 @@ nexdiary loads no font, icon or script from another host.
 
 | Package | Licence |
 |---|---|
-| FastAPI, SQLAlchemy, pydantic, pydantic-settings, argon2-cffi, PyJWT | MIT |
+| FastAPI, SQLAlchemy, pydantic, pydantic-settings, argon2-cffi, PyJWT, http-ece | MIT |
 | uvicorn, httpx, segno | BSD-3-Clause |
 | Pillow | MIT-CMU |
 | cryptography | Apache-2.0 **or** BSD-3-Clause |

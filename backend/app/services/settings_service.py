@@ -57,6 +57,12 @@ DEFAULTS: dict[str, Any] = {
     #: only on one of these hosts (``host`` or ``host:port``): the address is a way into the own network.
     "immich_allowed": False,
     "immich_hosts": [],
+    #: Web Push (``services/webpush.py``, ``services/push.py``): nexdiary's own key pair, made at the first need and
+    #: sealed with the server's secret; who the push services may contact (empty: the public https address, else a
+    #: placeholder); and push services beyond the known ones, as host names.
+    "push_key_enc": "",
+    "push_contact": "",
+    "push_hosts": [],
 }
 
 

@@ -51,6 +51,10 @@ def test_a_v5_database_with_a_diary_comes_to_v6_whole(client: TestClient, accoun
     with closing(sqlite3.connect(path)) as connection:
         connection.execute("DROP INDEX uq_photos_user_asset")
         connection.execute("DROP TABLE immich_links")
+        # And what version 7 brought: the push devices, the reminder marks, the mark of a first sign-in.
+        connection.execute("DROP TABLE push_devices")
+        connection.execute("DROP TABLE reminder_marks")
+        connection.execute("ALTER TABLE users DROP COLUMN signed_in_before")
         connection.execute("PRAGMA user_version = 5")
         connection.commit()
         assert "uq_photos_user_asset" not in indexes(connection)
@@ -61,7 +65,7 @@ def test_a_v5_database_with_a_diary_comes_to_v6_whole(client: TestClient, accoun
     assert made == [f"before schema {database.SCHEMA_VERSION}"]
     assert counts(path) == before, "no row lost"
     with closing(sqlite3.connect(path)) as connection:
-        assert int(connection.execute("PRAGMA user_version").fetchone()[0]) == database.SCHEMA_VERSION == 6
+        assert int(connection.execute("PRAGMA user_version").fetchone()[0]) == database.SCHEMA_VERSION
         migrated = schema_of(connection)
         assert indexes(connection)["uq_photos_user_asset"] == 1, "unique"
         foreign = connection.execute("PRAGMA foreign_key_list(immich_links)").fetchall()

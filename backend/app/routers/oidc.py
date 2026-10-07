@@ -32,9 +32,10 @@ from ..deps import Account, DbSession, OperatorAccount, client_ip, reauth_failed
 from ..errors import error
 from ..models import SIGN_IN_OIDC, SIGN_IN_PASSWORD
 from ..models import Account as AccountRow
-from ..security import SESSION_COOKIE, brake, decrypt_secret, encrypt_secret, session_account, start_session
+from ..security import SESSION_COOKIE, brake, decrypt_secret, encrypt_secret, session_account
 from ..services import accounts, authentik, logs, oidc, settings_service
-from .auth import _set_cookie, secure_cookie
+from . import auth as auth_router
+from .auth import secure_cookie
 
 router = APIRouter(prefix="/api/oidc", tags=["oidc"])
 logger = logging.getLogger("nexdiary.oidc")
@@ -281,8 +282,7 @@ async def callback(
 
     response = RedirectResponse(HOME, status_code=303)
     _delete_attempt_cookie(response)
-    token = start_session(db, account, client_ip(request), request.headers.get("user-agent", ""))
-    _set_cookie(response, request, token)
+    auth_router.start(db, request, response, account)
     logs.set_actor(account.name)
     logger.info("Signed in via OIDC name=%s", account.name)
     return response

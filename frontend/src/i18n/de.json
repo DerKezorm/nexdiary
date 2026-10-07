@@ -143,7 +143,8 @@
       "languages": "Sprachen",
       "log": "Log",
       "ai": "KI",
-      "immich": "Immich"
+      "immich": "Immich",
+      "push": "Web Push"
     },
     "language": {
       "title": "Sprache",
@@ -334,7 +335,8 @@
       "profile": "Profil",
       "security": "Sicherheit",
       "connections": "Verbindungen",
-      "ai": "KI"
+      "ai": "KI",
+      "reminders": "Erinnerungen"
     },
     "profile": {
       "text": "So sehen dich die anderen in der Familie, wenn du einen Tag mit ihnen teilst.",
@@ -383,6 +385,60 @@
       "mine": "KI-Funktionen für mich",
       "mineHint": "Aus: Der Knopf „Ausformulieren“ verschwindet für dich, und deine Texte gehen nie an ein Modell.",
       "byOperator": "Vom Betreiber eingestellt:"
+    },
+    "push": {
+      "title": "Benachrichtigungen auf deinen Geräten",
+      "text": "Erinnerungen kommen als Push direkt aufs Handy oder in den Browser, auch wenn nexdiary gerade zu ist. Jedes Gerät meldest du einzeln an.",
+      "since": "seit {{date}}",
+      "last": "zuletzt {{date}}",
+      "here": "dieses Gerät",
+      "remove": "Gerät abmelden",
+      "rename": "Gerät umbenennen",
+      "name": "Name des Geräts",
+      "removed": "{{name}} ist abgemeldet.",
+      "renamed": "Name gespeichert.",
+      "thisDevice": "Dieses Gerät",
+      "ready": "Noch nicht angemeldet. Der Browser fragt gleich, ob nexdiary Benachrichtigungen schicken darf.",
+      "denied": "Der Browser hat Benachrichtigungen für nexdiary gesperrt. Erlaube sie in den Einstellungen der Seite (Schloss links neben der Adresse), dann geht es hier weiter.",
+      "unsupported": "Dieser Browser kann keine Benachrichtigungen empfangen.",
+      "insecure": "Diese Adresse hat kein https, so geht Push nicht. Öffne nexdiary über seine https-Adresse.",
+      "iphone": "Auf dem iPhone geht es nur aus der App auf dem Startbildschirm. Lege nexdiary dort ab und öffne es von dort.",
+      "hintHttps": "Push braucht eine Adresse mit https (oder localhost).",
+      "hintIphone": "Auf dem iPhone geht es nur aus der App auf dem Startbildschirm: Teilen, dann „Zum Home-Bildschirm“. Ab iOS 16.4.",
+      "enable": "Auf diesem Gerät einschalten",
+      "enabled": "Dieses Gerät bekommt jetzt Erinnerungen.",
+      "deniedNow": "Benachrichtigungen sind nicht erlaubt. Ohne sie kann nexdiary nichts schicken.",
+      "browserSaid": "Der Browser sagt: {{message}}",
+      "probe": "Probe senden",
+      "probeHint": "Kommt auf allen angemeldeten Geräten an.",
+      "probed": "Probe verschickt.",
+      "probedSome": "Probe an {{sent}} von {{all}} Geräten verschickt."
+    },
+    "remind": {
+      "title": "Wann erinnern",
+      "text": "Ein sanfter Anstoß, wenn du noch nicht geschrieben hast.",
+      "never": "Nie",
+      "daily": "Jeden Tag",
+      "pause": "Nach einer Pause",
+      "days": "Nach wie vielen Tagen ohne Eintrag",
+      "time": "Uhrzeit",
+      "skip": "Nicht erinnern, wenn ich heute schon geschrieben habe",
+      "skipHint": "Eine Notiz am Tag reicht dafür.",
+      "withPrompt": "Mit einer Frage des Tages",
+      "withPromptHint": "Die Erinnerung bringt einen Schreibimpuls mit, etwa „Was hat dich heute glücklich gemacht?“",
+      "preview": "So sieht sie aus",
+      "dailyText": "Wie war dein Tag?",
+      "pauseText_one": "Seit gestern nichts geschrieben. Magst du kurz?",
+      "pauseText_other": "Seit {{count}} Tagen nichts geschrieben. Magst du kurz?",
+      "asked": " Heute gefragt: {{question}}",
+      "example": "Was hat dich glücklich gemacht?",
+      "saved": "Gespeichert."
+    },
+    "devices": {
+      "title": "Angemeldete Geräte",
+      "text": "Wo du gerade angemeldet bist. Eine Anmeldung läuft nach 30 Tagen ohne Nutzung von selbst ab.",
+      "notify": "Bei einer neuen Anmeldung Bescheid geben",
+      "notifyHint": "Per Push auf deine Geräte und per Mail: welches Gerät, welcher Browser, ungefähr von wo. Warst du es nicht, meldest du es mit einem Tipp ab."
     }
   },
   "twofactor": {
@@ -700,6 +756,26 @@
       "connected_other": "{{count}} Personen haben Immich verbunden.",
       "save": "Speichern",
       "saved": "Gespeichert."
+    },
+    "push": {
+      "title": "Web Push",
+      "text": "Damit Erinnerungen aufs Handy und in den Browser kommen. Ist von Anfang an eingerichtet; jede Person meldet ihre Geräte unter Mein Konto → Erinnerungen an.",
+      "ready_one": "Bereit · {{count}} Gerät in der Familie angemeldet",
+      "ready_other": "Bereit · {{count}} Geräte in der Familie angemeldet",
+      "contact": "Kontakt für die Push-Dienste",
+      "contactHint": "Die Dienste von Google, Apple und Mozilla verlangen eine Adresse, unter der sie den Betreiber erreichen. Sie steht in jeder Nachricht, sonst nichts von dir.",
+      "saved": "Gespeichert.",
+      "keys": "Schlüssel",
+      "keysText": "nexdiary hat beim ersten Start ein eigenes Schlüsselpaar erzeugt. Neu erzeugen meldet alle Geräte ab; jede Person muss sie neu anmelden.",
+      "renew": "Neu erzeugen",
+      "renewTitle": "Neues Schlüsselpaar erzeugen?",
+      "renewText": "Alle Geräte in der Familie werden abgemeldet. Jede Person muss sie unter Mein Konto → Erinnerungen neu anmelden.",
+      "renewed": "Neues Schlüsselpaar erzeugt. Alle Geräte sind abgemeldet.",
+      "probe": "Probe an meine Geräte",
+      "hosts": "Weitere Push-Dienste",
+      "hostsHint": "Nachrichten gehen nur an die Dienste von Google, Mozilla, Apple und Microsoft. Braucht ein Browser einen anderen, trage seinen Host hier ein, einen je Zeile, etwa push.example.com.",
+      "save": "Speichern",
+      "out": "Was hinausgeht: eine verschlüsselte Nachricht an den Push-Dienst des jeweiligen Browsers (bei Chrome Google, bei Safari Apple, bei Firefox Mozilla). Lesen kann sie nur das Gerät. Darin steht nur die Erinnerung, nie ein Eintrag."
     }
   },
   "editor": {
@@ -1012,7 +1088,20 @@
     "immich_not_a_picture": "Dieses Foto kann nexdiary nicht übernehmen.",
     "immich_other_day": "Dieses Foto ist von einem anderen Tag.",
     "immich_busy": "Gerade sind viele Fotos unterwegs. Versuch es gleich noch einmal.",
-    "immich_too_often": "Zu viele Anfragen an Immich. Warte eine Minute."
+    "immich_too_often": "Zu viele Anfragen an Immich. Warte eine Minute.",
+    "push_endpoint_invalid": "Diese Adresse ist keine eines Push-Dienstes.",
+    "push_endpoint_refused": "Diese Adresse wird nie erreicht.",
+    "push_service_unknown": "An diesen Push-Dienst schickt nexdiary nichts. Der Betreiber kann ihn unter Einstellungen → Server → Web Push eintragen.",
+    "push_unreachable": "Der Server erreicht den Push-Dienst nicht.",
+    "push_keys_invalid": "Die Schlüssel dieses Geräts sind nicht gültig.",
+    "push_too_many_devices": "Höchstens {{max}} Geräte. Melde zuerst eines ab.",
+    "push_name_invalid": "Nimm einen kürzeren Namen ohne Steuerzeichen.",
+    "push_no_devices": "Erst auf diesem Gerät einschalten.",
+    "push_contact_invalid": "Gib eine Adresse an, die mit mailto: oder https:// beginnt.",
+    "push_host_invalid": "Das ist kein Hostname: {{entry}}",
+    "push_too_many_hosts": "Höchstens {{max}} weitere Push-Dienste.",
+    "push_too_often": "Zu viel auf einmal. Warte eine Minute.",
+    "bad_reminder": "Diesen Wert bietet nexdiary nicht an."
   },
   "entry": {
     "back": "← Tagebuch",

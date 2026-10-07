@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from .. import __version__
+from .. import __version__, clock
 from ..config import get_settings
 from ..deps import (
     Account,
@@ -36,14 +36,14 @@ from ..security import (
     SESSION_COOKIE,
     Brake,
     brake,
-    device_of,
     device_token,
+    devices_of,
     end_all_sessions,
     end_session,
     session_account,
     start_session,
 )
-from ..services import accounts, diary, locales, mailer, photos, settings_service, totp, vault
+from ..services import accounts, diary, locales, mailer, notices, photos, reminders, settings_service, totp, vault
 from ..services.accounts import AccountError
 
 logger = logging.getLogger("nexdiary.auth")
@@ -183,13 +183,36 @@ def account_view(account: AccountRow) -> dict[str, Any]:
     }
 
 
-def sign_in(db: DbSession, request: Request, response: Response, account: AccountRow) -> dict[str, Any]:
-    token = start_session(db, account, client_ip(request), request.headers.get("user-agent", ""))
+#: Where the device cookie goes: the sign-in with a password and the return from the provider, nowhere else.
+DEVICE_PATHS = ("/api/oidc/callback", "/api/auth")
+
+
+def remember_device(request: Request, response: Response, account: AccountRow) -> bool:
+    """This browser is known for the account from now on: a lock that strangers cause by guessing does not keep it
+    out, and signing in from it again is no new sign-in. Gives whether it was known before."""
+    current = request.cookies.get(DEVICE_COOKIE)
+    known = account.id in devices_of(current)
+    token = device_token(account.id, current)
+    for path in DEVICE_PATHS:
+        response.set_cookie(DEVICE_COOKIE, token, max_age=DEVICE_DAYS * 86400, httponly=True, samesite="lax",
+                            secure=secure_cookie(request), path=path)
+    return known
+
+
+def start(db: DbSession, request: Request, response: Response, account: AccountRow) -> None:
+    """The session of a sign-in that went through, by any way: the cookies, and the notice to the other devices
+    when this browser is new for the account (``services/notices.py``)."""
+    first = not account.signed_in_before
+    account.signed_in_before = True
+    known = remember_device(request, response, account)
+    agent = request.headers.get("user-agent", "")
+    token = start_session(db, account, client_ip(request), agent)
     _set_cookie(response, request, token)
-    # This browser is known from now on: a lock that strangers cause by guessing does not keep it out.
-    if device_of(request.cookies.get(DEVICE_COOKIE)) != account.id:
-        response.set_cookie(DEVICE_COOKIE, device_token(account.id), max_age=DEVICE_DAYS * 86400, httponly=True,
-                            samesite="lax", secure=secure_cookie(request), path="/api/auth")
+    notices.new_sign_in(account, client_ip(request), agent, first=first, known=known)
+
+
+def sign_in(db: DbSession, request: Request, response: Response, account: AccountRow) -> dict[str, Any]:
+    start(db, request, response, account)
     logger.info("Signed in name=%s", account.name)
     return account_view(account)
 
@@ -268,7 +291,7 @@ def login(payload: LoginIn, request: Request, response: Response, db: DbSession)
         )
     try:
         account = accounts.authenticate(db, payload.name, payload.password,
-                                        device_of(request.cookies.get(DEVICE_COOKIE)))
+                                        devices_of(request.cookies.get(DEVICE_COOKIE)))
     except AccountError as exc:
         for key, _free in keys:
             brake.failed(key)
@@ -394,6 +417,8 @@ PROFILE: dict[str, tuple[Any, ...]] = {
     "timezone_source": ("browser", "manual"),
     #: The AI for this person (Account, AI): off, no button to write a day up appears and the server refuses (403).
     "ai": (True, False),
+    #: A push and a mail when the account signs in from a new device (``services/notices.py``).
+    "notify_login": (True, False),
 }
 
 
@@ -405,6 +430,8 @@ def profile_of(stored: Any) -> dict[str, Any]:
     }
     # The time zone the browser reported ("Europe/Berlin"): what "today" means for this person. Empty until then.
     out["timezone"] = stored.get("timezone") if diary.valid_time_zone(stored.get("timezone")) else ""
+    # When and how to remind (``services/reminders.py``); changed with its own route.
+    out["reminder"] = reminders.of(stored)
     return out
 
 
@@ -417,6 +444,8 @@ def set_preferences(payload: dict[str, Any], account: Account, db: DbSession) ->
     if payload.get("timezone_source") == "browser" and current["timezone_source"] == "manual":
         payload = {key: value for key, value in payload.items() if key not in ("timezone", "timezone_source")}
     for key, value in payload.items():
+        if key == "reminder":
+            raise error("bad_preference", "This value is not one nexdiary offers.", 422, field=key)
         if key == "timezone":
             if not diary.valid_time_zone(value):
                 raise error("bad_preference", "This value is not one nexdiary offers.", 422, field=key)
@@ -429,6 +458,19 @@ def set_preferences(payload: dict[str, Any], account: Account, db: DbSession) ->
     row.profile = current
     db.commit()
     return current
+
+
+@router.put("/me/reminder", summary="When and how to be reminded; only the values sent change")
+def set_reminder(payload: dict[str, Any], account: Account, db: DbSession) -> dict[str, Any]:
+    row = db.get(AccountRow, account.id)
+    assert row is not None
+    current = profile_of(row.profile)
+    before = current["reminder"]
+    after = reminders.check(before, payload)
+    row.profile = {**current, "reminder": after}
+    db.commit()
+    reminders.after_saving(db, row, before, after, clock.now())
+    return after
 
 
 # --- Accounts (operator) --------------------------------------------------------------------------------------------
@@ -458,8 +500,10 @@ def _row(db: DbSession, account_id: int) -> AccountRow:
 
 @router.get("/accounts", summary="All accounts (never what is written in them)")
 def list_accounts(_operator: OperatorAccount, db: DbSession) -> list[dict[str, Any]]:
+    # Never what a person chose for themselves either: when they are reminded, their time zone, their looks.
     return [
-        {**account_view(row), "locked": accounts.is_locked(row), "blocked": row.blocked_at is not None,
+        {**{key: value for key, value in account_view(row).items() if key != "profile"},
+         "locked": accounts.is_locked(row), "blocked": row.blocked_at is not None,
          "has_password": bool(row.password_hash)}
         for row in db.scalars(select(AccountRow).order_by(AccountRow.created_at))
     ]

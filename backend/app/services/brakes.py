@@ -23,6 +23,9 @@ LIMITS = {
     "immich": 30,
     #: The small pictures of Immich: sixty on a day, a few pages in a minute.
     "immich_thumb": 600,
+    #: Signing a device up for Web Push (its push service is looked up), a probe (it goes out to every device).
+    "push": 20,
+    "push_test": 10,
 }
 #: The code and the sentence of the answer.
 CODES = {
@@ -32,6 +35,8 @@ CODES = {
     "new_note": ("slow_down_writing", "Too much at once. Wait a minute."),
     "immich": ("immich_too_often", "Too many requests to Immich. Wait a minute."),
     "immich_thumb": ("immich_too_often", "Too many requests to Immich. Wait a minute."),
+    "push": ("push_too_often", "Too many at once. Wait a minute."),
+    "push_test": ("push_too_often", "Too many at once. Wait a minute."),
 }
 
 _lock = threading.Lock()

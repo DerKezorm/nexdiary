@@ -107,6 +107,8 @@ class Account(Base):
     #: Whether the values the app starts with were laid out for this person (``services/diary.py``). Set once, so
     #: that values a person deleted do not come back.
     values_seeded: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
+    #: Whether the account ever signed in: its very first sign-in is no "new device" (``services/notices.py``).
+    signed_in_before: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
 
 
 class AuthSession(Base):
@@ -303,6 +305,43 @@ class ImmichLink(Base):
     updated_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
 
 
+# --- Web Push and reminders ----------------------------------------------------------------------------------------
+
+
+class PushDevice(Base):
+    """A browser or an app on the home screen that gets reminders (``services/push.py``). What the browser handed
+    over (the address at its push service and the two keys) and the name of the device are sealed with the person's
+    data key: the address is a key in itself, whoever has it may send to the device. ``endpoint_key`` is a keyed
+    hash of the address, so that the same browser signing up twice stays one device."""
+
+    __tablename__ = "push_devices"
+    __table_args__ = (
+        UniqueConstraint("uid", name="uq_push_devices_uid"),
+        UniqueConstraint("user_id", "endpoint_key", name="uq_push_devices_user_endpoint"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    uid: Mapped[str] = mapped_column(String(32))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    endpoint_key: Mapped[str] = mapped_column(String(64))
+    content_enc: Mapped[bytes] = mapped_column(LargeBinary)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    #: The last message the push service took for this device.
+    last_used_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+
+
+class ReminderMark(Base):
+    """The day the last reminder went out for, in the person's own time zone. Set before sending, and only where it
+    stood earlier (a conditional update): two server processes, two rounds in the same minute or a restart send one
+    reminder, never two."""
+
+    __tablename__ = "reminder_marks"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    #: ``YYYY-MM-DD``; empty while none went out.
+    sent_for: Mapped[str] = mapped_column(String(10), default="")
+
+
 # --- Sharing ---------------------------------------------------------------------------------------------------------
 #
 # A share lets one other person read one day of the owner. Nothing is copied: whoever reads a shared day gets it opened
@@ -365,6 +404,8 @@ __all__ = [
     "Invite",
     "Note",
     "Photo",
+    "PushDevice",
+    "ReminderMark",
     "Setting",
     "Share",
     "ShareSeen",

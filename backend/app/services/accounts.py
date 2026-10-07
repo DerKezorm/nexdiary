@@ -174,11 +174,11 @@ def _one_check_at_a_time(account_id: int) -> threading.Lock:
         return _account_locks.setdefault(account_id, threading.Lock())
 
 
-def authenticate(db: Session, name: str, password: str, device: int | None = None) -> Account:
+def authenticate(db: Session, name: str, password: str, devices: frozenset[int] = frozenset()) -> Account:
     """Checks name and password; counts failures and locks the account after too many.
 
     A locked account answers like a wrong password (no hint that the name exists), except to a browser that signed in
-    as it before (``device``, the account its cookie names): a stranger guessing can lock the account against the
+    as it before (``devices``, the accounts its cookie names): a stranger guessing can lock the account against the
     world, not against its owner.
     Failures from that browser do not count towards the lock.
     """
@@ -187,7 +187,7 @@ def authenticate(db: Session, name: str, password: str, device: int | None = Non
         verify_password(password, _dummy_hash())
         logger.warning("Sign-in failed for an unknown account")
         raise AccountError("wrong_credentials", "Name or password is wrong.", 401)
-    known_device = device == account.id
+    known_device = account.id in devices
     with _one_check_at_a_time(account.id):
         db.refresh(account)
         if is_locked(account) and not known_device:

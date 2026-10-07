@@ -1,7 +1,8 @@
 """Invitation mail through the operator's SMTP server.
 
-Off until the operator enters a server: the link to copy is always enough. Nothing else is ever mailed. The mail
-is English like everything nexdiary sends out; it names who invites and carries the link.
+Off until the operator enters a server: the link to copy is always enough. The mail
+is English like everything nexdiary sends out; it names who invites and carries the link. The notice of a
+new sign-in (``services/notices.py``) goes the same way.
 """
 
 from __future__ import annotations
@@ -81,4 +82,9 @@ def send_test(db: Session, to: str) -> None:
     message["To"] = formataddr(("", to))
     message["Subject"] = "nexdiary test mail"
     message.set_content("The mail server in nexdiary works.\n")
+    _send(db, message)
+
+
+def send_message(db: Session, message: EmailMessage) -> None:
+    """A mail written elsewhere (the notice of a new sign-in), through the same server."""
     _send(db, message)

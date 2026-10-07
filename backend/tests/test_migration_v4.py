@@ -61,6 +61,10 @@ def test_a_v3_database_with_a_diary_comes_to_v4_whole(client: TestClient, accoun
             connection.execute("ALTER TABLE notes DROP COLUMN prompt_ref_enc")
             for table in ("immich_links", "writing_prompts", "hearts", "share_seen", "shares"):
                 connection.execute(f"DROP TABLE {table}")
+            # And what version 7 brought: the push devices, the reminder marks, the mark of a first sign-in.
+            connection.execute("DROP TABLE push_devices")
+            connection.execute("DROP TABLE reminder_marks")
+            connection.execute("ALTER TABLE users DROP COLUMN signed_in_before")
             connection.execute("PRAGMA user_version = 3")
             connection.commit()
         before = counts(path)

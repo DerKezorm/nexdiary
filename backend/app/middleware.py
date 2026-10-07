@@ -37,10 +37,12 @@ SLOW_MS = 3000
 SLOW_EXPECTED = ("/api/backups",)
 
 #: The interface sets inline styles, hence 'unsafe-inline' for styles only. Scripts stay strict.
-#: ``blob:`` for images: a picture is shown before it is uploaded.
+#: ``blob:`` for images: a picture is shown before it is uploaded. The service worker (``/sw.js``, Web Push) and the
+#: manifest come from the site itself, said out loud: a ``worker-src 'none'`` here once broke Web Push in Nexview.
 CSP = (
     b"default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; "
-    b"connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+    b"connect-src 'self'; worker-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'self'; "
+    b"form-action 'self'; object-src 'none'"
 )
 SECURITY_HEADERS: tuple[tuple[bytes, bytes], ...] = (
     (b"content-security-policy", CSP),

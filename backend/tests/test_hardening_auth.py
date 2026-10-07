@@ -94,7 +94,7 @@ def test_a_locked_account_still_lets_in_the_browser_that_signed_in_before(client
     make_account("anna")
     own = fresh("192.0.2.10")
     assert own.post("/api/auth/login", json={"name": "anna", "password": PASSWORD}).status_code == 200
-    assert own.cookies.get(DEVICE_COOKIE)
+    assert own.cookies.get(DEVICE_COOKIE, path="/api/auth")
     own.post("/api/auth/logout")
     lock("anna")
     stranger = fresh("198.51.100.99")

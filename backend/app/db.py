@@ -37,7 +37,7 @@ _settings.data_dir.mkdir(parents=True, exist_ok=True)
 BUSY_SECONDS = 15
 
 #: The version of the schema the models describe.
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 
 def _v2_diary(connection: Connection) -> None:
@@ -158,9 +158,32 @@ def _v6_immich(connection: Connection) -> None:
         connection.exec_driver_sql(statement)
 
 
+def _v7_push(connection: Connection) -> None:
+    """Version 7: the devices that get reminders by Web Push, sealed, and the day the last reminder went out for; on
+    each account whether it ever signed in (an account seen before has). Written out as it stood then, not taken from
+    the models."""
+    for statement in (
+        "ALTER TABLE users ADD COLUMN signed_in_before BOOLEAN DEFAULT 0 NOT NULL",
+        "UPDATE users SET signed_in_before = 1 WHERE last_seen_at IS NOT NULL",
+        (
+            "CREATE TABLE push_devices ( id INTEGER NOT NULL, uid VARCHAR(32) NOT NULL, user_id INTEGER NOT NULL, "
+            "endpoint_key VARCHAR(64) NOT NULL, content_enc BLOB NOT NULL, created_at DATETIME NOT NULL, "
+            "last_used_at DATETIME, PRIMARY KEY (id), CONSTRAINT uq_push_devices_uid UNIQUE (uid), "
+            "CONSTRAINT uq_push_devices_user_endpoint UNIQUE (user_id, endpoint_key), "
+            "FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE )"
+        ),
+        "CREATE INDEX ix_push_devices_user_id ON push_devices (user_id)",
+        (
+            "CREATE TABLE reminder_marks ( user_id INTEGER NOT NULL, sent_for VARCHAR(10) NOT NULL, "
+            "PRIMARY KEY (user_id), FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE )"
+        ),
+    ):
+        connection.exec_driver_sql(statement)
+
+
 #: ``MIGRATIONS[n]`` brings a database from version ``n - 1`` to ``n``. Version 1 is the first schema; it has no step.
 MIGRATIONS: dict[int, Callable[[Connection], None]] = {
-    2: _v2_diary, 3: _v3_photos_and_drafts, 4: _v4_sharing, 5: _v5_writing_prompts, 6: _v6_immich,
+    2: _v2_diary, 3: _v3_photos_and_drafts, 4: _v4_sharing, 5: _v5_writing_prompts, 6: _v6_immich, 7: _v7_push,
 }
 
 # No pool with an upper bound: with the default pool the sixteenth concurrent request would block the event

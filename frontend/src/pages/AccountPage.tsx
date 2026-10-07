@@ -1,9 +1,10 @@
 /**
  * The own account in tabs, as the mock (and nexlore): Profile (picture, display name, name, role, mail address),
- * Security (password, second factor, the link to the provider), AI (the own switch, and what the operator set up)
- * and Connections (API tokens for programs). The tab stands in the address (`?tab=`). Reminders come with their block.
+ * Security (password, second factor, the link to the provider, the notice of a new sign-in), Reminders (Web Push on
+ * this device and the others, when to remind), AI (the own switch, and what the operator set up) and Connections (API
+ * tokens for programs). The tab stands in the address (`?tab=`).
  */
-import { Camera, KeyRound, Plug, ShieldCheck, Sparkles, Trash2, User } from 'lucide-react'
+import { Bell, Camera, KeyRound, Plug, ShieldCheck, Sparkles, Trash2, User } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
@@ -15,10 +16,11 @@ import { copyText } from '../lib/copy'
 import { providerName } from '../lib/aiProviders'
 import { useAiState } from '../state/ai'
 import { useAuth } from '../state/auth'
+import { RemindersPart, SignInNoticeCard } from './settings/PushCards'
 import { Button, Card, Feedback, Input, saveAsFile, TabRow, Toggle, useAction, type Tab } from './settings/ui'
 
-type Part = 'profile' | 'security' | 'ai' | 'connections'
-const PARTS: Part[] = ['profile', 'security', 'ai', 'connections']
+type Part = 'profile' | 'security' | 'reminders' | 'ai' | 'connections'
+const PARTS: Part[] = ['profile', 'security', 'reminders', 'ai', 'connections']
 
 export function AccountPage() {
   const { t } = useTranslation()
@@ -31,6 +33,7 @@ export function AccountPage() {
   const tabs: Tab<Part>[] = [
     { value: 'profile', label: t('me.tabs.profile'), icon: User },
     { value: 'security', label: t('me.tabs.security'), icon: ShieldCheck },
+    { value: 'reminders', label: t('me.tabs.reminders'), icon: Bell },
     { value: 'ai', label: t('me.tabs.ai'), icon: Sparkles },
     { value: 'connections', label: t('me.tabs.connections'), icon: Plug },
   ]
@@ -41,6 +44,7 @@ export function AccountPage() {
       <div className="space-y-6 pt-1">
         {part === 'profile' && <Profile me={me} />}
         {part === 'security' && <Security me={me} />}
+        {part === 'reminders' && <RemindersPart me={me} />}
         {part === 'ai' && <AiPart me={me} />}
         {part === 'connections' && <ApiTokens />}
       </div>
@@ -252,6 +256,8 @@ function Security({ me }: { me: Me }) {
           <Feedback problem={link.problem ?? linkProblem} done={link.done ?? linkDone} />
         </Card>
       )}
+
+      <SignInNoticeCard me={me} />
     </>
   )
 }
