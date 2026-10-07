@@ -33,7 +33,9 @@ def key_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     vault._master = kept
 
 
-def test_the_master_key_is_made_once_whole_and_only_the_owner_s(key_file: Path) -> None:
+def test_the_master_key_is_made_once_whole_and_only_the_owner_s(key_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The key in nexdiary's own folder, the case of every default install: that folder is narrowed to the owner.
+    monkeypatch.setattr(vault, "default_key_folder", lambda: key_file.parent)
     key = vault.master()
     assert len(key) == vault.KEY_BYTES and key_file.is_file()
     assert vault._decode(key_file.read_bytes()) == key
@@ -298,3 +300,12 @@ def test_three_first_starts_at_once_on_an_empty_folder_all_come_up(tmp_path: Pat
         for run, (_out, err) in zip(runs, outputs, strict=True):
             assert run.returncode == 0, err[-2000:]
         assert len({out.strip() for out, _err in outputs}) == 1, "one master key"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="file modes are a POSIX matter")
+def test_a_folder_the_operator_chose_for_the_key_keeps_its_mode(key_file: Path) -> None:
+    key_file.parent.mkdir(parents=True)
+    os.chmod(key_file.parent, 0o755)
+    vault.master()
+    assert key_file.stat().st_mode & 0o777 == 0o600
+    assert key_file.parent.stat().st_mode & 0o777 == 0o755, "a folder the operator chose may hold other things"
