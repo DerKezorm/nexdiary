@@ -174,6 +174,9 @@ export type Me = {
   session_stage?: SessionStage
   /** The operator asks this account for a second factor: the last one cannot be turned off. */
   second_factor_required?: boolean
+  /** What the operator allows this account (on from the start): the AI, a connection to Immich. */
+  ai_allowed?: boolean
+  immich_allowed?: boolean
 }
 
 export type SessionStage = 'full' | 'setup' | 'codes'
@@ -287,6 +290,9 @@ export type DayPage = {
   words: number
   /** Counts every change; a save names the one it started from (`base_revision`). */
   revision: number
+  /** Locked for good: nothing of the day changes any more. */
+  locked?: boolean
+  locked_at?: string | null
   created_at: string
   updated_at: string
 }
@@ -294,8 +300,24 @@ export type DayPage = {
 /** `on_note`: taken for a note; it goes with the notes, never with the photos of the day. */
 export type Photo = { id: string; date: string; source: 'upload' | 'immich'; width: number; height: number; created_at: string; on_note: boolean }
 
-/** `question`: the question of the day (writing prompts), null when the person switched questions off. */
-export type TodayData = { date: string; notes: Note[]; day: DayPage | null; values: ValueDef[]; streak: number; photos: Photo[]; question?: Question | null }
+/** Between 0:00 and 3:59 (`active`): the two days a note may belong to, and what the person answered (null: not yet). */
+export type Night = { active: false } | { active: true; today: string; yesterday: string; choice: 'yesterday' | 'today' | null }
+/** Days with notes and no page in the last sixty days, newest first. */
+export type CatchUp = { count: number; days: { date: string; notes: number; start: string }[] }
+
+/** `question`: the question of the day (writing prompts), null when the person switched questions off. `date` is
+ * the day being kept: today, or after midnight the day the person said their notes belong to. */
+export type TodayData = {
+  date: string
+  notes: Note[]
+  day: DayPage | null
+  values: ValueDef[]
+  streak: number
+  photos: Photo[]
+  question?: Question | null
+  night?: Night
+  catch_up?: CatchUp
+}
 
 export type DayChange = {
   title?: string
@@ -330,6 +352,13 @@ export const diaryApi = {
       body: { id, text, ...(date ? { date } : {}), ...(photoId ? { photo_id: photoId } : {}), ...(prompt ? { prompt: prompt.text, prompt_id: prompt.id } : {}) },
     }),
   changeNote: (id: string, text: string) => api<Note>(`/api/notes/${encodeURIComponent(id)}`, { method: 'PUT', body: { text } }),
+  /** To the day before or the day after its own; the photo of the note goes along. */
+  moveNote: (id: string, direction: 'previous' | 'next') => api<Note>(`/api/notes/${encodeURIComponent(id)}/move`, { method: 'POST', body: { direction } }),
+  /** Which day the notes written after midnight belong to, for the rest of the night and on every device. */
+  night: (choice: 'yesterday' | 'today') => api<Night>('/api/night', { method: 'PUT', body: { choice } }),
+  catchUp: () => api<CatchUp>('/api/catch-up'),
+  /** Locks a written day for good. There is no call that undoes it. */
+  lock: (date: string) => api<DayPage>(`/api/days/${encodeURIComponent(date)}/lock`, { method: 'POST' }),
   deleteNote: (id: string) => api<void>(`/api/notes/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   day: (date: string) => api<DayPage>(`/api/days/${encodeURIComponent(date)}`),
   changeDay: (date: string, change: DayChange) => api<DayPage>(`/api/days/${encodeURIComponent(date)}`, { method: 'PUT', body: change }),
@@ -352,7 +381,7 @@ export type AiProvider = 'none' | 'local' | 'openai' | 'messages'
 export type AiLength = 'short' | 'long'
 /** What a person may know about the AI: whether there is one for them (`available`), of which kind, the host the notes
  * go to for a service on the internet (`to`), and the own switch (`mine`). */
-export type AiState = { provider: AiProvider; to: string; model: string; mine: boolean; available: boolean }
+export type AiState = { provider: AiProvider; to: string; model: string; mine: boolean; allowed?: boolean; available: boolean }
 export type AiSettings = { provider: AiProvider; url: string; model: string; key_set: boolean }
 export type AiModel = { id: string; name: string }
 
@@ -392,7 +421,7 @@ export const photosApi = {
 
 /** The own Immich, as its card shows it. With the operator's bolt closed only `allowed: false`; the key never comes
  * back, only whether one is stored. */
-export type ImmichState = { allowed: boolean; connected: boolean; url?: string; key_set?: boolean; suggest?: boolean; email?: string; version?: string }
+export type ImmichState = { allowed: boolean; connected: boolean; account_blocked?: boolean; url?: string; key_set?: boolean; suggest?: boolean; email?: string; version?: string }
 /** A photo of the own Immich on a day: its id there, when it was taken, and the photo taken from it, if one was. */
 export type ImmichPhoto = { id: string; taken_at: string; photo_id: string | null }
 export type ImmichDay = { date: string; photos: ImmichPhoto[]; more: boolean }
@@ -462,6 +491,8 @@ export type JournalDay = {
   /** The first value asked, as rated that day. */
   first_value: { name: string; value: number } | null
   shared_with: Recipient[]
+  /** Locked for good. */
+  locked?: boolean
   unreadable: boolean
 }
 

@@ -100,7 +100,7 @@ def test_an_entry_carries_what_the_list_draws(client: TestClient, account: Accou
     assert item == {"date": "2026-10-05", "title": "Am See",
                     "excerpt": "Morgens Ein langer Tag, mit *Sternen* und snake_case. eins zwei",
                     "tags": ["urlaub"], "cover": "illu:strand.abend.herbst", "written_by": "ai",
-                    "first_value": {"name": mood["name"], "value": 9}, "shared_with": [], "unreadable": False}
+                    "first_value": {"name": mood["name"], "value": 9}, "shared_with": [], "unreadable": False, "locked": False}
     # The first value asked counts: switched off, the next one.
     client.put(f"/api/values/{mood['id']}", json={"active": False})
     assert client.post("/api/journal", json={}).json()["days"][0]["first_value"] is None

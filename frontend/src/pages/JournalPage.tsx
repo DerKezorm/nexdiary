@@ -6,13 +6,14 @@
  * The server sends the days a page at a time and opens only those; the next page comes when the end of the list
  * comes into view, or with the button below it.
  */
-import { Search, Sparkles, Users } from 'lucide-react'
+import { Lock, Search, Sparkles, Users } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 
-import { ApiError, journalApi, type JournalDay, type JournalOverview, type SearchResult } from '../api/client'
+import { ApiError, diaryApi, journalApi, type CatchUp, type JournalDay, type JournalOverview, type SearchResult } from '../api/client'
 import { Avatar } from '../components/Avatar'
+import { CatchUpCard } from '../components/CatchUp'
 import { Chip } from '../components/Chip'
 import { CoverImage } from '../covers/Cover'
 import { longDate } from '../lib/dates'
@@ -73,6 +74,8 @@ export function JournalPage() {
   const { me } = useAuth()
   const look = me?.profile?.journal ?? 'blog'
   const [overview, setOverview] = useState<JournalOverview | null>(null)
+  /** Days with notes and no page: their own section above the list. */
+  const [catchUp, setCatchUp] = useState<CatchUp | null>(null)
   const [days, setDays] = useState<JournalDay[]>([])
   const [more, setMore] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -87,6 +90,7 @@ export function JournalPage() {
 
   useEffect(() => {
     journalApi.overview().then(setOverview, (error) => setProblem(error instanceof ApiError ? error.code : 'internal_error'))
+    diaryApi.catchUp().then(setCatchUp, () => undefined)
   }, [])
 
   const load = useCallback(async (before: string | undefined, withTag: string | null, current: number) => {
@@ -174,6 +178,7 @@ export function JournalPage() {
         <h1 className="font-display text-3xl font-semibold tracking-tight sm:text-4xl">{t('journal.title')}</h1>
         {overview && overview.count > 0 && <p className="mt-1 text-ink-2">{t('journal.count', { count: overview.count, since })}</p>}
       </header>
+      {!query && <CatchUpCard data={catchUp} className="mb-5" />}
       {empty ? (
         <div className="card p-8 text-center text-ink-2">
           <p>{t('journal.empty')}</p>
@@ -248,6 +253,11 @@ function Meta({ e }: { e: Shown }) {
         </span>
       )}
       {e.written_by === 'ai' && <Sparkles size={12} aria-label={t('journal.ai')} />}
+      {e.locked && (
+        <span className="inline-flex items-center gap-1" title={t('lock.badge')} data-locked-mark>
+          <Lock size={12} aria-hidden /> <span className="sr-only">{t('lock.badge')}</span>
+        </span>
+      )}
       {e.shared_with.length > 0 && (
         <span className="inline-flex items-center gap-1">
           <Users size={12} aria-hidden /> {t('journal.shared')}

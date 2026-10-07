@@ -48,7 +48,7 @@ def own_switch(account: Any) -> bool:
 
 @router.get("/ai", summary="Whether this person can have a day written up, by which kind of service, and where to")
 def state(account: Account, db: DbSession) -> dict[str, Any]:
-    return ai.state(db, own_switch(account))
+    return ai.state(db, own_switch(account), bool(account.ai_allowed))
 
 
 @router.post("/ai/formulate", summary="A suggestion for the page of a day, made from its notes by the AI")
@@ -57,6 +57,7 @@ def formulate(payload: FormulateIn, account: Account, db: DbSession) -> dict[str
     back to the writing view and is saved only when the person saves the page."""
     switch = own_switch(account)
     # The refusals that need no notes come first: a person who switched the AI off is not even asked for a date.
+    ai.check_allowed(db, account.id)
     ai.usable(db, switch)
     day = diary.check_date(account, payload.date)
     notes = diary.list_notes(db, account.id, vault.dek_for(account.id), day)

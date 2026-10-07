@@ -14,7 +14,8 @@ and narrowed to what a family diary needs:
   cloud machines) never. The name is resolved once per request and only the addresses checked are connected to, one
   after the other (``localhost`` may answer ``::1`` first while the service listens on 127.0.0.1).
 * **Nothing without a press of a button.** No request is ever made on its own: only ``formulate`` sends notes, and only
-  when a person asks for it. Every person may switch it off for themselves.
+  when a person asks for it. Every person may switch it off for themselves, and the operator may take it from single
+  accounts (``check_allowed``: whatever sends a person's notes anywhere asks it first).
 * **Only the notes of the one day go out**, of the person asking, with their times and the questions they answer: no
   name, no photo, no rating, no date. The notes go as a JSON document, so that no note can step out of its place, and
   the rules (and a sentence after the notes) say that the notes are material and never an instruction.
@@ -43,10 +44,12 @@ from urllib.parse import urljoin, urlsplit
 
 import httpx
 from fastapi import HTTPException
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import clock
 from ..errors import error
+from ..models import Account
 from ..security import decrypt_secret, encrypt_secret
 from . import diary, outbound, settings_service
 
@@ -97,6 +100,7 @@ def fail(code: str, status: int = 422, **values: Any) -> HTTPException:
 AI_MESSAGES = {
     "ai_off": "No AI is set up on this server.",
     "ai_switched_off": "You switched the AI off for yourself.",
+    "ai_not_allowed": "Your operator has not allowed the AI for your account.",
     "ai_incomplete": "The AI service is not set up completely.",
     "ai_provider_unknown": "There is no such kind of AI service.",
     "ai_address_missing": "Give the address of the service.",
@@ -153,7 +157,19 @@ def host_of(url: str) -> str:
     return (urlsplit(url).hostname or "").lower()
 
 
-def state(db: Session, own_switch: bool) -> dict[str, Any]:
+def allowed_for(db: Session, account_id: int) -> bool:
+    """Whether the operator allows this account the AI (on from the start; single accounts can be taken out)."""
+    return bool(db.scalar(select(Account.ai_allowed).where(Account.id == account_id)))
+
+
+def check_allowed(db: Session, account_id: int) -> None:
+    """403 ``ai_not_allowed`` for an account the operator took the AI from. Whatever sends a person's notes to the
+    service asks this first, besides the operator's service and the person's own switch."""
+    if not allowed_for(db, account_id):
+        raise fail("ai_not_allowed", 403)
+
+
+def state(db: Session, own_switch: bool, allowed: bool) -> dict[str, Any]:
     """What a person may know about the AI: whether there is one for them, of which kind, and where the notes go.
     The address of a local service is not told (it names a machine in the own network); a service on the internet
     is named by its host, so that the sentence before the button says where the notes go."""
@@ -167,7 +183,9 @@ def state(db: Session, own_switch: bool) -> dict[str, Any]:
         "to": host_of(url) if provider in CLOUD else "",
         "model": model if provider != "none" else "",
         "mine": own_switch,
-        "available": provider != "none" and own_switch,
+        # The operator's say for this account: without it there is no button and the server refuses.
+        "allowed": allowed,
+        "available": provider != "none" and own_switch and allowed,
     }
 
 
@@ -649,6 +667,7 @@ def formulate(db: Session, account_id: int, own_switch: bool, notes: list[dict[s
     """The suggestion for a page out of the notes given (the caller reads them: the person's own, of one day)."""
     if length not in LENGTHS:
         raise error("invalid_input", "The input is not valid.", 422, fields=["length"])
+    check_allowed(db, account_id)
     found = usable(db, own_switch)
     if not any(note.get("text") and not note.get("unreadable") for note in notes):
         raise fail("ai_no_notes", 409)

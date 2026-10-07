@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import (
+    DDL,
     JSON,
     Boolean,
     DateTime,
@@ -22,6 +23,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    event,
     text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -113,6 +115,16 @@ class Account(Base):
     #: The user handle its passkeys carry (``services/passkeys.py``): random, the same for all of its passkeys, so a
     #: passkey names its account without its name or id. Hex; empty until the first passkey.
     passkey_handle: Mapped[str] = mapped_column(String(64), default="", server_default=text("''"))
+    #: What the operator allows this person (on from the start; the operator takes single accounts out): the AI
+    #: (``services/ai.py``) and a connection to Immich (``services/immich.py``). Both come on top of the operator's
+    #: switch for the whole server and, for the AI, the person's own switch.
+    ai_allowed: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("1"))
+    immich_allowed: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("1"))
+    #: The notes written after midnight (``services/diary.py``, ``night_of``): the date of the night the person
+    #: answered for (the calendar day the hours between 0:00 and 3:59 belong to) and the day they said its notes
+    #: belong to. Only read while that night lasts.
+    night_for: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    night_day: Mapped[str | None] = mapped_column(String(10), nullable=True)
 
 
 #: What a session may do (``deps.require_account``): everything; only set up the second factor right after signing in;
@@ -251,6 +263,22 @@ class Day(Base):
     revision: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    #: When the person locked the day for good: set once, never cleared. A locked day cannot be changed or deleted, nor
+    #: can its notes or photos (``services/diary.py``); only deleting the account takes it away. A trigger holds the
+    #: row still, whatever code runs.
+    locked_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+
+
+#: The row of a locked day is never updated again (not its text, not the mark itself): the database says no, whatever
+#: asks. Deleting stays possible for the cascade of a deleted account; the application refuses it for the person.
+event.listen(
+    Day.__table__,
+    "after_create",
+    DDL(
+        "CREATE TRIGGER trg_days_locked_stays BEFORE UPDATE ON days WHEN OLD.locked_at IS NOT NULL "
+        "BEGIN SELECT RAISE(ABORT, 'day is locked'); END"
+    ),
+)
 
 
 class Note(Base):

@@ -6,6 +6,7 @@ show more than their own diary. Nothing a person wrote reaches the log: no text,
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Query, Request, Response
@@ -16,6 +17,7 @@ from ..errors import error
 from ..services import brakes, diary, journal, photos, prompts, vault
 
 router = APIRouter(prefix="/api", tags=["diary"])
+logger = logging.getLogger("nexdiary.diary")
 
 
 class Strict(BaseModel):
@@ -39,6 +41,16 @@ class NoteChangeIn(Strict):
     text: str = Field(max_length=diary.NOTE_MAX * 4)
     #: Sent: the photo of the note changes (null: none). Not sent: it stays.
     photo_id: str | None = Field(default=None, max_length=32)
+
+
+class NoteMoveIn(Strict):
+    #: To the day before or the day after the note's own.
+    direction: Literal["previous", "next"]
+
+
+class NightIn(Strict):
+    #: Which day the notes of this night belong to; the server works out the date itself.
+    choice: Literal["yesterday", "today"]
 
 
 class DayIn(Strict):
@@ -118,11 +130,16 @@ def _values_ready(db: DbSession, account: Any, request: Request) -> bytes:
 
 @router.get("/today", summary="Today in the person's time zone: its notes, its page, the values, the streak")
 def today(request: Request, account: Account, db: DbSession) -> dict[str, Any]:
+    """Today, or after midnight the day the person said the night belongs to (``night``): the day their notes go to."""
     dek = _values_ready(db, account, request)
-    day = diary.today_of(account)
+    night = diary.night_of(account)
+    day = diary.note_day(account)
     key = day.isoformat()
     return {
         "date": key,
+        # Between 0:00 and 3:59: which two days the notes may belong to and what the person answered; else inactive.
+        "night": night.view() if night else {"active": False},
+        "catch_up": diary.catch_up(db, account.id, dek, day),
         "notes": diary.list_notes(db, account.id, dek, key),
         "day": diary.get_day(db, account.id, dek, key),
         "values": diary.list_values(db, account.id, dek),
@@ -146,7 +163,7 @@ def notes(account: Account, db: DbSession, date: Annotated[str, Query(max_length
 def add_note(payload: NoteIn, response: Response, account: Account, db: DbSession) -> dict[str, Any]:
     uid = diary.check_new_note_id(payload.id)
     brakes.take("new_note", account.id)
-    day = diary.check_date(account, payload.date) if payload.date else diary.today_of(account).isoformat()
+    day = diary.check_date(account, payload.date) if payload.date else diary.note_day(account).isoformat()
     note, new = diary.add_note(db, account.id, vault.dek_for(account.id), uid, day, payload.text, payload.prompt,
                                payload.photo_id, payload.prompt_id)
     response.status_code = 201 if new else 200
@@ -160,6 +177,13 @@ def change_note(note_id: str, payload: NoteChangeIn, account: Account, db: DbSes
     if "photo_id" in payload.model_fields_set:
         return diary.change_note(db, account.id, dek, uid, payload.text, payload.photo_id)
     return diary.change_note(db, account.id, dek, uid, payload.text)
+
+
+@router.post("/notes/{note_id}/move", summary="Move a note to the day before or the day after its own")
+def move_note(note_id: str, payload: NoteMoveIn, account: Account, db: DbSession) -> dict[str, Any]:
+    """Not onto a locked day or out of one, not into the future. The photo that came with the note goes along."""
+    return diary.move_note(db, account.id, vault.dek_for(account.id), diary.check_note_id(note_id), payload.direction,
+                           diary.today_of(account))
 
 
 @router.delete("/notes/{note_id}", status_code=204, summary="Delete a note")
@@ -207,6 +231,15 @@ def put_day(date: str, payload: DayIn, request: Request, account: Account, db: D
 
 
 # --- Drafts ---------------------------------------------------------------------------------------------------------
+
+
+@router.post("/days/{date}/lock", summary="Lock a written day for good: it can never be changed or deleted again")
+def lock_day(date: str, account: Account, db: DbSession) -> dict[str, Any]:
+    """There is no route that undoes it. Sharing and taking a share back stay possible."""
+    key = diary.check_date(account, date)
+    found = diary.lock_day(db, account.id, vault.dek_for(account.id), key)
+    logger.info("A day was locked")
+    return found
 
 
 @router.get("/days/{date}/draft", summary="What is being written on a day and not saved yet; null when nothing")
@@ -276,6 +309,20 @@ def change_value(value_id: str, payload: ValueChangeIn, request: Request, accoun
 @router.delete("/values/{value_id}", status_code=204, summary="Delete a value (the ratings on past days stay)")
 def delete_value(value_id: str, account: Account, db: DbSession) -> None:
     diary.delete_value(db, account.id, value_id)
+
+
+# --- The night, catching up -----------------------------------------------------------------------------------------
+
+
+@router.put("/night", summary="Say which day the notes written after midnight belong to, for the rest of the night")
+def put_night(payload: NightIn, account: Account, db: DbSession) -> dict[str, Any]:
+    """Between 0:00 and 3:59 only (``not_night`` else). Holds for every device of the person until 4:00."""
+    return diary.choose_night(db, account, payload.choice).view()
+
+
+@router.get("/catch-up", summary="Days with notes and without a page in the last sixty days")
+def catch_up(account: Account, db: DbSession) -> dict[str, Any]:
+    return diary.catch_up(db, account.id, vault.dek_for(account.id), diary.note_day(account))
 
 
 # --- Search ---------------------------------------------------------------------------------------------------------

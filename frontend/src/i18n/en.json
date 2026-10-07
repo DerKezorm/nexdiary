@@ -1,4 +1,41 @@
 {
+  "lock": {
+    "action": "Lock for good",
+    "badge": "Locked for good",
+    "short": "Locked",
+    "since": "Locked on {{date}}",
+    "title": "Lock this day for good?",
+    "consequence": "Afterwards this day can never be changed or deleted again, not by you and not by the operator. Its text, title, tags, values, cover, notes and photos stay exactly as they are now. You can still share it. Only deleting the whole account takes it away.",
+    "word": "lock",
+    "typeIt": "To confirm, type “{{word}}”",
+    "confirm": "Lock for good",
+    "done": "This day is now locked.",
+    "readOnly": "This day is locked. It cannot be changed any more.",
+    "saveFirst": "Save your changes first, then the day can be locked.",
+    "toDay": "To the day"
+  },
+  "catchUp": {
+    "title_one": "{{count}} day with notes and no page",
+    "title_other": "{{count}} days with notes and no page",
+    "text": "You can still turn these notes into a page.",
+    "notes_one": "{{count}} note",
+    "notes_other": "{{count}} notes",
+    "write": "Write it up",
+    "show": "Show",
+    "hide": "Fold away",
+    "section": "Without a page",
+    "sectionNone": "Every day with notes has a page."
+  },
+  "night": {
+    "title": "Which day does this belong to?",
+    "text": "It is after midnight. Which day do your notes of tonight belong to? Your answer holds until 4 am, on all your devices.",
+    "toYesterday": "To yesterday ({{weekday}})",
+    "toToday": "To today ({{weekday}})",
+    "hintYesterday": "You are noting to yesterday ({{weekday}}).",
+    "hintToday": "You are noting to today ({{weekday}}).",
+    "switchToYesterday": "Switch to yesterday",
+    "switchToToday": "Switch to today"
+  },
   "app": {
     "mainMenu": "Main menu"
   },
@@ -9,6 +46,11 @@
     "shared": "Shared"
   },
   "today": {
+    "moreNote": "More for this note",
+    "moveBack": "Move to the day before",
+    "moveForward": "Move to the next day",
+    "moved": "The note was moved to {{day}}.",
+    "lockedDay": "This day is locked.",
     "greeting": {
       "morning": "Good morning, {{name}}",
       "day": "Hello, {{name}}",
@@ -335,6 +377,7 @@
       "add": "Add"
     },
     "immich": {
+      "accountClosed": "Your operator has not allowed Immich for your account.",
       "title": "Immich",
       "text": "Suggest the photos of your day straight from Immich. Everyone connects their own account; nexdiary only reads, and copies a photo only when you take it for a day.",
       "closed": "Your operator has not allowed Immich.",
@@ -525,6 +568,7 @@
     },
     "setupFirst": "The operator requires a second factor. Set it up here, then you can go on.",
     "ai": {
+      "notAllowed": "Your operator has not allowed the AI for your account.",
       "title": "AI when writing",
       "text": "Turns your notes of the day into a suggestion for the page. Only when you press \"Write it up\".",
       "mine": "AI for me",
@@ -696,6 +740,9 @@
     }
   },
   "server": {
+    "aiAllowed": "AI allowed",
+    "immichAllowed": "Immich allowed",
+    "permissionsHint": "Single accounts can be left out of the AI or Immich.",
     "accounts": "Accounts",
     "accountsHint": "Who in your family uses nexdiary. As the operator you manage accounts, but you see no entries: every diary belongs to its own person only.",
     "invite": "Invite somebody",
@@ -1117,6 +1164,12 @@
     "pick": "Take photo"
   },
   "errors": {
+    "day_locked": "This day is locked for good and cannot be changed any more.",
+    "not_written": "Only a day with a page can be locked.",
+    "not_night": "It is not night any more: notes belong to today.",
+    "ai_not_allowed": "Your operator has not allowed the AI for your account.",
+    "immich_not_allowed": "Your operator has not allowed Immich for your account.",
+    "note_unreadable": "This note is damaged in the database and can only be deleted.",
     "account_blocked": "This account is blocked.",
     "account_locked": "Too many wrong tries. The account waits a quarter of an hour.",
     "already_set_up": "nexdiary is set up already.",

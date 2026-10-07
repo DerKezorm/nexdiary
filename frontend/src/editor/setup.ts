@@ -72,7 +72,9 @@ import {
   wrapInOrderedListCommand,
   wrapInOrderedListInputRule,
 } from '@milkdown/kit/preset/commonmark'
+import { lift } from '@milkdown/kit/prose/commands'
 import { textblockTypeInputRule } from '@milkdown/kit/prose/inputrules'
+import { liftListItem } from '@milkdown/kit/prose/schema-list'
 import { Plugin, PluginKey } from '@milkdown/kit/prose/state'
 import { $inputRule, $prose, $remark, $useKeymap } from '@milkdown/kit/utils'
 
@@ -150,6 +152,36 @@ const onlyText = $prose(
     }),
 )
 
+/**
+ * Getting out of a quote or a list: Backspace at the start of an empty line lifts it out (the line becomes an ordinary
+ * paragraph; the quote or list around it ends there). Enter on an empty line leaves by Milkdown's own keymap; the
+ * editor's tests press it as a guard. Without this Backspace merges the empty line into the one above and the block
+ * has no way out but the button.
+ */
+export const leaveEmptyBlocks = $prose(
+  () =>
+    new Plugin({
+      key: new PluginKey('DIARY_LEAVE_EMPTY'),
+      props: {
+        handleKeyDown: (view, event) => {
+          if (event.key !== 'Backspace') return false
+          if (event.shiftKey || event.altKey || event.ctrlKey || event.metaKey || event.isComposing) return false
+          const { state } = view
+          if (!state.selection.empty) return false
+          const { $from } = state.selection
+          if (!$from.parent.isTextblock || $from.parent.content.size !== 0) return false
+          // The innermost wrapper that can be left: a list item or a quote.
+          for (let depth = $from.depth - 1; depth > 0; depth--) {
+            const name = $from.node(depth).type.name
+            if (name === 'list_item') return liftListItem(state.schema.nodes.list_item)(state, view.dispatch)
+            if (name === 'blockquote') return lift(state, view.dispatch)
+          }
+          return false
+        },
+      },
+    }),
+)
+
 /** The parts that keep a page to text: tested to be in the editor. */
 export const textOnly = onlyText
 
@@ -220,5 +252,6 @@ export const diaryPlugins: MilkdownPlugin[] = [
   remarkMarker,
   syncListOrderPlugin,
   oneHeadingLevel,
+  leaveEmptyBlocks,
   onlyText,
 ].flat()

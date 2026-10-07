@@ -38,6 +38,10 @@ export function useToday() {
    * answer). */
   const draftText = useRef<string | null>(null)
   const sending = useRef(false)
+  /** After midnight, with no answer yet: the page asks which day the notes belong to before the first note goes out.
+   * `asking` holds the question open; `waiting` is the note that waits for the answer. */
+  const [asking, setAsking] = useState(false)
+  const waiting = useRef<((choice: 'yesterday' | 'today' | null) => void) | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -63,6 +67,46 @@ export function useToday() {
 
   const shownDate = data?.date
 
+  /** Opens the question "which day?" and gives the answer (null: put away). Asked once for a night: the server keeps
+   * the answer until 4 o'clock, for every device. */
+  const askNight = useCallback(
+    () =>
+      new Promise<'yesterday' | 'today' | null>((resolve) => {
+        waiting.current?.(null)
+        waiting.current = resolve
+        setAsking(true)
+      }),
+    [],
+  )
+
+  /** The answer to the question, or a later change of mind (the hint's button): kept by the server, then the day is
+   * loaded again, for it may now be yesterday. */
+  const chooseNight = useCallback(
+    async (choice: 'yesterday' | 'today' | null) => {
+      const resolve = waiting.current
+      waiting.current = null
+      setAsking(false)
+      if (choice === null) {
+        resolve?.(null)
+        return false
+      }
+      try {
+        await diaryApi.night(choice)
+        await load()
+        setProblem(null)
+        resolve?.(choice)
+        return true
+      } catch (error) {
+        setProblem(codeOf(error))
+        setProblemValues(valuesOf(error))
+        resolve?.(null)
+        void load()
+        return false
+      }
+    },
+    [load],
+  )
+
   /**
    * Keeps a note; true only when the server holds exactly this text, so that the field is emptied only then. The same
    * text sent again (a double tap, a retry after a lost answer) goes out with the same id and stays one note. A text
@@ -71,6 +115,9 @@ export function useToday() {
   const addNote = useCallback(async (text: string, photoId: string | null = null, prompt: Question | null = null): Promise<boolean> => {
     const clean = cleanNote(text)
     if ((!clean && !photoId) || sending.current) return false
+    // After midnight and not yet answered: which day do the notes of this night belong to?
+    if (data?.night?.active && data.night.choice === null && !(await askNight())) return false
+    if (sending.current) return false
     sending.current = true
     try {
       const sent = `${clean}|${photoId ?? ''}|${prompt?.id ?? ''}`
@@ -104,7 +151,7 @@ export function useToday() {
     } finally {
       sending.current = false
     }
-  }, [shownDate, load])
+  }, [shownDate, load, data?.night, askNight])
 
   const changeNote = useCallback(async (id: string, text: string) => {
     try {
@@ -115,6 +162,21 @@ export function useToday() {
       setProblem(codeOf(error))
       setProblemValues(valuesOf(error))
       void load()
+    }
+  }, [load])
+
+  /** A note to the day before or the day after its own; it leaves this day's list. Said in `moved`. */
+  const [moved, setMoved] = useState<string | null>(null)
+  const moveNote = useCallback(async (id: string, direction: 'previous' | 'next') => {
+    try {
+      const note = await diaryApi.moveNote(id, direction)
+      setData((current) => (current ? { ...current, notes: current.notes.filter((item) => item.id !== id) } : current))
+      setMoved(note.date)
+      setProblem(null)
+      void load()
+    } catch (error) {
+      setProblem(codeOf(error))
+      setProblemValues(valuesOf(error))
     }
   }, [load])
 
@@ -212,7 +274,7 @@ export function useToday() {
     }
   }, [])
 
-  return { data, problem, problemValues, load, addNote, changeNote, deleteNote, rate, setTags, addPhoto, keepPhoto, deletePhoto, anotherQuestion }
+  return { data, problem, problemValues, load, addNote, changeNote, moveNote, moved, clearMoved: () => setMoved(null), asking, chooseNight, deleteNote, rate, setTags, addPhoto, keepPhoto, deletePhoto, anotherQuestion }
 }
 
 export type TodayState = ReturnType<typeof useToday>

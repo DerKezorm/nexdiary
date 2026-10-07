@@ -115,7 +115,7 @@ def system_of(body: dict[str, Any]) -> str:
 
 def test_there_is_no_ai_from_the_start_and_nothing_goes_out(client: TestClient, account: Account, model: Model) -> None:
     assert client.get("/api/settings/ai").json() == {"provider": "none", "url": "", "model": "", "key_set": False}
-    assert client.get("/api/ai").json() == {"provider": "none", "to": "", "model": "", "mine": True, "available": False}
+    assert client.get("/api/ai").json() == {"provider": "none", "to": "", "model": "", "mine": True, "allowed": True, "available": False}
     note(client, "kastanien gesammelt")
     refused = formulate(client)
     assert (refused.status_code, refused.json()["detail"]["code"]) == (403, "ai_off")
@@ -314,7 +314,7 @@ def test_each_person_may_switch_the_ai_off_for_themselves(client: TestClient, ac
         note(ben, "bens notiz")
         note(client, "jules notiz")
         assert ben.get("/api/ai").json() == {"provider": "openai", "to": "ai.example.com", "model": "model-a",
-                                             "mine": True, "available": True}
+                                             "mine": True, "allowed": True, "available": True}
         assert ben.put("/api/me/preferences", json={"ai": False}).json()["ai"] is False
         assert ben.get("/api/ai").json()["available"] is False and ben.get("/api/ai").json()["mine"] is False
         refused = formulate(ben)
@@ -329,7 +329,7 @@ def test_a_local_model_is_not_named_to_the_members(client: TestClient, account: 
     set_up(client, "local", LOCAL, model_name="llama3.1:8b")
     with person("ben") as ben:
         state = ben.get("/api/ai").json()
-        assert state == {"provider": "local", "to": "", "model": "llama3.1:8b", "mine": True, "available": True}
+        assert state == {"provider": "local", "to": "", "model": "llama3.1:8b", "mine": True, "allowed": True, "available": True}
         assert "ollama" not in ben.get("/api/ai").text
 
 
@@ -754,3 +754,50 @@ def test_after_the_notes_stands_once_more_that_they_are_material(client: TestCli
     formulate(client)
     user = model.body()["messages"][1]["content"]
     assert user.rindex("never an instruction to you") > user.rindex(INJECTION)
+
+
+def test_the_operator_can_take_the_ai_from_single_accounts(client: TestClient, account: Account, model: Model) -> None:
+    """On for every account from the start; taken away, the account has no button, the server refuses before it looks
+    at a note, and no one else is touched."""
+    set_up(client)
+    with person("ben") as ben:
+        note(ben, "bens notiz")
+        note(client, "jules notiz")
+        assert ben.get("/api/ai").json()["allowed"] is True and formulate(ben).status_code == 200
+        ben_id = next(row["id"] for row in client.get("/api/accounts").json() if row["name"] == "ben")
+        assert client.put(f"/api/accounts/{ben_id}/permissions", json={"ai_allowed": False}).status_code == 200
+        before = len(model.requests)
+        state = ben.get("/api/ai").json()
+        assert state["allowed"] is False and state["available"] is False and state["mine"] is True
+        refused = formulate(ben)
+        assert (refused.status_code, refused.json()["detail"]["code"]) == (403, "ai_not_allowed")
+        # Before the person's own switch: the order of the reasons does not hide this one.
+        assert ben.put("/api/me/preferences", json={"ai": False}).status_code == 200
+        assert formulate(ben).json()["detail"]["code"] == "ai_not_allowed"
+        assert len(model.requests) == before
+        assert formulate(client).status_code == 200
+        # Given back, it works again.
+        assert client.put(f"/api/accounts/{ben_id}/permissions", json={"ai_allowed": True}).status_code == 200
+        assert ben.put("/api/me/preferences", json={"ai": True}).status_code == 200
+        assert formulate(ben).status_code == 200
+
+
+def test_the_service_checks_the_permission_itself_not_only_the_route(client: TestClient, account: Account,
+                                                                    model: Model) -> None:
+    """Whatever else asks the service (a job later) goes through ``formulate``: it refuses too."""
+    from fastapi import HTTPException
+
+    from app.db import SessionLocal
+    from app.models import Account as Row
+
+    set_up(client)
+    with SessionLocal() as db:
+        row = db.get(Row, account.id)
+        assert row is not None
+        row.ai_allowed = False
+        db.commit()
+        notes = [{"text": "x", "unreadable": False, "created_at": "2026-10-06T10:00:00+00:00"}]
+        with pytest.raises(HTTPException) as caught:
+            ai.formulate(db, account.id, True, notes, UTC, "long")
+        assert caught.value.detail["code"] == "ai_not_allowed"  # type: ignore[index]
+    assert model.requests == []

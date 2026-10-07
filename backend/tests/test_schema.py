@@ -42,14 +42,27 @@ def fresh_schema_sql() -> str:
     Base.metadata.create_all(engine)
     with engine.connect() as connection:
         rows = connection.execute(text(
-            "SELECT sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY type DESC, name"
+            "SELECT sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' "
+            # Tables first, a trigger only once its table is there.
+            "ORDER BY CASE type WHEN 'table' THEN 0 WHEN 'index' THEN 1 ELSE 2 END, name"
         )).all()
     engine.dispose()
     return "".join(" ".join(row[0].split()) + ";\n" for row in rows)
 
 
+def drop_v10(connection: sqlite3.Connection) -> None:
+    """Takes away what version 10 added (what the operator allows an account, the answer for a night, the lock of a day
+    with the trigger that holds it)."""
+    connection.execute("DROP TRIGGER trg_days_locked_stays")
+    connection.execute("ALTER TABLE days DROP COLUMN locked_at")
+    for column in ("ai_allowed", "immich_allowed", "night_for", "night_day"):
+        connection.execute(f"ALTER TABLE users DROP COLUMN {column}")
+
+
 def drop_v9(connection: sqlite3.Connection) -> None:
-    """Takes away what version 9 added (the links to set a new password, the sealed name of an API token)."""
+    """Takes away what version 9 and everything after it added (the links to set a new password, the sealed name of an
+    API token)."""
+    drop_v10(connection)
     connection.execute("DROP TABLE password_resets")
     connection.execute("ALTER TABLE api_tokens DROP COLUMN name_enc")
 

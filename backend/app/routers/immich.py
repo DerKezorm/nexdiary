@@ -71,7 +71,7 @@ def probe(account: Account, db: DbSession) -> dict[str, Any]:
 @router.get("/immich/photos", summary="The photos of one day in the own Immich, oldest first")
 def photos_of_day(account: Account, db: DbSession,
                   date: Annotated[str, Query(max_length=10)] = "") -> dict[str, Any]:
-    day = diary.check_date(account, date) if date else diary.today_of(account).isoformat()
+    day = diary.check_date(account, date) if date else diary.note_day(account).isoformat()
     return immich.photos_of_day(db, account.id, vault.dek_for(account.id), day, diary.zone_of(account))
 
 
@@ -92,7 +92,8 @@ async def thumbnail(asset: str, account: Account, db: DbSession) -> Response:
 
 @router.post("/immich/photos/{asset}", summary="Take a photo of the own Immich for a day: it is copied now")
 def take(asset: str, payload: TakeIn, response: Response, account: Account, db: DbSession) -> dict[str, Any]:
-    day = diary.check_date(account, payload.date) if payload.date else diary.today_of(account).isoformat()
+    day = diary.check_date(account, payload.date) if payload.date else diary.note_day(account).isoformat()
+    diary.ensure_open(db, account.id, day)
     photo, new = immich.take(db, account.id, vault.dek_for(account.id), immich.check_asset(asset), day,
                              diary.zone_of(account), diary.now(), payload.note)
     response.status_code = 201 if new else 200

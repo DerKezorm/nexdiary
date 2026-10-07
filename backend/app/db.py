@@ -37,7 +37,7 @@ _settings.data_dir.mkdir(parents=True, exist_ok=True)
 BUSY_SECONDS = 15
 
 #: The version of the schema the models describe.
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 
 def _v2_diary(connection: Connection) -> None:
@@ -223,10 +223,28 @@ def _v9_recovery(connection: Connection) -> None:
         connection.exec_driver_sql(statement)
 
 
+def _v10_nights_and_locks(connection: Connection) -> None:
+    """Version 10: what the operator allows each account (the AI, Immich; both on for the accounts there are), the
+    answer of a person to "which day do the notes of this night belong to", and the lock of a day: a day locked for
+    good, with the trigger that keeps its row still. Written out as it stood then, not taken from the models."""
+    for statement in (
+        "ALTER TABLE users ADD COLUMN ai_allowed BOOLEAN DEFAULT 1 NOT NULL",
+        "ALTER TABLE users ADD COLUMN immich_allowed BOOLEAN DEFAULT 1 NOT NULL",
+        "ALTER TABLE users ADD COLUMN night_for VARCHAR(10)",
+        "ALTER TABLE users ADD COLUMN night_day VARCHAR(10)",
+        "ALTER TABLE days ADD COLUMN locked_at DATETIME",
+        (
+            "CREATE TRIGGER trg_days_locked_stays BEFORE UPDATE ON days WHEN OLD.locked_at IS NOT NULL "
+            "BEGIN SELECT RAISE(ABORT, 'day is locked'); END"
+        ),
+    ):
+        connection.exec_driver_sql(statement)
+
+
 #: ``MIGRATIONS[n]`` brings a database from version ``n - 1`` to ``n``. Version 1 is the first schema; it has no step.
 MIGRATIONS: dict[int, Callable[[Connection], None]] = {
     2: _v2_diary, 3: _v3_photos_and_drafts, 4: _v4_sharing, 5: _v5_writing_prompts, 6: _v6_immich, 7: _v7_push,
-    8: _v8_security, 9: _v9_recovery,
+    8: _v8_security, 9: _v9_recovery, 10: _v10_nights_and_locks,
 }
 
 # No pool with an upper bound: with the default pool the sixteenth concurrent request would block the event

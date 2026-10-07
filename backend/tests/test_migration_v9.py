@@ -64,7 +64,7 @@ def test_a_v8_database_comes_to_v9_whole_and_its_token_names_are_sealed_at_the_s
     assert made == [f"before schema {database.SCHEMA_VERSION}"]
     assert counts(path) == before, "no row lost"
     with closing(sqlite3.connect(path)) as connection:
-        assert int(connection.execute("PRAGMA user_version").fetchone()[0]) == database.SCHEMA_VERSION == 9
+        assert int(connection.execute("PRAGMA user_version").fetchone()[0]) == database.SCHEMA_VERSION
         migrated = schema_of(connection)
         legacy = dict(connection.execute("SELECT account_id, name FROM api_tokens").fetchall())
     with closing(sqlite3.connect(":memory:")) as connection:

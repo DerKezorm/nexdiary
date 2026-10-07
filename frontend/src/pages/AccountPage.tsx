@@ -105,7 +105,12 @@ function AiPart({ me }: { me: Me }) {
           )
         }}
       />
-      {ai && (
+      {me.ai_allowed === false && (
+        <p className="mt-4 rounded-xl bg-sheet-2 px-4 py-3 text-sm text-ink-2" role="status" data-ai-not-allowed>
+          {t('me.ai.notAllowed')}
+        </p>
+      )}
+      {ai && me.ai_allowed !== false && (
         <div className="mt-4 rounded-xl bg-sheet-2 px-4 py-3 text-sm">
           <p>
             <span className="font-semibold">{t('me.ai.byOperator')}</span> {providerName(provider, t)}

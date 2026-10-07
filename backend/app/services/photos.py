@@ -27,13 +27,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import bindparam, delete, select, text, update
+from sqlalchemy import bindparam, delete, exists, select, text, update
 from sqlalchemy.orm import Session
 
 from .. import private
 from ..config import get_settings
 from ..errors import error
-from ..models import Note, Photo, UtcDateTime
+from ..models import Day, Note, Photo, UtcDateTime
 from . import pictures, quota, vault
 
 logger = logging.getLogger("nexdiary.photos")
@@ -242,6 +242,9 @@ def add(db: Session, account_id: int, dek: bytes, day: str, upload_id: str | Non
     existing = _by_upload(db, account_id, upload_id, asset_key)
     if existing is not None:
         return view(existing), False
+    from .diary import ensure_open
+
+    ensure_open(db, account_id, day)
     uid = secrets.token_hex(16)
     original = vault.seal(dek, drawn.original, _aad(account_id, uid, False))
     preview = vault.seal(dek, drawn.preview, _aad(account_id, uid, True))
@@ -255,6 +258,9 @@ def add(db: Session, account_id: int, dek: bytes, day: str, upload_id: str | Non
                 "preview_size, created_at, on_note) SELECT :uid, :user, :date, :source, :upload, :asset, :width, "
                 ":height, :size, :preview, :now, :on_note "
                 "WHERE (SELECT count(*) FROM photos WHERE user_id = :user AND date = :date) < :limit "
+                # A day locked in between (a second device): decided in this statement.
+                "AND NOT EXISTS (SELECT 1 FROM days WHERE user_id = :user AND date = :date "
+                "AND locked_at IS NOT NULL) "
                 f"AND (:quota IS NULL OR {quota.USED} + :size + :preview <= :quota) "
                 # The upload id, or the photo of Immich: whichever was there first stays.
                 "ON CONFLICT DO NOTHING"
@@ -274,6 +280,7 @@ def add(db: Session, account_id: int, dek: bytes, day: str, upload_id: str | Non
         found = _by_upload(db, account_id, upload_id, asset_key)
         if found is not None:
             return view(found), False
+        ensure_open(db, account_id, day)
         if limit is not None and quota.used(db, account_id) + len(original) + len(preview) > limit:
             raise quota.full(db)
         raise error("too_many_photos", "There are as many photos on this day as there may be.", 409,
@@ -301,9 +308,22 @@ def read(db: Session, account_id: int, dek: bytes, uid: str, preview: bool) -> b
 def remove(db: Session, account_id: int, uid: str) -> None:
     """The photo, its files, and its place on notes. A day whose cover it was falls back to its suggestion when it
     is shown (``diary.effective_cover``)."""
-    gone = db.execute(delete(Photo).where(Photo.user_id == account_id, Photo.uid == uid))
+    from .diary import ensure_open, locked_error
+
+    when = db.scalar(select(Photo.date).where(Photo.user_id == account_id, Photo.uid == uid))
+    if when is not None:
+        ensure_open(db, account_id, when)
+    gone = db.execute(
+        delete(Photo).where(
+            Photo.user_id == account_id, Photo.uid == uid,
+            # The day of the photo locked in between: decided in this statement.
+            ~exists().where(Day.user_id == Photo.user_id, Day.date == Photo.date, Day.locked_at.is_not(None)),
+        )
+    )
     if gone.rowcount != 1:
         db.rollback()
+        if when is not None and db.scalar(select(Photo.id).where(Photo.user_id == account_id, Photo.uid == uid)):
+            raise locked_error()
         raise error("not_found", "Not found.", 404)
     db.execute(update(Note).where(Note.user_id == account_id, Note.photo_id == uid).values(photo_id=None))
     db.commit()

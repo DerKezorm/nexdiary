@@ -14,7 +14,7 @@ import unicodedata
 from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Path, Request, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
 from sqlalchemy import delete, select
 
 from .. import __version__, clock
@@ -213,6 +213,9 @@ def account_view(account: AccountRow) -> dict[str, Any]:
         "last_seen_at": account.last_seen_at.isoformat() if account.last_seen_at else None,
         "avatar": account.avatar_at.isoformat() if account.avatar_at else None,
         "profile": profile_of(account.profile),
+        # What the operator allows this account (on from the start): the AI, a connection to Immich.
+        "ai_allowed": bool(account.ai_allowed),
+        "immich_allowed": bool(account.immich_allowed),
     }
 
 
@@ -679,6 +682,32 @@ def unblock_account(
     row.blocked_at = None
     db.commit()
     logger.warning("Account unblocked name=%s by=%s", row.name, operator.name)
+
+
+class PermissionsIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ai_allowed: StrictBool | None = None
+    immich_allowed: StrictBool | None = None
+
+
+@router.put("/accounts/{account_id}/permissions", summary="Allow an account the AI and Immich, or take them away")
+def set_permissions(
+    account_id: int, payload: PermissionsIn, operator: OperatorAccount, db: DbSession,
+) -> dict[str, Any]:
+    """Both are on for every account until the operator takes one away; only the fields sent change. They come on top
+    of the operator's switches for the whole server (and, for the AI, the person's own switch). Taking them away stops
+    the next request at once; nothing the person kept is touched."""
+    row = _row(db, account_id)
+    changes: dict[str, bool] = {key: value for key, value in payload.model_dump().items() if value is not None}
+    if changes:
+        for key, value in changes.items():
+            setattr(row, key, value)
+        db.commit()
+        logger.warning("Permissions changed name=%s %s by=%s", row.name,
+                       " ".join(f"{key}={'yes' if value else 'no'}" for key, value in sorted(changes.items())),
+                       operator.name)
+    return {key: bool(getattr(row, key)) for key in ("ai_allowed", "immich_allowed")}
 
 
 @router.put("/accounts/{account_id}/role", summary="Make an account operator or member")

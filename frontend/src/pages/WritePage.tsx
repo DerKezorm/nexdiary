@@ -10,7 +10,10 @@
  *   page shows the other version (to copy from) and offers both ways;
  * - **a double click** on save saves once.
  *
- * On a phone "Save" stays at the bottom, above the keyboard; the menu bar of the app is not shown while writing.
+ * On a phone "Save" stays at the bottom, above the keyboard; the menu bar of the app is not shown while writing. At the
+ * computer the top bar (back, "draft kept", Save) and the editor's bar of formats are one bar that stays at the top while the
+ * page scrolls, and Ctrl+S / Cmd+S saves (the browser's own "save page" is kept away).
+ * A saved page can be locked for good from here; a locked day is not written on any more.
  * Loaded only when somebody writes: the editor is the heaviest part of the app.
  *
  * **The AI** writes only when asked: "Ausformulieren" on "Today" comes here with the length in the history state, which
@@ -21,13 +24,14 @@
  * or not ("Mit KI ausformuliert" in the statistics): that is how it came about. The draft keeps it, the notes stay.
  * Beside the text the questions to insert ("Weiterschreiben?").
  */
-import { Check, ImageIcon, Loader2, Shuffle, Sparkles } from 'lucide-react'
+import { Check, ImageIcon, Loader2, Lock, Shuffle, Sparkles } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { aiApi, ApiError, diaryApi, photosApi, photoUrl, promptsApi, type AiLength, type DayChange, type DayPage, type DraftIn, type ImmichPhoto, type Note, type Photo, type Question } from '../api/client'
 import { Dialog } from '../components/Dialog'
+import { LockDialog, LockedMark } from '../components/LockDay'
 import { TagPicker } from '../components/TagPicker'
 import { CoverImage, CoverPicker, defaultCover } from '../covers/Cover'
 import { timeOfHour, type Time } from '../covers/suggest'
@@ -144,6 +148,9 @@ export default function WritePage() {
   const [uploading, setUploading] = useState(false)
   const inset = useKeyboardInset()
   const editor = useRef<DiaryEditorHandle>(null)
+  /** Where the editor puts its bar of formats: into the sticky top bar, so that both stay at the top together. */
+  const [toolbarHost, setToolbarHost] = useState<HTMLElement | null>(null)
+  const [locking, setLocking] = useState(false)
   /** While the AI writes the suggestion. */
   const [formulating, setFormulating] = useState(false)
   /** Asking before the AI writes over something: the length asked for, and whether a draft or a changed suggestion
@@ -542,12 +549,48 @@ export default function WritePage() {
   }, [page.title, loaded, formulating])
 
   // From the editor itself, at once: the first letter on an empty page makes it savable.
-  const canSave = loaded && !editorEmpty && !saving && !formulating
+  const canSave = loaded && !editorEmpty && !saving && !formulating && !day?.locked
+  const unsaved = touched.current.size > 0 || restored !== null
+  // A saved page can be locked; with changes not yet saved they would be left out, so those come first.
+  const canLock = loaded && Boolean(day && (day.title.trim() || day.text.trim())) && !day?.locked
+
+  // Ctrl+S and Cmd+S save, as everywhere; the browser's own "save page" does not open.
+  const saveNow = useRef<() => void>(() => undefined)
+  useEffect(() => {
+    saveNow.current = () => {
+      if (canSave) void save()
+    }
+  })
+  useEffect(() => {
+    const keys = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 's') {
+        event.preventDefault()
+        if (!event.repeat) saveNow.current()
+      }
+    }
+    window.addEventListener('keydown', keys)
+    return () => window.removeEventListener('keydown', keys)
+  }, [])
+
+  // A locked day is not written on any more (the server refuses every change in any case).
+  if (day?.locked)
+    return (
+      <div className="page pt-10 pb-28 lg:pb-12">
+        <article className="card flex flex-col items-start gap-4 p-8">
+          <LockedMark label className="text-sm font-semibold text-muted" />
+          <p className="text-ink-2">{t('lock.readOnly')}</p>
+          <Link to={`/tag/${date}`} className="inline-flex h-11 items-center rounded-full bg-accent-soft px-5 font-semibold text-accent hover:brightness-[0.98]">
+            {t('lock.toDay')}
+          </Link>
+        </article>
+      </div>
+    )
 
   return (
     <div className="page grid grid-cols-1 gap-6 pt-6 pb-28 lg:grid-cols-[minmax(0,1fr)_320px] lg:pb-12">
       <div>
-        <div className="sticky top-0 z-20 -mx-4 mb-4 flex items-center justify-between gap-3 bg-paper/95 px-4 py-2.5 backdrop-blur lg:static lg:mx-0 lg:mb-5 lg:bg-transparent lg:px-0 lg:py-0 lg:backdrop-blur-none">
+        <div className="sticky top-0 z-20 -mx-4 mb-4 bg-paper/95 px-4 pt-2.5 pb-1 backdrop-blur lg:mx-0 lg:px-0 lg:pt-3" data-write-bar>
+        <div className="flex items-center justify-between gap-3 pb-2.5">
           <button type="button" onClick={() => void back()} className="text-sm font-semibold text-muted hover:text-ink">
             ← <span className="sm:hidden">{t('write.backShort')}</span>
             <span className="hidden sm:inline">{t('write.back')}</span>
@@ -568,8 +611,22 @@ export default function WritePage() {
                 {t('write.draftKept')}
               </span>
             )}
+            {canLock && (
+              <button
+                type="button"
+                onClick={() => setLocking(true)}
+                aria-label={t('lock.action')}
+                disabled={unsaved || saving}
+                title={unsaved ? t('lock.saveFirst') : t('lock.action')}
+                className="inline-flex h-8 items-center justify-center gap-2 rounded-full px-3 text-sm font-semibold text-ink-2 transition hover:bg-sheet-2 disabled:pointer-events-none disabled:opacity-50"
+              >
+                <Lock size={15} aria-hidden /> <span className="hidden sm:inline" aria-hidden>{t('lock.action')}</span>
+              </button>
+            )}
             <SaveButton className="hidden h-8 px-3.5 text-sm lg:inline-flex" onSave={() => void save()} disabled={!canSave} saving={saving} />
           </div>
+        </div>
+        <div ref={setToolbarHost} />
         </div>
         {restored && (
           <Notice>
@@ -692,6 +749,7 @@ export default function WritePage() {
                   if (text !== latest.current.page.text) changed({ text })
                 }}
                 onEmptyChange={setEditorEmpty}
+                toolbarHost={toolbarHost}
                 placeholder={t('write.bodyPlaceholder')}
                 label={t('write.bodyLabel')}
               />
@@ -759,6 +817,19 @@ export default function WritePage() {
             </button>
           </div>
         </Dialog>
+      )}
+
+      {locking && (
+        <LockDialog
+          date={date}
+          onClose={() => setLocking(false)}
+          onLocked={() => {
+            // Nothing is left to send: the server ended the draft with the lock.
+            done.current = true
+            pending.current = false
+            navigate(`/tag/${date}`, { state: { notice: t('lock.done') } })
+          }}
+        />
       )}
 
       {picking && (

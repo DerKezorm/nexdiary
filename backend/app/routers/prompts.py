@@ -70,7 +70,7 @@ def remove_own(question_id: str, request: Request, account: Account, db: DbSessi
 
 @router.post("/another", summary="Another question of the day, kept for the rest of the day")
 def another(request: Request, account: Account, db: DbSession) -> dict[str, Any]:
-    question = prompts.another(db, account.id, vault.dek_for(account.id), diary.today_of(account),
+    question = prompts.another(db, account.id, vault.dek_for(account.id), diary.note_day(account),
                                language(account, request))
     return {"question": question}
 

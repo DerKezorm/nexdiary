@@ -60,6 +60,10 @@ function serve(): void {
         }
         return json(draft)
       }
+      if (url === `/api/days/${DATE}/lock` && method === 'POST') {
+        day = { ...day!, locked: true, locked_at: '2026-10-07T10:00:00+00:00' }
+        return json(day)
+      }
       if (url === `/api/days/${DATE}`) {
         if (method === 'PUT') {
           await new Promise((resolve) => setTimeout(resolve, 20))
@@ -130,7 +134,7 @@ async function show(state: unknown = null): Promise<void> {
       </MemoryRouter>,
     ),
   )
-  for (let i = 0; i < 50 && !box.querySelector('[contenteditable]'); i++) await settle(20)
+  for (let i = 0; i < 50 && !box.querySelector('[contenteditable]') && !box.textContent?.includes('verschlossen'); i++) await settle(20)
   await settle(20)
 }
 
@@ -497,5 +501,107 @@ describe('writing a day up', () => {
     })
     expect(enter.defaultPrevented).toBe(true)
     expect(title().tagName).toBe('TEXTAREA')
+  })
+})
+
+describe('the bar at the top, Ctrl+S, and locking', () => {
+  it('keeps the top bar and the bar of formats together in one bar that stays in view', async () => {
+    day = page({ title: 'Kastanien', text: 'Die Nacht war kurz.', revision: 3 })
+    await show()
+    const bar = box.querySelector('[data-write-bar]')!
+    expect(bar.className).toContain('sticky')
+    expect(bar.className).toContain('top-0')
+    // Back, Save and the formats are all in it; the text is not.
+    expect(bar.querySelector('[role=toolbar]')).not.toBeNull()
+    expect([...bar.querySelectorAll('button')].some((item) => item.textContent?.trim() === 'Speichern')).toBe(true)
+    expect(bar.textContent).toContain('Zurück zu den Notizen')
+    expect(bar.querySelector('[contenteditable]')).toBeNull()
+    expect(bar.querySelector('textarea')).toBeNull()
+  })
+
+  it.each([
+    ['Ctrl+S', { key: 's', ctrlKey: true }],
+    ['Cmd+S', { key: 'S', metaKey: true }],
+  ])('saves on %s, once, and keeps the browser from saving the page', async (_name, keys) => {
+    day = page({ title: 'Kastanien', text: 'Die Nacht war kurz.', revision: 3 })
+    await show()
+    type(title(), 'Kastanien im Park')
+    const first = new KeyboardEvent('keydown', { ...keys, bubbles: true, cancelable: true })
+    await act(async () => {
+      window.dispatchEvent(first)
+      window.dispatchEvent(new KeyboardEvent('keydown', { ...keys, bubbles: true, cancelable: true }))
+    })
+    await settle(80)
+    expect(first.defaultPrevented).toBe(true)
+    expect(puts()).toHaveLength(1)
+    expect(puts()[0].body).toMatchObject({ title: 'Kastanien im Park', base_revision: 3 })
+  })
+
+  it('does not save on Ctrl+S while there is nothing to save, but still keeps the browser from saving the page', async () => {
+    await show()
+    const event = new KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true, cancelable: true })
+    await act(async () => window.dispatchEvent(event))
+    await settle(40)
+    expect(event.defaultPrevented).toBe(true)
+    expect(puts()).toHaveLength(0)
+    // Other keys and other letters are left alone.
+    const other = [new KeyboardEvent('keydown', { key: 's', bubbles: true, cancelable: true }), new KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true, cancelable: true })]
+    await act(async () => other.forEach((key) => window.dispatchEvent(key)))
+    expect(other.map((key) => key.defaultPrevented)).toEqual([false, false])
+  })
+
+  it('offers to lock a saved page, after the changes are saved', async () => {
+    day = page({ title: 'Kastanien', text: 'Die Nacht war kurz.', revision: 3 })
+    await show()
+    const lock = button('Für immer verschließen')
+    expect(lock.disabled).toBe(false)
+    type(title(), 'Kastanien im Park')
+    expect(button('Für immer verschließen').disabled).toBe(true)
+    expect(button('Für immer verschließen').title).toBe('Speichere zuerst deine Änderungen, dann lässt sich der Tag verschließen.')
+  })
+
+  it('has no lock for a page that was never saved', async () => {
+    await show()
+    await typeInEditor('Ein Anfang')
+    expect([...box.querySelectorAll('button')].some((item) => item.textContent?.includes('verschließen'))).toBe(false)
+  })
+
+  it('locks only after the word is typed, then leaves for the day', async () => {
+    day = page({ title: 'Kastanien', text: 'Die Nacht war kurz.', revision: 3 })
+    await show()
+    await act(async () => button('Für immer verschließen').click())
+    const dialog = document.querySelector('[role=dialog]')!
+    expect(dialog.textContent).toContain('nie mehr ändern oder löschen')
+    expect(dialog.textContent).toContain('auch nicht von dir und nicht vom Betreiber')
+    const confirm = [...dialog.querySelectorAll('button')].find((item) => item.textContent?.includes('Für immer verschließen'))!
+    expect(confirm.disabled).toBe(true)
+    const input = dialog.querySelector('input')!
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
+    const write = (value: string) =>
+      act(() => {
+        setter.call(input, value)
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+      })
+    write('verschließ')
+    expect(confirm.disabled).toBe(true)
+    write('Verschließen')
+    expect(confirm.disabled).toBe(false)
+    expect(calls.some((call) => call.url.endsWith('/lock'))).toBe(false)
+    await act(async () => confirm.click())
+    await settle(40)
+    expect(calls.filter((call) => call.url.endsWith('/lock'))).toHaveLength(1)
+    expect(box.textContent).toContain('woanders')
+  })
+
+  it('shows a locked day as one to read, with no editor, no save and no lock', async () => {
+    day = page({ title: 'Kastanien', text: 'Die Nacht war kurz.', revision: 3, locked: true })
+    await show()
+    expect(box.querySelector('[contenteditable]')).toBeNull()
+    expect(box.textContent).toContain('Dieser Tag ist verschlossen. Er lässt sich nicht mehr ändern.')
+    expect(saveButtons()).toHaveLength(0)
+    const event = new KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true, cancelable: true })
+    await act(async () => window.dispatchEvent(event))
+    expect(puts()).toHaveLength(0)
+    expect(box.querySelector('a')!.getAttribute('href')).toBe(`/tag/${DATE}`)
   })
 })

@@ -1,4 +1,41 @@
 {
+  "lock": {
+    "action": "Für immer verschließen",
+    "badge": "Für immer verschlossen",
+    "short": "Verschlossen",
+    "since": "Verschlossen am {{date}}",
+    "title": "Diesen Tag für immer verschließen?",
+    "consequence": "Der Tag lässt sich danach nie mehr ändern oder löschen, auch nicht von dir und nicht vom Betreiber. Text, Titel, Tags, Werte, Titelbild, Notizen und Fotos dieses Tages bleiben genau so, wie sie jetzt sind. Teilen kannst du ihn weiterhin. Nur das Löschen des ganzen Kontos nimmt ihn mit.",
+    "word": "verschließen",
+    "typeIt": "Zur Bestätigung „{{word}}“ eintippen",
+    "confirm": "Für immer verschließen",
+    "done": "Dieser Tag ist jetzt verschlossen.",
+    "readOnly": "Dieser Tag ist verschlossen. Er lässt sich nicht mehr ändern.",
+    "saveFirst": "Speichere zuerst deine Änderungen, dann lässt sich der Tag verschließen.",
+    "toDay": "Zum Tag"
+  },
+  "catchUp": {
+    "title_one": "{{count}} Tag mit Notizen ohne Seite",
+    "title_other": "{{count}} Tage mit Notizen ohne Seite",
+    "text": "Aus diesen Notizen kannst du noch eine Seite machen.",
+    "notes_one": "{{count}} Notiz",
+    "notes_other": "{{count}} Notizen",
+    "write": "Aufschreiben",
+    "show": "Anzeigen",
+    "hide": "Zuklappen",
+    "section": "Ohne Seite",
+    "sectionNone": "Alle Tage mit Notizen haben eine Seite."
+  },
+  "night": {
+    "title": "Zu welchem Tag gehört das?",
+    "text": "Es ist nach Mitternacht. Zu welchem Tag gehören deine Notizen dieser Nacht? Deine Antwort gilt bis 4 Uhr, auf allen deinen Geräten.",
+    "toYesterday": "Zu gestern ({{weekday}})",
+    "toToday": "Zu heute ({{weekday}})",
+    "hintYesterday": "Du notierst gerade zu gestern ({{weekday}}).",
+    "hintToday": "Du notierst gerade zu heute ({{weekday}}).",
+    "switchToYesterday": "Zu gestern wechseln",
+    "switchToToday": "Zu heute wechseln"
+  },
   "app": {
     "mainMenu": "Hauptmenü"
   },
@@ -9,6 +46,11 @@
     "shared": "Geteilt"
   },
   "today": {
+    "moreNote": "Mehr zur Notiz",
+    "moveBack": "Zum Vortag verschieben",
+    "moveForward": "Zum Folgetag verschieben",
+    "moved": "Die Notiz ist zum {{day}} verschoben.",
+    "lockedDay": "Dieser Tag ist verschlossen.",
     "greeting": {
       "morning": "Guten Morgen, {{name}}",
       "day": "Hallo, {{name}}",
@@ -335,6 +377,7 @@
       "add": "Hinzufügen"
     },
     "immich": {
+      "accountClosed": "Dein Betreiber hat Immich für dein Konto nicht freigegeben.",
       "title": "Immich",
       "text": "Deine Fotos des Tages direkt aus Immich vorschlagen. Jeder verbindet sein eigenes Konto; nexdiary liest nur und kopiert ein Foto erst, wenn du es zu einem Tag nimmst.",
       "closed": "Dein Betreiber hat Immich nicht freigegeben.",
@@ -525,6 +568,7 @@
     },
     "setupFirst": "Der Betreiber verlangt einen zweiten Faktor. Richte ihn hier ein, dann geht es weiter.",
     "ai": {
+      "notAllowed": "Dein Betreiber hat die KI für dein Konto nicht freigegeben.",
       "title": "KI beim Schreiben",
       "text": "Macht aus deinen Notizen des Tages einen Vorschlag für die Seite. Nur, wenn du auf „Ausformulieren“ drückst.",
       "mine": "KI-Funktionen für mich",
@@ -696,6 +740,9 @@
     }
   },
   "server": {
+    "aiAllowed": "KI erlaubt",
+    "immichAllowed": "Immich erlaubt",
+    "permissionsHint": "Einzelne Konten lassen sich von der KI oder von Immich ausnehmen.",
     "accounts": "Konten",
     "accountsHint": "Wer in eurer Familie nexdiary nutzt. Als Betreiber verwaltest du Konten, aber du siehst keine Einträge: Jedes Tagebuch gehört nur seinem Menschen.",
     "invite": "Jemanden einladen",
@@ -1117,6 +1164,12 @@
     "pick": "Foto übernehmen"
   },
   "errors": {
+    "day_locked": "Dieser Tag ist für immer verschlossen und lässt sich nicht mehr ändern.",
+    "not_written": "Nur ein Tag mit Seite lässt sich verschließen.",
+    "not_night": "Es ist nicht mehr Nacht: Notizen gehören jetzt zu heute.",
+    "ai_not_allowed": "Dein Betreiber hat die KI für dein Konto nicht freigegeben.",
+    "immich_not_allowed": "Dein Betreiber hat Immich für dein Konto nicht freigegeben.",
+    "note_unreadable": "Diese Notiz ist in der Datenbank beschädigt und lässt sich nur noch löschen.",
     "account_blocked": "Dieses Konto ist gesperrt.",
     "account_locked": "Zu viele falsche Versuche. Das Konto wartet eine Viertelstunde.",
     "already_set_up": "nexdiary ist schon eingerichtet.",

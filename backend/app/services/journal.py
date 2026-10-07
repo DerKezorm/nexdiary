@@ -31,7 +31,7 @@ def _first_value(values: list[dict[str, Any]]) -> dict[str, Any] | None:
 
 
 def _item(day: str, content: dict[str, Any] | None, photo_ids: set[str], first: dict[str, Any] | None,
-          shared_with: list[dict[str, Any]]) -> dict[str, Any]:
+          shared_with: list[dict[str, Any]], locked: bool) -> dict[str, Any]:
     shown = content or diary.empty_day()
     rating = shown["values"].get(first["id"]) if first else None
     return {
@@ -43,14 +43,14 @@ def _item(day: str, content: dict[str, Any] | None, photo_ids: set[str], first: 
         "written_by": shown["written_by"],
         "first_value": {"name": first["name"], "value": rating} if first and isinstance(rating, int) else None,
         "shared_with": shared_with,
+        "locked": locked,
         "unreadable": content is None,
     }
 
 
 def has_page(content: dict[str, Any] | None) -> bool:
-    """Whether a day belongs in the journal: it has a title or a text. A day that holds only values, tags or notes is
-    not a page yet (an unreadable one is kept, so that it can be seen and dealt with)."""
-    return content is None or bool(content["title"].strip() or content["text"].strip())
+    """Whether a day belongs in the journal: it has a title or a text (``diary.has_page``)."""
+    return diary.has_page(content)
 
 
 def page(db: Session, account_id: int, dek: bytes, *, before: str | None, limit: int,
@@ -89,7 +89,8 @@ def items(db: Session, account_id: int, dek: bytes,
     photo_ids = diary.photo_ids_of(db, account_id)
     first = _first_value(diary.list_values(db, account_id, dek))
     shared = sharing.recipients_by_day(db, account_id, [day for day, _content in found])
-    return [_item(day, content, photo_ids, first, shared.get(day, [])) for day, content in found]
+    locked = diary.locked_dates(db, account_id, [day for day, _content in found])
+    return [_item(day, content, photo_ids, first, shared.get(day, []), day in locked) for day, content in found]
 
 
 def items_for_dates(db: Session, account_id: int, dek: bytes, dates: list[str]) -> dict[str, dict[str, Any]]:

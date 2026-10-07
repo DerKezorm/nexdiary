@@ -53,7 +53,7 @@ export function useServerSettings() {
   return { settings, save, setSettings, ...action }
 }
 
-type AccountRow = Me & { locked: boolean; blocked?: boolean; has_password?: boolean; created_at: string; last_seen_at: string | null }
+type AccountRow = Me & { locked: boolean; blocked?: boolean; has_password?: boolean; created_at: string; last_seen_at: string | null; ai_allowed: boolean; immich_allowed: boolean }
 type OpenInvite = { id: number; email: string; expires_at: string }
 type Asking = 'role' | 'delete' | 'link' | 'reset' | 'signout' | 'block' | 'unblock'
 /** What came of sending a link to set a new password: by mail, or to pass on once. */
@@ -150,9 +150,36 @@ export function AccountsCard() {
                 )}
               </span>
             )}
+            <span className="flex basis-full flex-wrap gap-x-5 gap-y-1 text-xs text-ink-2 sm:pl-[3.1rem]" data-permissions>
+              {(['ai_allowed', 'immich_allowed'] as const).map((key) => (
+                <label key={key} className="inline-flex items-center gap-1.5 font-semibold">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-[var(--accent)]"
+                    checked={row[key]}
+                    disabled={busy}
+                    aria-label={`${t(key === 'ai_allowed' ? 'server.aiAllowed' : 'server.immichAllowed')}: ${row.display_name || row.name}`}
+                    onChange={(event) => {
+                      const allowed = event.target.checked
+                      setList((rows) => rows.map((item) => (item.id === row.id ? { ...item, [key]: allowed } : item)))
+                      void run(async () => {
+                        try {
+                          await api(`/api/accounts/${row.id}/permissions`, { method: 'PUT', body: { [key]: allowed } })
+                        } catch (error) {
+                          load()
+                          throw error
+                        }
+                      })
+                    }}
+                  />
+                  {t(key === 'ai_allowed' ? 'server.aiAllowed' : 'server.immichAllowed')}
+                </label>
+              ))}
+            </span>
           </li>
         ))}
       </ul>
+      <p className="text-xs text-muted">{t('server.permissionsHint')}</p>
       {invites.length > 0 && (
         <ul className="space-y-2" data-testid="open-invites">
           {invites.map((invite) => (

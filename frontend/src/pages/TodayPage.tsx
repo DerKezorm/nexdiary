@@ -14,7 +14,11 @@ import { useTranslation } from 'react-i18next'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { immichThumbUrl, photoUrl, type AiLength, type AiState, type ImmichPhoto, type Note, type TodayData, type ValueDef } from '../api/client'
+import { CatchUpCard } from '../components/CatchUp'
 import { Dialog } from '../components/Dialog'
+import { LockedMark } from '../components/LockDay'
+import { NightDialog, NightHint } from '../components/NightChoice'
+import { NoteMenu } from '../components/NoteMenu'
 import { Scale } from '../components/Scale'
 import { TagPicker } from '../components/TagPicker'
 import { longDate, timeOf } from '../lib/dates'
@@ -63,6 +67,7 @@ export function TodayPage({ now }: { now?: Date }) {
     return (
       <div className="page flex min-h-[calc(100dvh-5rem)] flex-col lg:min-h-dvh">
         <Header now={now} today={today} onDay={() => setDrawer(true)} />
+        <Before today={today} />
         <div className="mb-3">
           <FinishCard today={today} ai={ai} />
         </div>
@@ -76,6 +81,7 @@ export function TodayPage({ now }: { now?: Date }) {
           {problem}
           <Capture today={today} chat />
         </div>
+        <NightDialog today={today} />
         {drawer && (
           <Dialog title={t('today.yourDay')} onClose={() => setDrawer(false)}>
             <div className="space-y-6">
@@ -92,6 +98,7 @@ export function TodayPage({ now }: { now?: Date }) {
     return (
       <div className="page pb-28 lg:pb-12">
         <Header now={now} today={today} />
+        <Before today={today} />
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
           <div className="space-y-4">
             <Capture today={today} />
@@ -106,12 +113,14 @@ export function TodayPage({ now }: { now?: Date }) {
             <TagsBlock today={today} />
           </aside>
         </div>
+        <NightDialog today={today} />
       </div>
     )
 
   return (
     <div className="page space-y-5 pb-28 lg:pb-12">
       <Header now={now} today={today} />
+      <Before today={today} />
       <Capture today={today} />
       {problem}
       <PromptCard today={today} />
@@ -120,6 +129,7 @@ export function TodayPage({ now }: { now?: Date }) {
       <ValuesBlock today={today} />
       <TagsBlock today={today} />
       <FinishCard today={today} ai={ai} />
+      <NightDialog today={today} />
     </div>
   )
 }
@@ -128,6 +138,35 @@ const PRIMARY = 'inline-flex h-11 items-center justify-center gap-2 rounded-full
 const SOFT = 'inline-flex h-11 items-center justify-center gap-2 rounded-full bg-accent-soft px-5 text-[0.95rem] font-semibold text-accent transition hover:brightness-[0.98]'
 const SMALL_PRIMARY = 'inline-flex h-8 items-center justify-center gap-2 rounded-full bg-accent px-3.5 text-sm font-semibold text-accent-ink shadow-soft transition hover:brightness-105 disabled:pointer-events-none disabled:opacity-50'
 const SMALL_GHOST = 'inline-flex h-8 items-center justify-center gap-2 rounded-full px-3.5 text-sm font-semibold text-ink-2 transition hover:bg-sheet-2'
+
+/** What stands above the notes: where the notes of this night go, a note that was just moved, whether the day is
+ * locked, and the days that have notes and no page yet. */
+function Before({ today }: { today: TodayState }) {
+  const { t, i18n } = useTranslation()
+  const data = today.data
+  if (!data) return null
+  const lines = [data.night?.active && data.night.choice !== null, today.moved, data.day?.locked, data.catch_up?.count].some(Boolean)
+  if (!lines) return null
+  return (
+    <div className="mb-5 space-y-3" data-before>
+      <NightHint today={today} />
+      {today.moved && (
+        <p role="status" className="flex items-center justify-between gap-3 rounded-xl bg-sheet-2 px-3.5 py-2 text-sm text-ink-2">
+          <span>{t('today.moved', { day: longDate(today.moved, i18n.language) })}</span>
+          <button type="button" onClick={today.clearMoved} className="rounded-full p-1 text-muted hover:text-ink" aria-label={t('common.close')}>
+            <X size={14} />
+          </button>
+        </p>
+      )}
+      {data.day?.locked && (
+        <p className="flex items-center gap-2 rounded-xl bg-sheet-2 px-3.5 py-2 text-sm text-ink-2" role="status">
+          <LockedMark /> {t('today.lockedDay')}
+        </p>
+      )}
+      <CatchUpCard data={data.catch_up} />
+    </div>
+  )
+}
 
 /** The question of the day, as the mock: a small push for days when nothing comes to mind. The same all day; "Andere
  * Frage" moves it on for today. The answer becomes a note with its question, and the next question comes. */
@@ -520,6 +559,7 @@ function NoteRow({ note, today }: { note: Note; today: TodayState }) {
         )}
         {note.photo_id && <img src={photoUrl(note.photo_id, true)} alt={t('photos.alt')} className="mt-2 h-24 w-36 rounded-lg object-cover" draggable={false} />}
       </div>
+      <NoteMenu note={note} today={today} />
       <button
         type="button"
         onClick={() => void today.deleteNote(note.id)}
@@ -547,6 +587,7 @@ function Bubbles({ today }: { today: TodayState }) {
             </div>
           )}
           <div className="group flex justify-end gap-2">
+            <NoteMenu note={note} today={today} className="self-center" />
             <button
               type="button"
               onClick={() => void today.deleteNote(note.id)}

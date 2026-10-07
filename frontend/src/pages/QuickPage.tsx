@@ -13,6 +13,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 
 import { photoUrl, type Question } from '../api/client'
 import { LogoMark } from '../components/Logo'
+import { NightDialog, NightHint } from '../components/NightChoice'
 import { PendingPhoto, usePendingPhoto } from '../components/PendingPhoto'
 import { longDate, timeOf } from '../lib/dates'
 import { errorText } from '../lib/errors'
@@ -91,6 +92,7 @@ export function QuickPage() {
         </Link>
       </header>
 
+      <NightHint today={today} className="mx-4 mt-3 shrink-0" />
       <div ref={list} className="flex-1 overflow-y-auto px-4 py-4">
         {notes.length === 0 ? (
           <p className="mt-16 text-center font-serif text-lg text-muted">{t('quick.empty')}</p>
@@ -199,6 +201,7 @@ export function QuickPage() {
           </button>
         </div>
       </div>
+      <NightDialog today={today} />
     </div>
   )
 }

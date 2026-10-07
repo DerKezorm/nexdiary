@@ -206,7 +206,7 @@ def test_a_day_is_made_changed_in_parts_and_deleted_and_its_notes_stay(client: T
     listed = client.get("/api/days").json()
     assert listed == [{"date": "2026-10-06", "title": "Kastanien und Kopfweh", "tags": ["mia", "herbst", "draußen sein"],
                        "words": 7, "values": {}, "cover": "illu:baum.abend.herbst", "written_by": "ai",
-                       "unreadable": False}]
+                       "unreadable": False, "locked": False}]
     assert client.delete("/api/days/2026-10-06").status_code == 204
     assert client.get("/api/days/2026-10-06").status_code == 404
     assert client.delete("/api/days/2026-10-06").status_code == 404

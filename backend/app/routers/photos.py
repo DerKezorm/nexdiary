@@ -34,8 +34,10 @@ async def upload(
     note: bool = False,
 ) -> dict[str, Any]:
     """With ``note`` the photo is for a note: it goes with the notes of the day, never with its photos."""
-    key = diary.check_date(account, date) if date else diary.today_of(account).isoformat()
+    key = diary.check_date(account, date) if date else diary.note_day(account).isoformat()
     upload = photos.check_upload_id(upload_id)
+    # A locked day takes no photo: said before a body is read or drawn.
+    diary.ensure_open(db, account.id, key)
     brakes.take("upload", account.id)
     # A place first, then the body: no more bodies wait in memory than there are places.
     try:

@@ -8,7 +8,10 @@ Writes that could meet another write are atomic in the database, not checked in 
 * a note carries an id made by the browser; the same note sent twice (a double click, a retry) inserts once;
 * a day is changed only on the revision it was read from, and made with ``ON CONFLICT DO NOTHING``: two saves at the
   same moment make one day, and neither change is lost;
-* the values a person starts with are laid out under a mark on the account that is set once.
+* the values a person starts with are laid out under a mark on the account that is set once;
+* a day locked for good (``locked_at``) is changed by nothing: every statement that writes to the day, its notes, its
+  photos or its draft carries the lock in its own condition, so a lock that lands between a check and the write still
+  stops the write, and a trigger holds the locked row still whatever code asks.
 """
 
 from __future__ import annotations
@@ -27,7 +30,7 @@ from functools import lru_cache
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
-from sqlalchemy import bindparam, delete, select, text, update
+from sqlalchemy import bindparam, delete, exists, func, select, text, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
@@ -126,6 +129,137 @@ def check_date(account: Account, value: str) -> str:
     if day > today_of(account) + timedelta(days=1):
         raise error("date_in_future", "This date is still to come.", 422)
     return value
+
+
+# --- The night -------------------------------------------------------------------------------------------------------
+
+#: Notes written from midnight up to this hour (the person's time) may belong to the day before: the person says.
+NIGHT_ENDS = 4
+
+
+@dataclass(frozen=True)
+class Night:
+    """The hours after midnight, as they stand for one person at one moment."""
+
+    #: The calendar day those hours fall on (the "today" of the clock), and the day before it.
+    window: str
+    yesterday: str
+    #: What the person answered for this night: ``"yesterday"``, ``"today"`` or None while nobody was asked.
+    choice: str | None
+
+    def view(self) -> dict[str, Any]:
+        return {"active": True, "today": self.window, "yesterday": self.yesterday, "choice": self.choice}
+
+
+def night_of(account: Account) -> Night | None:
+    """The night the person is in, or None from 4:00 on. Read from the clock of their time zone, so a night is the
+    same night for every device they use, and the extra hour when the clocks go back changes nothing (the date stays,
+    the answer stays)."""
+    local = clock.now().astimezone(zone_of(account))
+    if local.hour >= NIGHT_ENDS:
+        return None
+    window = local.date()
+    yesterday = (window - timedelta(days=1)).isoformat()
+    choice = None
+    if account.night_for == window.isoformat():
+        if account.night_day == yesterday:
+            choice = "yesterday"
+        elif account.night_day == window.isoformat():
+            choice = "today"
+    return Night(window.isoformat(), yesterday, choice)
+
+
+def note_day(account: Account) -> date:
+    """The day a note, a photo of a note or a question's answer goes to when the browser names no day: the person's
+    today, or after midnight the day they said the night belongs to."""
+    night = night_of(account)
+    if night is not None and night.choice == "yesterday":
+        return date.fromisoformat(night.yesterday)
+    return today_of(account)
+
+
+def choose_night(db: Session, account: Account, choice: str) -> Night:
+    """The person's answer for the night they are in (and again, if they change their mind). ``not_night`` from 4:00 on:
+    nothing is kept for a day that is not in doubt. One statement; the answer is never a date the browser names."""
+    night = night_of(account)
+    if choice not in ("yesterday", "today"):
+        raise error("invalid_input", "The input is not valid.", 422, fields=["choice"])
+    if night is None:
+        raise error("not_night", "It is not night: notes belong to today.", 409)
+    target = night.yesterday if choice == "yesterday" else night.window
+    db.execute(update(Account).where(Account.id == account.id).values(night_for=night.window, night_day=target))
+    db.commit()
+    account.night_for, account.night_day = night.window, target
+    found = night_of(account)
+    assert found is not None
+    return found
+
+
+# --- Locked days -----------------------------------------------------------------------------------------------------
+
+
+def locked_error() -> Exception:
+    return error("day_locked", "This day is locked for good.", 409)
+
+
+def _locked_day(user_id: Any, day: Any) -> Any:
+    """The condition "the day of this user is locked", for a statement that decides in the database itself."""
+    return exists().where(Day.user_id == user_id, Day.date == day, Day.locked_at.is_not(None))
+
+
+def is_locked(db: Session, account_id: int, day: str) -> bool:
+    return db.scalar(select(Day.id).where(Day.user_id == account_id, Day.date == day,
+                                          Day.locked_at.is_not(None))) is not None
+
+
+def ensure_open(db: Session, account_id: int, day: str) -> None:
+    """Refuses a change to a locked day early (before a photo is read or drawn); the statement that writes checks
+    again in the database, so this is courtesy, not the lock."""
+    if is_locked(db, account_id, day):
+        raise locked_error()
+
+
+def locked_dates(db: Session, account_id: int, dates: list[str]) -> set[str]:
+    if not dates:
+        return set()
+    return set(db.scalars(select(Day.date).where(Day.user_id == account_id, Day.date.in_(dates),
+                                                 Day.locked_at.is_not(None))))
+
+
+def lock_day(db: Session, account_id: int, dek: bytes, day: str) -> dict[str, Any]:
+    """Locks a written day for good. Only a day with a page: a day that holds only values, tags or notes is not
+    written yet (``not_written``), one that cannot be read is not locked blind. Locking twice is no error. The mark is
+    set onto the revision that was read, so a save that came in between is either in the page that is locked or comes
+    after the lock and is refused; the day's draft ends with it (it can never be saved)."""
+    for _ in range(CHANGE_TRIES):
+        row = db.execute(select(*_DAY_COLUMNS).where(Day.user_id == account_id, Day.date == day)).first()
+        if row is None:
+            raise error("not_found", "Not found.", 404)
+        if row.locked_at is not None:
+            found = get_day(db, account_id, dek, day)
+            assert found is not None
+            return found
+        content = _readable_content(account_id, dek, day, row.content_enc)
+        if content is None:
+            raise error("day_unreadable", "This day cannot be read; it can only be deleted.", 409)
+        if not has_page(content):
+            raise error("not_written", "Only a day with a page can be locked.", 409)
+        locked = db.execute(update(Day).where(Day.id == row.id, Day.revision == row.revision,
+                                              Day.locked_at.is_(None)).values(locked_at=now()))
+        if locked.rowcount == 1:
+            db.execute(delete(Draft).where(Draft.user_id == account_id, Draft.date == day))
+        db.commit()
+        if locked.rowcount == 1:
+            found = get_day(db, account_id, dek, day)
+            assert found is not None
+            return found
+    raise error("busy", "nexdiary is busy. Try again in a moment.", 503)
+
+
+def has_page(content: dict[str, Any] | None) -> bool:
+    """Whether a day is a page: it has a title or a text. A day that holds only values, tags or notes is not (an
+    unreadable one counts, so that it can be seen and dealt with)."""
+    return content is None or bool(content["title"].strip() or content["text"].strip())
 
 
 # --- Text -----------------------------------------------------------------------------------------------------------
@@ -469,6 +603,7 @@ def add_note(db: Session, account_id: int, dek: bytes, uid: str, day: str, note_
     existing = _note_row(db, account_id, uid)
     if existing is not None:
         return _same_note(account_id, dek, existing, note_text, photo_id), False
+    ensure_open(db, account_id, day)
     sealed = {
         "text": vault.seal_text(dek, note_text, _note_aad(account_id, uid, day, "text")),
         "prompt": vault.seal_text(dek, prompt, _note_aad(account_id, uid, day, "prompt")) if prompt else None,
@@ -480,6 +615,8 @@ def add_note(db: Session, account_id: int, dek: bytes, uid: str, day: str, note_
             "INSERT INTO notes (uid, user_id, date, created_at, text_enc, prompt_enc, prompt_ref_enc, photo_id) "
             "SELECT :uid, :user, :date, :now, :text, :prompt, :prompt_ref, :photo "
             "WHERE (SELECT count(*) FROM notes WHERE user_id = :user AND date = :date) < :limit "
+            # A day locked in between (a second device): decided in this statement, not in the check before it.
+            "AND NOT EXISTS (SELECT 1 FROM days WHERE user_id = :user AND date = :date AND locked_at IS NOT NULL) "
             "ON CONFLICT (user_id, uid) DO NOTHING"
         ).bindparams(bindparam("now", type_=UtcDateTime())),
         {"uid": uid, "user": account_id, "date": day, "now": now(), "limit": NOTES_PER_DAY, "photo": photo_id,
@@ -487,11 +624,14 @@ def add_note(db: Session, account_id: int, dek: bytes, uid: str, day: str, note_
     )
     if inserted.rowcount == 1:
         quota.check_after_write(db, account_id, sum(len(value) for value in sealed.values() if value))
-        # In the same transaction: a photo on a note is a note's for good, never a photo of the day.
+        # In the same transaction: a photo on a note is a note's for good, never a photo of the day, and it is of the
+        # note's day.
+        _follow_note(db, account_id, dek, photo_id, day, uid)
         _mark_on_note(db, account_id, photo_id)
     db.commit()
     row = _note_row(db, account_id, uid)
     if row is None:
+        ensure_open(db, account_id, day)
         raise error("too_many_notes", "There are as many notes on this day as there may be.", 409,
                     max=NOTES_PER_DAY)
     if inserted.rowcount != 1:
@@ -520,15 +660,19 @@ def change_note(db: Session, account_id: int, dek: bytes, uid: str, note_text: s
     if not note_text and photo is None:
         raise error("note_empty", "A note needs a text.", 422)
     sealed = vault.seal_text(dek, note_text, _note_aad(account_id, uid, row.date, "text"))
-    changed = db.execute(update(Note).where(Note.user_id == account_id, Note.uid == uid, Note.date == row.date).values(
+    ensure_open(db, account_id, row.date)
+    changed = db.execute(update(Note).where(Note.user_id == account_id, Note.uid == uid, Note.date == row.date,
+                                            ~_locked_day(Note.user_id, Note.date)).values(
         text_enc=sealed, photo_id=photo, updated_at=now()))
     if changed.rowcount == 1:
         quota.check_after_write(db, account_id, len(sealed) - len(row.text_enc))
+        _follow_note(db, account_id, dek, photo, row.date, uid)
         _mark_on_note(db, account_id, photo)
     db.commit()
     # Deleted in between (another tab): gone, like any note that is not there.
     found = _note_row(db, account_id, uid) if changed.rowcount == 1 else None
     if found is None:
+        ensure_open(db, account_id, row.date)
         raise error("not_found", "Not found.", 404)
     return _note_view(account_id, dek, found)
 
@@ -536,6 +680,34 @@ def change_note(db: Session, account_id: int, dek: bytes, uid: str, note_text: s
 def _mark_on_note(db: Session, account_id: int, uid: str | None) -> None:
     if uid is not None:
         db.execute(update(Photo).where(Photo.user_id == account_id, Photo.uid == uid).values(on_note=True))
+
+
+def _follow_note(db: Session, account_id: int, dek: bytes, uid: str | None, day: str, note_uid: str) -> None:
+    """A photo taken for a note belongs to the day of the note: one picked before the person said which day a note of
+    the night belongs to has the other day, and follows the note here. Only a photo that was a note's already, that no
+    other note holds, that is not the cover of its day and whose day is not locked; and while the new day has room.
+    Call before ``_mark_on_note``."""
+    if uid is None:
+        return
+    row = db.execute(select(Photo.date, Photo.on_note).where(Photo.user_id == account_id, Photo.uid == uid)).first()
+    if row is None or row.date == day or not row.on_note:
+        return
+    if db.scalar(select(Note.id).where(Note.user_id == account_id, Note.photo_id == uid, Note.uid != note_uid)
+                 .limit(1)) is not None:
+        return
+    sealed = db.scalar(select(Day.content_enc).where(Day.user_id == account_id, Day.date == row.date))
+    if sealed is not None and _is_cover(account_id, dek, sealed, row.date, uid):
+        return
+    from .photos import PHOTOS_PER_DAY
+
+    db.execute(
+        text(
+            "UPDATE photos SET date = :day WHERE user_id = :user AND uid = :uid AND date = :old AND on_note = 1 "
+            "AND NOT EXISTS (SELECT 1 FROM days WHERE user_id = :user AND date = :old AND locked_at IS NOT NULL) "
+            "AND (SELECT count(*) FROM photos WHERE user_id = :user AND date = :day) < :limit"
+        ),
+        {"day": day, "old": row.date, "user": account_id, "uid": uid, "limit": PHOTOS_PER_DAY},
+    )
 
 
 def _is_cover(account_id: int, dek: bytes, sealed: bytes | None, day: str, uid: str) -> bool:
@@ -549,10 +721,15 @@ def _is_cover(account_id: int, dek: bytes, sealed: bytes | None, day: str, uid: 
 def delete_note(db: Session, account_id: int, dek: bytes, uid: str) -> list[str]:
     """Deletes a note, and the photo that came with it, unless that photo is the cover of its day or another note
     holds it too. One transaction; the files of a deleted photo are the caller's to remove (the ids returned)."""
-    row = db.execute(select(Note.photo_id).where(Note.user_id == account_id, Note.uid == uid)).first()
-    gone = db.execute(delete(Note).where(Note.user_id == account_id, Note.uid == uid))
+    row = db.execute(select(Note.photo_id, Note.date).where(Note.user_id == account_id, Note.uid == uid)).first()
+    if row is not None:
+        ensure_open(db, account_id, row.date)
+    gone = db.execute(delete(Note).where(Note.user_id == account_id, Note.uid == uid,
+                                         ~_locked_day(Note.user_id, Note.date)))
     if gone.rowcount != 1:
         db.rollback()
+        if row is not None:
+            ensure_open(db, account_id, row.date)
         raise error("not_found", "Not found.", 404)
     removed: list[str] = []
     photo = row.photo_id if row is not None else None
@@ -567,6 +744,89 @@ def delete_note(db: Session, account_id: int, dek: bytes, uid: str) -> list[str]
                 removed.append(photo)
     db.commit()
     return removed
+
+
+def move_note(db: Session, account_id: int, dek: bytes, uid: str, direction: str, today: date) -> dict[str, Any]:
+    """A note to the day before or the day after its own (``previous`` / ``next``), sealed anew: the date is part of
+    what binds a sealed value, so a note cannot simply be pointed at another day. Refused (``day_locked``) when either
+    day is locked, and when the target lies after ``today`` (``date_in_future``) or before 1900. The photo that came
+    with the note goes along, unless another note or the cover of the old day still holds it. One statement for the
+    note: it moves onto exactly the sealed values that were read, while neither day is locked and the target has
+    room."""
+    if direction not in ("previous", "next"):
+        raise error("invalid_input", "The input is not valid.", 422, fields=["direction"])
+    row = _note_row(db, account_id, uid)
+    if row is None:
+        raise error("not_found", "Not found.", 404)
+    source = date.fromisoformat(row.date)
+    target = source + timedelta(days=-1 if direction == "previous" else 1)
+    if target > today:
+        raise error("date_in_future", "This date is still to come.", 422)
+    if target < EARLIEST:
+        raise error("date_invalid", "Not a date of the form YYYY-MM-DD.", 422)
+    to = target.isoformat()
+    ensure_open(db, account_id, row.date)
+    ensure_open(db, account_id, to)
+    view = _note_view(account_id, dek, row)
+    if view["unreadable"]:
+        raise error("note_unreadable", "This note cannot be read.", 409)
+
+    def sealed(column: str, value: str | None) -> bytes | None:
+        return vault.seal_text(dek, value, _note_aad(account_id, uid, to, column)) if value is not None else None
+
+    moved = db.execute(
+        text(
+            "UPDATE notes SET date = :to, text_enc = :text, prompt_enc = :prompt, prompt_ref_enc = :prompt_ref, "
+            "updated_at = :now WHERE user_id = :user AND uid = :uid AND date = :from AND text_enc = :old_text "
+            "AND (prompt_enc IS :old_prompt) AND (prompt_ref_enc IS :old_prompt_ref) "
+            "AND NOT EXISTS (SELECT 1 FROM days WHERE user_id = :user AND date IN (:from, :to) "
+            "AND locked_at IS NOT NULL) "
+            "AND (SELECT count(*) FROM notes WHERE user_id = :user AND date = :to) < :limit"
+        ).bindparams(bindparam("now", type_=UtcDateTime())),
+        {"to": to, "from": row.date, "user": account_id, "uid": uid, "now": now(), "limit": NOTES_PER_DAY,
+         "text": sealed("text", view["text"]), "prompt": sealed("prompt", view["prompt"]),
+         "prompt_ref": sealed("prompt_ref", view["prompt_id"]), "old_text": row.text_enc,
+         "old_prompt": row.prompt_enc, "old_prompt_ref": row.prompt_ref_enc},
+    )
+    if moved.rowcount == 1 and row.photo_id is not None:
+        _move_photo_along(db, account_id, dek, row.photo_id, row.date, to)
+    db.commit()
+    if moved.rowcount != 1:
+        again = _note_row(db, account_id, uid)
+        if again is None:
+            raise error("not_found", "Not found.", 404)
+        ensure_open(db, account_id, row.date)
+        ensure_open(db, account_id, to)
+        if again.date == row.date and db.scalar(
+                select(func.count()).select_from(Note).where(Note.user_id == account_id, Note.date == to)
+        ) >= NOTES_PER_DAY:
+            raise error("too_many_notes", "There are as many notes on this day as there may be.", 409,
+                        max=NOTES_PER_DAY)
+        raise error("busy", "nexdiary is busy. Try again in a moment.", 503)
+    found = _note_row(db, account_id, uid)
+    assert found is not None
+    return _note_view(account_id, dek, found)
+
+
+def _move_photo_along(db: Session, account_id: int, dek: bytes, photo: str, old: str, new: str) -> None:
+    """The photo of a moved note takes the new day, unless it would leave something behind: another note on the old
+    day that holds it, or the cover of the old day. Then it stays where it is (the note still shows it)."""
+    from .photos import PHOTOS_PER_DAY
+
+    # The moved note itself is on the new day already: what is found on the old day is another note.
+    if db.scalar(select(Note.id).where(Note.user_id == account_id, Note.photo_id == photo, Note.date == old)
+                 .limit(1)) is not None:
+        return
+    sealed = db.scalar(select(Day.content_enc).where(Day.user_id == account_id, Day.date == old))
+    if sealed is not None and _is_cover(account_id, dek, sealed, old, photo):
+        return
+    db.execute(
+        text(
+            "UPDATE photos SET date = :new WHERE user_id = :user AND uid = :uid AND date = :old "
+            "AND (SELECT count(*) FROM photos WHERE user_id = :user AND date = :new) < :limit"
+        ),
+        {"new": new, "old": old, "user": account_id, "uid": photo, "limit": PHOTOS_PER_DAY},
+    )
 
 
 # --- Days -----------------------------------------------------------------------------------------------------------
@@ -609,7 +869,7 @@ def _readable_content(account_id: int, dek: bytes, day: str, sealed: bytes) -> d
 
 
 def _day_view(day: str, content: dict[str, Any] | None, created: datetime, updated: datetime, revision: int,
-              photo_ids: set[str]) -> dict[str, Any]:
+              photo_ids: set[str], locked_at: datetime | None = None) -> dict[str, Any]:
     broken = content is None
     content = content or empty_day()
     cover, chosen = effective_cover(day, content, photo_ids)
@@ -625,12 +885,14 @@ def _day_view(day: str, content: dict[str, Any] | None, created: datetime, updat
         "words": words_in(content["text"]),
         "unreadable": broken,
         "revision": revision,
+        "locked": locked_at is not None,
+        "locked_at": locked_at.isoformat() if locked_at else None,
         "created_at": created.isoformat(),
         "updated_at": updated.isoformat(),
     }
 
 
-_DAY_COLUMNS = (Day.id, Day.date, Day.content_enc, Day.revision, Day.created_at, Day.updated_at)
+_DAY_COLUMNS = (Day.id, Day.date, Day.content_enc, Day.revision, Day.created_at, Day.updated_at, Day.locked_at)
 
 
 def day_exists(db: Session, account_id: int, day: str) -> bool:
@@ -642,7 +904,7 @@ def get_day(db: Session, account_id: int, dek: bytes, day: str) -> dict[str, Any
     if row is None:
         return None
     return _day_view(day, _readable_content(account_id, dek, day, row.content_enc), row.created_at, row.updated_at,
-                     row.revision, photo_ids_of(db, account_id))
+                     row.revision, photo_ids_of(db, account_id), row.locked_at)
 
 
 def change_day(db: Session, account_id: int, dek: bytes, day: str,
@@ -661,6 +923,8 @@ def change_day(db: Session, account_id: int, dek: bytes, day: str,
             standing_revision = row.revision if row is not None else -1
             if standing_revision != base_revision:
                 raise error("day_changed", "This day was changed meanwhile.", 409, revision=standing_revision)
+        if row is not None and row.locked_at is not None:
+            raise locked_error()
         moment = now()
         if row is None:
             content = apply(empty_day())
@@ -681,7 +945,8 @@ def change_day(db: Session, account_id: int, dek: bytes, day: str,
             sealed = vault.seal_json(dek, content, _day_aad(account_id, day))
             written = db.execute(
                 update(Day)
-                .where(Day.id == row.id, Day.revision == row.revision)
+                # Not onto a day locked since it was read: that one is read again, and refused.
+                .where(Day.id == row.id, Day.revision == row.revision, Day.locked_at.is_(None))
                 .values(content_enc=sealed, revision=row.revision + 1, updated_at=moment)
             )
             growth = len(sealed) - len(row.content_enc)
@@ -767,9 +1032,10 @@ def check_cover(db: Session, account_id: int, day: str, cover: Any) -> str | Non
 
 def delete_day(db: Session, account_id: int, day: str) -> None:
     """The page of the day; its notes stay (the raw notes are always kept)."""
-    gone = db.execute(delete(Day).where(Day.user_id == account_id, Day.date == day))
+    gone = db.execute(delete(Day).where(Day.user_id == account_id, Day.date == day, Day.locked_at.is_(None)))
     db.commit()
     if gone.rowcount != 1:
+        ensure_open(db, account_id, day)
         raise error("not_found", "Not found.", 404)
 
 
@@ -786,7 +1052,8 @@ def list_days(db: Session, account_id: int, dek: bytes, *, before: str | None, l
         out.append({"date": row.date, "title": shown["title"], "tags": shown["tags"],
                     "words": words_in(shown["text"]), "values": shown["values"],
                     "cover": effective_cover(row.date, shown, photo_ids)[0],
-                    "written_by": shown["written_by"], "unreadable": content is None})
+                    "written_by": shown["written_by"], "unreadable": content is None,
+                    "locked": row.locked_at is not None})
     return out
 
 
@@ -808,6 +1075,43 @@ def streak(db: Session, account_id: int, dek: bytes, today: date) -> int:
         count += 1
         cursor -= timedelta(days=1)
     return count
+
+
+# --- Catching up -----------------------------------------------------------------------------------------------------
+
+#: How far back "days with notes and without a page" look, and how much of the first note is shown of each.
+CATCH_UP_DAYS = 60
+START_MAX = 140
+
+
+def catch_up(db: Session, account_id: int, dek: bytes, before: date) -> dict[str, Any]:
+    """The own days in the ``CATCH_UP_DAYS`` before ``before`` that have notes and no page, newest first: the date, how
+    many notes, and the start of the first one. ``before`` itself (the day being kept) is not among them: it is still
+    open. A day that holds only values or tags is not a page."""
+    since = (before - timedelta(days=CATCH_UP_DAYS)).isoformat()
+    rows = db.execute(
+        select(Note.date, func.count(Note.id).label("n")).where(Note.user_id == account_id, Note.date >= since,
+                                                                  Note.date < before.isoformat())
+        .group_by(Note.date).order_by(Note.date.desc())
+    ).all()
+    dates = [row.date for row in rows]
+    written: set[str] = set()
+    if dates:
+        for day in db.execute(select(Day.date, Day.content_enc).where(Day.user_id == account_id,
+                                                                      Day.date.in_(dates))):
+            if has_page(_readable_content(account_id, dek, day.date, day.content_enc)):
+                written.add(day.date)
+    days = []
+    for row in rows:
+        if row.date in written:
+            continue
+        start = ""
+        for note in list_notes(db, account_id, dek, row.date)[:5]:
+            if note["text"] and not note["unreadable"]:
+                start = excerpt(note["text"], START_MAX)
+                break
+        days.append({"date": row.date, "notes": int(row.n), "start": start})
+    return {"count": len(days), "days": days}
 
 
 # --- Drafts ---------------------------------------------------------------------------------------------------------
@@ -845,6 +1149,7 @@ def save_draft(db: Session, account_id: int, dek: bytes, day: str, draft: dict[s
                base_revision: int) -> dict[str, Any]:
     """Keeps the draft of a day, replacing the one before (one statement: two tabs typing at once leave one), while
     the person's storage has room for it (``quota``; the draft it replaces does not count)."""
+    ensure_open(db, account_id, day)
     moment = now()
     sealed = vault.seal_json(dek, draft, _draft_aad(account_id, day))
     limit = quota.limit_bytes(db)
@@ -854,6 +1159,7 @@ def save_draft(db: Session, account_id: int, dek: bytes, day: str, draft: dict[s
             "SELECT :user, :date, :content, :base, :now "
             f"WHERE (:quota IS NULL OR {quota.USED} - coalesce((SELECT length(content_enc) FROM drafts "
             "WHERE user_id = :user AND date = :date), 0) + length(:content) <= :quota) "
+            "AND NOT EXISTS (SELECT 1 FROM days WHERE user_id = :user AND date = :date AND locked_at IS NOT NULL) "
             "ON CONFLICT (user_id, date) DO UPDATE SET content_enc = excluded.content_enc, "
             "base_revision = excluded.base_revision, updated_at = excluded.updated_at"
         ).bindparams(bindparam("now", type_=UtcDateTime())),
@@ -861,6 +1167,7 @@ def save_draft(db: Session, account_id: int, dek: bytes, day: str, draft: dict[s
     )
     db.commit()
     if written.rowcount != 1:
+        ensure_open(db, account_id, day)
         raise quota.full(db)
     return {**draft, "base_revision": base_revision, "updated_at": moment.isoformat()}
 
@@ -888,6 +1195,7 @@ def get_draft(db: Session, account_id: int, dek: bytes, day: str) -> dict[str, A
 
 
 def delete_draft(db: Session, account_id: int, day: str) -> None:
+    ensure_open(db, account_id, day)
     db.execute(delete(Draft).where(Draft.user_id == account_id, Draft.date == day))
     db.commit()
 

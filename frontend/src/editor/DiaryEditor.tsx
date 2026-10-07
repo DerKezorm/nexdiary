@@ -21,10 +21,11 @@ import {
 import { lift } from '@milkdown/kit/prose/commands'
 import { $prose, getMarkdown } from '@milkdown/kit/utils'
 import type { EditorState } from '@milkdown/kit/prose/state'
-import { Plugin, PluginKey, TextSelection } from '@milkdown/kit/prose/state'
+import { Plugin, PluginKey, Selection, TextSelection } from '@milkdown/kit/prose/state'
 import type { EditorView } from '@milkdown/kit/prose/view'
 import { Bold, Heading2, Italic, List, Quote, Undo2, type LucideIcon } from 'lucide-react'
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 
 import { tame } from '../lib/markdown'
@@ -34,6 +35,10 @@ export type DiaryEditorHandle = {
   /** A question as a subheading at the end, and the caret on a fresh line below it (the writing prompts). */
   insertHeading: (text: string) => void
   focus: () => void
+  /** The caret at the very end of the text, in focus (to go on writing there). */
+  moveToEnd: () => void
+  /** The view of the editor for whoever must reach into it: the page, and the tests with their key presses. */
+  withView: (action: (view: EditorView) => void) => void
   /** The text as it stands this moment. `onChange` comes a little after the typing (Milkdown waits for a pause);
    * whoever saves asks here, so the last words typed before a tap on "Save" are not lost. */
   getMarkdown: () => string | null
@@ -62,7 +67,7 @@ function activeOf(state: EditorState): Active {
     italic: markActive(state, 'emphasis'),
     heading: state.selection.$from.parent.type.name === 'heading',
     quote: within(state, 'blockquote'),
-    list: within(state, 'bullet_list'),
+    list: within(state, 'bullet_list') || within(state, 'ordered_list'),
   }
 }
 
@@ -72,6 +77,7 @@ export function DiaryEditor({
   onEmptyChange,
   placeholder,
   label,
+  toolbarHost,
   ref,
 }: {
   value: string
@@ -80,6 +86,9 @@ export function DiaryEditor({
   onEmptyChange?: (empty: boolean) => void
   placeholder: string
   label: string
+  /** Where the bar of formats goes (the page's sticky top bar, so that both stay in view together). Left out, it
+   * stands above the text and keeps to the top on its own while the page scrolls. */
+  toolbarHost?: HTMLElement | null
   ref?: Ref<DiaryEditorHandle>
 }) {
   const { t } = useTranslation()
@@ -190,6 +199,12 @@ export function DiaryEditor({
 
   useImperativeHandle(ref, () => ({
     focus: () => withView((view) => view.focus()),
+    moveToEnd: () =>
+      withView((view) => {
+        view.dispatch(view.state.tr.setSelection(Selection.atEnd(view.state.doc)).scrollIntoView())
+        view.focus()
+      }),
+    withView,
     getMarkdown: () => {
       const instance = editor.current
       return instance ? instance.action(getMarkdown()).replace(/\s+$/, '') : null
@@ -233,9 +248,8 @@ export function DiaryEditor({
     { icon: Undo2, label: t('editor.undo'), on: false, run: () => run((c) => c.call(undoCommand.key)) },
   ]
 
-  return (
-    <div>
-      <div role="toolbar" aria-label={t('editor.tools')} className="sticky top-14 z-10 -mx-1 mb-3 flex gap-0.5 rounded-full border border-line bg-sheet/95 p-1 backdrop-blur lg:top-0">
+  const bar = (
+      <div role="toolbar" aria-label={t('editor.tools')} className={`${toolbarHost ? 'mb-2' : 'sticky top-14 z-10 -mx-1 mb-3 lg:top-0'} flex gap-0.5 rounded-full border border-line bg-sheet/95 p-1 backdrop-blur`}>
         {tools.map(({ icon: Icon, label: name, on, run: act }) => (
           <button
             key={name}
@@ -252,6 +266,11 @@ export function DiaryEditor({
           </button>
         ))}
       </div>
+  )
+
+  return (
+    <div>
+      {toolbarHost ? createPortal(bar, toolbarHost) : bar}
       <div className="relative">
         {empty && (
           <div aria-hidden className="prose-diary pointer-events-none absolute inset-0 text-muted">

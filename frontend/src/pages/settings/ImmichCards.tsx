@@ -39,7 +39,7 @@ export function ImmichCard() {
   if (!state.allowed)
     return (
       <Card id="immich" icon={Image} title={t('settings.immich.title')}>
-        <p className="text-sm text-ink-2">{t('settings.immich.closed')}</p>
+        <p className="text-sm text-ink-2">{state.account_blocked ? t('settings.immich.accountClosed') : t('settings.immich.closed')}</p>
       </Card>
     )
 

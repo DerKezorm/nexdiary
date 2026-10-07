@@ -45,7 +45,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from ..errors import error
-from ..models import ImmichLink, utcnow
+from ..models import Account, ImmichLink, utcnow
 from . import brakes, outbound, photos, pictures, settings_service, vault
 
 logger = logging.getLogger("nexdiary.immich")
@@ -89,6 +89,7 @@ _KEY = re.compile(r"^[\x21-\x7e]+$")
 #: The English sentences for whoever uses the API directly; the interface has its own.
 MESSAGES = {
     "immich_closed": "Immich is not allowed on this server.",
+    "immich_not_allowed": "Your operator has not allowed Immich for your account.",
     "immich_host_not_allowed": "This Immich is not among the addresses the operator allowed.",
     "immich_host_invalid": "This is not a host name or address.",
     "immich_host_refused": "This address is never reached.",
@@ -224,6 +225,18 @@ def open_for_all(db: Session) -> bool:
     return bool(settings_service.get(db, "immich_allowed"))
 
 
+def allowed_for(db: Session, account_id: int) -> bool:
+    """Whether the operator allows this account a connection to Immich (on from the start; single accounts can be
+    taken out), on top of the switch for the whole server."""
+    return bool(db.scalar(select(Account.immich_allowed).where(Account.id == account_id)))
+
+
+def check_allowed(db: Session, account_id: int) -> None:
+    """403 ``immich_not_allowed``; every route that reaches an Immich asks for the server first, then this."""
+    if not allowed_for(db, account_id):
+        raise fail("immich_not_allowed", 403)
+
+
 # --- The person's link ----------------------------------------------------------------------------------------------
 
 
@@ -275,6 +288,9 @@ def state(db: Session, account_id: int, dek_of: Callable[[], bytes]) -> dict[str
     """What the card of the person shows. With the bolt closed: only that, nothing of the link."""
     if not open_for_all(db):
         return {"allowed": False, "connected": False}
+    if not allowed_for(db, account_id):
+        # Nothing of the link: the operator took Immich from this account.
+        return {"allowed": False, "connected": False, "account_blocked": True}
     link = load(db, account_id, dek_of())
     if link is None:
         return {"allowed": True, "connected": False, "url": "", "key_set": False, "suggest": True, "email": "",
@@ -329,6 +345,7 @@ def save(db: Session, account_id: int, dek: bytes, *, url: str | None, key: str 
     changed address would carry the stored key to whatever host it names."""
     if not open_for_all(db):
         raise fail("immich_closed", 403)
+    check_allowed(db, account_id)
     current = load(db, account_id, dek)
     next_url = check_url(url) if url is not None else (current.url if current else "")
     if not next_url:
@@ -357,6 +374,7 @@ def save(db: Session, account_id: int, dek: bytes, *, url: str | None, key: str 
 def _usable(db: Session, account_id: int, dek: bytes) -> Link:
     if not open_for_all(db):
         raise fail("immich_closed", 403)
+    check_allowed(db, account_id)
     link = load(db, account_id, dek)
     if link is None or not link.key:
         raise fail("immich_not_connected", 409)

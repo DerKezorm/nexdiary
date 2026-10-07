@@ -11,6 +11,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { ApiError, diaryApi, journalApi, photosApi, photoUrl, sharingApi, type DayPage, type DayShares, type ImmichPhoto, type JournalDay, type Note, type Photo, type ValueDef } from '../api/client'
 import { Avatar } from '../components/Avatar'
+import { LockDialog, LockedMark } from '../components/LockDay'
 import { Markdown } from '../components/Markdown'
 import { ShareDialog } from '../components/ShareDialog'
 import { YearAgo } from '../components/YearAgo'
@@ -35,6 +36,7 @@ export function EntryPage() {
   const [problem, setProblem] = useState<string | null>(null)
   const [raw, setRaw] = useState(false)
   const [share, setShare] = useState(false)
+  const [locking, setLocking] = useState(false)
   const [picking, setPicking] = useState(false)
   const [uploading, setUploading] = useState(false)
   // The photos of the day in the own Immich, asked for only while the cover is being chosen.
@@ -135,10 +137,19 @@ export function EntryPage() {
         <Link to="/tagebuch" className="text-sm font-semibold text-muted hover:text-ink">
           {t('entry.back')}
         </Link>
-        <div className="flex gap-2">
-          <Link to={`/tag/${date}/schreiben`} className="inline-flex h-8 items-center justify-center gap-2 rounded-full px-3.5 text-sm font-semibold text-ink-2 transition hover:bg-sheet-2">
-            <PenLine size={15} aria-hidden /> {t('entry.edit')}
-          </Link>
+        <div className="flex flex-wrap justify-end gap-2">
+          {day.locked ? (
+            <LockedMark label className="h-8 px-3.5 text-sm font-semibold text-muted" />
+          ) : (
+            <>
+              <Link to={`/tag/${date}/schreiben`} className="inline-flex h-8 items-center justify-center gap-2 rounded-full px-3.5 text-sm font-semibold text-ink-2 transition hover:bg-sheet-2">
+                <PenLine size={15} aria-hidden /> {t('entry.edit')}
+              </Link>
+              <button type="button" onClick={() => setLocking(true)} className="inline-flex h-8 items-center justify-center gap-2 rounded-full px-3.5 text-sm font-semibold text-ink-2 transition hover:bg-sheet-2">
+                <Lock size={15} aria-hidden /> {t('lock.action')}
+              </button>
+            </>
+          )}
           <button type="button" onClick={() => setShare(true)} className="inline-flex h-8 items-center justify-center gap-2 rounded-full bg-accent-soft px-3.5 text-sm font-semibold text-accent transition hover:brightness-[0.98]">
             <Share2 size={15} aria-hidden /> {t('entry.share')}
           </button>
@@ -148,9 +159,11 @@ export function EntryPage() {
       <article className="card overflow-hidden">
         <div className="group relative">
           <CoverImage cover={day.cover} large className="aspect-[16/8] w-full" />
-          <button type="button" onClick={() => setPicking(true)} className="absolute right-3 bottom-3 inline-flex items-center gap-1.5 rounded-full bg-black/45 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur hover:bg-black/60">
-            <ImageIcon size={14} aria-hidden /> {t('entry.changeCover')}
-          </button>
+          {!day.locked && (
+            <button type="button" onClick={() => setPicking(true)} className="absolute right-3 bottom-3 inline-flex items-center gap-1.5 rounded-full bg-black/45 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur hover:bg-black/60">
+              <ImageIcon size={14} aria-hidden /> {t('entry.changeCover')}
+            </button>
+          )}
         </div>
         <div className="px-6 py-8 sm:px-12 sm:py-10">
           <p className="text-sm font-semibold tracking-wide text-muted uppercase">{longDate(day.date, i18n.language, true)}</p>
@@ -206,6 +219,11 @@ export function EntryPage() {
                   <Lock size={14} aria-hidden /> {t('entry.onlyYou')}
                 </>
               )}
+              {day.locked && day.locked_at && (
+                <span className="ml-3 inline-flex items-center gap-1.5" data-locked-since>
+                  <Lock size={14} aria-hidden /> {t('lock.since', { date: new Intl.DateTimeFormat(i18n.language, { dateStyle: 'long', timeZone: zone || undefined }).format(new Date(day.locked_at)) })}
+                </span>
+              )}
             </span>
             {notes.length > 0 && (
               <button type="button" onClick={() => setRaw(!raw)} aria-expanded={raw} className="inline-flex items-center gap-1 font-semibold hover:text-ink">
@@ -243,7 +261,18 @@ export function EntryPage() {
           }}
         />
       )}
-      {picking && (
+      {locking && (
+        <LockDialog
+          date={date}
+          onClose={() => setLocking(false)}
+          onLocked={(locked) => {
+            setData((current) => (current ? { ...current, day: locked } : current))
+            setLocking(false)
+            say(t('lock.done'))
+          }}
+        />
+      )}
+      {picking && !day.locked && (
         <CoverPicker
           date={date}
           tags={day.tags}

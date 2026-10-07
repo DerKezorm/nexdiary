@@ -727,3 +727,48 @@ def test_a_certificate_the_server_does_not_trust_is_said_as_such(client: TestCli
 
     monkeypatch.setattr(immich, "transport", httpx.MockTransport(refuse))
     assert code(client.get("/api/immich/photos")) == (502, "immich_tls")
+
+
+def test_the_operator_can_take_immich_from_single_accounts(client: TestClient, ready: tuple[str, list[Asset]],
+                                                           fake: FakeImmich) -> None:
+    """On for every account from the start (the server's bolt aside); taken away, every route that reaches the Immich
+    refuses before a request goes out, the link stays sealed where it is, and others are not touched."""
+    asset = ready[1][0].id
+    with person("ben") as ben:
+        own = made_key()
+        fake.library(own, Asset(taken="2026-10-06T09:00:00+00:00"))
+        connect(ben, fake, own)
+        ben_id = next(row["id"] for row in client.get("/api/accounts").json() if row["name"] == "ben")
+        assert client.put(f"/api/accounts/{ben_id}/permissions", json={"immich_allowed": False}).status_code == 200
+        before = len(fake.requests)
+        assert ben.get("/api/immich").json() == {"allowed": False, "connected": False, "account_blocked": True}
+        for refused in (ben.get("/api/immich/photos"), ben.post("/api/immich/probe"),
+                        ben.get(f"/api/immich/photos/{asset}/thumbnail"), ben.post(f"/api/immich/photos/{asset}", json={}),
+                        ben.put("/api/immich", json={"url": address(fake), "key": made_key()})):
+            assert code(refused) == (403, "immich_not_allowed")
+        assert len(fake.requests) == before
+        # The others keep theirs; a person can still disconnect.
+        assert client.get("/api/immich/photos").status_code == 200
+        assert ben.delete("/api/immich").status_code == 204
+        # Given back: connect again.
+        assert client.put(f"/api/accounts/{ben_id}/permissions", json={"immich_allowed": True}).status_code == 200
+        connect(ben, fake, own)
+        assert ben.get("/api/immich/photos").status_code == 200
+
+
+def test_a_closed_bolt_is_said_before_the_account_is(client: TestClient, operator: Account, fake: FakeImmich) -> None:
+    client.put(f"/api/accounts/{operator.id}/permissions", json={"immich_allowed": False})
+    assert client.get("/api/immich").json() == {"allowed": False, "connected": False}
+    assert code(client.get("/api/immich/photos")) == (403, "immich_closed")
+
+
+def test_a_photo_cannot_be_taken_into_a_locked_day(client: TestClient, ready: tuple[str, list[Asset]],
+                                                   fake: FakeImmich) -> None:
+    asset = ready[1][0].id
+    assert client.put(f"/api/days/{DAY}", json={"title": "Zu", "text": "Ein Tag."}).status_code == 200
+    assert client.post(f"/api/days/{DAY}/lock").status_code == 200
+    assert code(client.post(f"/api/immich/photos/{asset}", json={"date": DAY})) == (409, "day_locked")
+    assert code(client.post(f"/api/immich/photos/{asset}", json={"date": DAY, "note": True})) == (409, "day_locked")
+    assert client.get("/api/photos", params={"date": DAY}).json() == []
+    # Said before the picture is fetched from Immich at all.
+    assert fake.calls("/original") == 0
