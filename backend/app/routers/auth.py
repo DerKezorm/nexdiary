@@ -392,6 +392,8 @@ PROFILE: dict[str, tuple[Any, ...]] = {
     "journal": ("blog", "timeline"),
     #: Where the time zone came from: the browser in use, or the person's own choice, which no browser overrides.
     "timezone_source": ("browser", "manual"),
+    #: The AI for this person (Account, AI): off, no button to write a day up appears and the server refuses (403).
+    "ai": (True, False),
 }
 
 

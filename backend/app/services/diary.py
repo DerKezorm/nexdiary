@@ -385,23 +385,29 @@ def _note_view(account_id: int, dek: bytes, row: Any) -> dict[str, Any]:
         text_ = vault.open_text(dek, row.text_enc, _note_aad(account_id, row.uid, row.date, "text"))
         prompt = vault.open_text(dek, row.prompt_enc, _note_aad(account_id, row.uid, row.date, "prompt")) \
             if row.prompt_enc is not None else None
+        prompt_id = vault.open_text(dek, row.prompt_ref_enc, _note_aad(account_id, row.uid, row.date, "prompt_ref")) \
+            if row.prompt_ref_enc is not None else None
         broken = False
     except vault.SealError:
         unreadable("notes")
-        text_, prompt, broken = "", None, True
+        text_, prompt, prompt_id, broken = "", None, None, True
     return {
         "id": row.uid,
         "date": row.date,
         "text": text_,
         "unreadable": broken,
         "prompt": prompt,
+        "prompt_id": prompt_id,
         "photo_id": row.photo_id,
         "created_at": row.created_at.isoformat(),
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
     }
 
 
-_NOTE_COLUMNS = (Note.uid, Note.date, Note.text_enc, Note.prompt_enc, Note.photo_id, Note.created_at, Note.updated_at)
+_NOTE_COLUMNS = (Note.uid, Note.date, Note.text_enc, Note.prompt_enc, Note.prompt_ref_enc, Note.photo_id,
+                 Note.created_at, Note.updated_at)
+#: The id of a question a note answers: a shipped one (``group.index``) or an own one (``own.<hex>``).
+PROMPT_ID = re.compile(r"^(?:[a-z]{2,16}\.\d{1,3}|own\.[0-9a-f]{12})$")
 
 
 def list_notes(db: Session, account_id: int, dek: bytes, day: str) -> list[dict[str, Any]]:
@@ -443,7 +449,8 @@ def check_own_photo(db: Session, account_id: int, uid: str | None) -> str | None
 
 
 def add_note(db: Session, account_id: int, dek: bytes, uid: str, day: str, note_text: str,
-             prompt: str | None, photo_id: str | None = None) -> tuple[dict[str, Any], bool]:
+             prompt: str | None, photo_id: str | None = None,
+             prompt_id: str | None = None) -> tuple[dict[str, Any], bool]:
     """The note, and whether it is new. The same id with the same text again returns the note that stands (a double
     click, a retry after a lost answer); the same id with another text is refused (``note_id_taken``): returning the
     old note would let the browser think the new text was kept. A note with a photo may be without words."""
@@ -452,19 +459,23 @@ def add_note(db: Session, account_id: int, dek: bytes, uid: str, day: str, note_
     if not note_text and photo_id is None:
         raise error("note_empty", "A note needs a text.", 422)
     prompt = clean_line(prompt, PROMPT_MAX, "prompt_too_long") if prompt else None
+    if prompt_id is not None and (prompt is None or not PROMPT_ID.match(prompt_id)):
+        raise error("invalid_input", "The input is not valid.", 422, fields=["prompt_id"])
     existing = _note_row(db, account_id, uid)
     if existing is not None:
         return _same_note(account_id, dek, existing, note_text, photo_id), False
     inserted = db.execute(
         text(
-            "INSERT INTO notes (uid, user_id, date, created_at, text_enc, prompt_enc, photo_id) "
-            "SELECT :uid, :user, :date, :now, :text, :prompt, :photo "
+            "INSERT INTO notes (uid, user_id, date, created_at, text_enc, prompt_enc, prompt_ref_enc, photo_id) "
+            "SELECT :uid, :user, :date, :now, :text, :prompt, :prompt_ref, :photo "
             "WHERE (SELECT count(*) FROM notes WHERE user_id = :user AND date = :date) < :limit "
             "ON CONFLICT (user_id, uid) DO NOTHING"
         ).bindparams(bindparam("now", type_=UtcDateTime())),
         {"uid": uid, "user": account_id, "date": day, "now": now(), "limit": NOTES_PER_DAY, "photo": photo_id,
          "text": vault.seal_text(dek, note_text, _note_aad(account_id, uid, day, "text")),
-         "prompt": vault.seal_text(dek, prompt, _note_aad(account_id, uid, day, "prompt")) if prompt else None},
+         "prompt": vault.seal_text(dek, prompt, _note_aad(account_id, uid, day, "prompt")) if prompt else None,
+         "prompt_ref": vault.seal_text(dek, prompt_id, _note_aad(account_id, uid, day, "prompt_ref"))
+         if prompt_id else None},
     )
     if inserted.rowcount == 1:
         # In the same transaction: a photo on a note is a note's for good, never a photo of the day.
@@ -793,7 +804,7 @@ def _draft_aad(account_id: int, day: str) -> bytes:
 
 def clean_draft(db: Session, account_id: int, day: str, fields: dict[str, Any]) -> dict[str, Any]:
     """What a draft holds: title, text, tags and cover, cleaned and limited like the page itself."""
-    draft: dict[str, Any] = {"title": "", "text": "", "tags": [], "cover": None}
+    draft: dict[str, Any] = {"title": "", "text": "", "tags": [], "cover": None, "written_by": None, "ai_length": None}
     if fields.get("title") is not None:
         draft["title"] = clean_line(fields["title"], TITLE_MAX, "title_too_long")
     if fields.get("text") is not None:
@@ -802,6 +813,16 @@ def clean_draft(db: Session, account_id: int, day: str, fields: dict[str, Any]) 
         draft["tags"] = clean_tags(fields["tags"])
     if fields.get("cover") is not None:
         draft["cover"] = check_cover(db, account_id, day, fields["cover"])
+    # Whether the writing began as a suggestion of the AI, and how long it was asked for: kept with the draft, so a
+    # page closed and opened again still counts as written with the AI.
+    if fields.get("written_by") is not None:
+        if fields["written_by"] not in WRITTEN_BY:
+            raise error("invalid_input", "The input is not valid.", 422, fields=["written_by"])
+        draft["written_by"] = fields["written_by"]
+    if fields.get("ai_length") is not None:
+        if fields["ai_length"] not in ("short", "long"):
+            raise error("invalid_input", "The input is not valid.", 422, fields=["ai_length"])
+        draft["ai_length"] = fields["ai_length"]
     return draft
 
 
@@ -844,8 +865,10 @@ def get_draft(db: Session, account_id: int, dek: bytes, day: str) -> dict[str, A
     if photo is not None and photo not in photo_ids_of(db, account_id):
         # The photo was deleted since: the draft falls back to the suggestion, it never names a photo that is gone.
         cover = None
+    written_by = content.get("written_by") if content.get("written_by") in WRITTEN_BY else None
+    ai_length = content.get("ai_length") if content.get("ai_length") in ("short", "long") else None
     return {"title": content.get("title", ""), "text": content.get("text", ""), "tags": content.get("tags", []),
-            "cover": cover, "base_revision": row.base_revision,
+            "cover": cover, "written_by": written_by, "ai_length": ai_length, "base_revision": row.base_revision,
             "updated_at": row.updated_at.isoformat()}
 
 

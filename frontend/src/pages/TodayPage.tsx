@@ -3,15 +3,16 @@
  * or like a chat. Notes are thrown down here, changed and deleted; the values of the day are rated.
  *
  * Photos are taken or picked with the camera button beside the field (they go with the next note) and under "Fotos
- * von heute"; "Den Tag aufschreiben" leads to the writing page. What comes with later blocks has its place already and
- * stays empty until then: the question of the day (`PromptSlot`) and the photos from Immich.
+ * von heute"; "Den Tag aufschreiben" leads to the writing page, with the AI when the operator set one up and the person
+ * did not switch it off ("Ausformulieren": the writing page asks for the suggestion, never on its own). The question of
+ * the day stands under the field; its answer becomes a note with the question. The photos from Immich come later.
  */
-import { ArrowUp, Camera, Flame, ImagePlus, Loader2, PenLine, Trash2, X } from 'lucide-react'
+import { ArrowUp, Camera, Flame, ImagePlus, Loader2, MessageCircleQuestion, PenLine, Shuffle, Sparkles, Trash2, X } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
-import { photoUrl, type Note, type TodayData, type ValueDef } from '../api/client'
+import { photoUrl, type AiLength, type AiState, type Note, type TodayData, type ValueDef } from '../api/client'
 import { Dialog } from '../components/Dialog'
 import { Scale } from '../components/Scale'
 import { TagPicker } from '../components/TagPicker'
@@ -19,6 +20,8 @@ import { longDate, timeOf } from '../lib/dates'
 import { errorText } from '../lib/errors'
 import { PHOTO_ACCEPT } from '../lib/upload'
 import { PendingPhoto, usePendingPhoto } from '../components/PendingPhoto'
+import { aiHint } from '../lib/aiProviders'
+import { useAiState } from '../state/ai'
 import { useAuth } from '../state/auth'
 import { useToday, type TodayState } from '../state/today'
 
@@ -32,6 +35,7 @@ export function TodayPage({ now }: { now?: Date }) {
   const today = useToday()
   const { me } = useAuth()
   const [drawer, setDrawer] = useState(false)
+  const ai = useAiState()
   const { t } = useTranslation()
   const layout = me?.profile?.layout ?? 'page'
   const problem = today.problem && <Problem code={today.problem} values={today.problemValues} />
@@ -58,11 +62,13 @@ export function TodayPage({ now }: { now?: Date }) {
       <div className="page flex min-h-[calc(100dvh-5rem)] flex-col lg:min-h-dvh">
         <Header now={now} today={today} onDay={() => setDrawer(true)} />
         <div className="mb-3">
-          <FinishCard today={today} />
+          <FinishCard today={today} ai={ai} />
         </div>
         <div className="flex-1 pb-4">
           <Bubbles today={today} />
-          <PromptSlot />
+          <div className="mt-4">
+            <PromptCard today={today} />
+          </div>
         </div>
         <div className="sticky bottom-[4.5rem] z-20 bg-gradient-to-t from-paper via-paper to-transparent pt-6 pb-3 lg:bottom-0">
           {problem}
@@ -88,11 +94,11 @@ export function TodayPage({ now }: { now?: Date }) {
           <div className="space-y-4">
             <Capture today={today} />
             {problem}
-            <PromptSlot />
+            <PromptCard today={today} />
             <Timeline today={today} />
           </div>
           <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
-            <FinishCard today={today} />
+            <FinishCard today={today} ai={ai} />
             <ValuesBlock today={today} />
             <PhotosBlock today={today} />
             <TagsBlock today={today} />
@@ -106,29 +112,103 @@ export function TodayPage({ now }: { now?: Date }) {
       <Header now={now} today={today} />
       <Capture today={today} />
       {problem}
-      <PromptSlot />
+      <PromptCard today={today} />
       <Timeline today={today} />
       <PhotosBlock today={today} />
       <ValuesBlock today={today} />
       <TagsBlock today={today} />
-      <FinishCard today={today} />
+      <FinishCard today={today} ai={ai} />
     </div>
   )
 }
 
-/** The question of the day: comes with the writing prompts. */
-function PromptSlot() {
-  return null
+const PRIMARY = 'inline-flex h-11 items-center justify-center gap-2 rounded-full bg-accent px-5 text-[0.95rem] font-semibold text-accent-ink shadow-soft transition hover:brightness-105 disabled:pointer-events-none disabled:opacity-50'
+const SOFT = 'inline-flex h-11 items-center justify-center gap-2 rounded-full bg-accent-soft px-5 text-[0.95rem] font-semibold text-accent transition hover:brightness-[0.98]'
+const SMALL_PRIMARY = 'inline-flex h-8 items-center justify-center gap-2 rounded-full bg-accent px-3.5 text-sm font-semibold text-accent-ink shadow-soft transition hover:brightness-105 disabled:pointer-events-none disabled:opacity-50'
+const SMALL_GHOST = 'inline-flex h-8 items-center justify-center gap-2 rounded-full px-3.5 text-sm font-semibold text-ink-2 transition hover:bg-sheet-2'
+
+/** The question of the day, as the mock: a small push for days when nothing comes to mind. The same all day; "Andere
+ * Frage" moves it on for today. The answer becomes a note with its question, and the next question comes. */
+function PromptCard({ today }: { today: TodayState }) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const question = today.data?.question
+  if (!question) return null
+  const answer = async () => {
+    if (!text.trim() || busy) return
+    setBusy(true)
+    if (await today.addNote(text, null, question)) {
+      setText('')
+      setOpen(false)
+    }
+    setBusy(false)
+  }
+  return (
+    <section className="rounded-[1.25rem] border border-dashed border-accent/40 bg-accent-soft/40 px-5 py-4" aria-label={t('today.promptTitle')}>
+      <div className="flex items-start gap-3">
+        <MessageCircleQuestion size={20} className="mt-0.5 shrink-0 text-accent" aria-hidden />
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-bold tracking-wide text-accent uppercase">{t('today.promptTitle')}</p>
+          <p className="mt-0.5 font-serif text-lg leading-snug text-ink" data-question>
+            {question.text}
+          </p>
+          {open ? (
+            <div className="mt-3">
+              <textarea
+                autoFocus
+                rows={2}
+                value={text}
+                maxLength={5000}
+                aria-label={t('today.promptLabel')}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                    e.preventDefault()
+                    void answer()
+                  }
+                }}
+                placeholder={t('today.promptPlaceholder')}
+                className="w-full resize-none rounded-xl border border-line bg-sheet px-3 py-2 text-ink placeholder:text-muted focus:border-accent focus:outline-none"
+              />
+              <div className="mt-2 flex gap-2">
+                <button type="button" className={SMALL_PRIMARY} onClick={() => void answer()} disabled={!text.trim() || busy}>
+                  {t('today.add')}
+                </button>
+                <button type="button" className={SMALL_GHOST} onClick={() => setOpen(false)}>
+                  {t('common.cancel')}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button type="button" className={SMALL_PRIMARY} onClick={() => setOpen(true)}>
+                {t('today.promptAnswer')}
+              </button>
+              <button type="button" className={SMALL_GHOST} onClick={() => void today.anotherQuestion()}>
+                <Shuffle size={14} aria-hidden /> {t('today.promptOther')}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  )
 }
 
-/** "Den Tag aufschreiben", as the mock's finish card. The button "Ausformulieren" of the assistant comes here before
- * "Selbst schreiben" with the AI; a day that has a page already is written on ("Weiterschreiben"). */
-function FinishCard({ today }: { today: TodayState }) {
+/** "Den Tag aufschreiben", as the mock's finish card: "Ausformulieren" with the AI (short or long) above "Selbst
+ * schreiben" when there is an AI for this person and notes to write from; a day that has a page already is written on
+ * ("Weiterschreiben"), without the AI, which would write it anew. */
+function FinishCard({ today, ai }: { today: TodayState; ai: AiState | null }) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
+  const [length, setLength] = useState<AiLength>('long')
   const data = today.data as TodayData
   const count = data.notes.length
   const written = Boolean(data.day?.text.trim())
   const text = written ? t('write.finishExisting') : count > 0 ? t('write.finishText', { count }) : t('write.finishNoNotes')
+  const aiOn = Boolean(ai?.available) && !written && data.notes.some((note) => note.text && !note.unreadable)
   return (
     <section id="aufschreiben" className="card scroll-mt-6 overflow-hidden">
       <div className="bg-accent-soft/70 px-5 pt-5 pb-4">
@@ -136,10 +216,34 @@ function FinishCard({ today }: { today: TodayState }) {
         <p className="mt-1 text-sm text-ink-2">{text}</p>
       </div>
       <div className="space-y-3 p-5">
-        <Link
-          to={`/tag/${data.date}/schreiben`}
-          className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-accent px-5 text-[0.95rem] font-semibold text-accent-ink shadow-soft transition hover:brightness-105"
-        >
+        {aiOn && ai && (
+          <>
+            <div className="flex gap-2">
+              {/* The press of the button: the writing page asks for the suggestion once, and forgets that it should. */}
+              <button type="button" className={`${PRIMARY} flex-1`} onClick={() => navigate(`/tag/${data.date}/schreiben`, { state: { formulate: length } })}>
+                <Sparkles size={18} aria-hidden /> {t('write.ai')}
+              </button>
+              <div role="radiogroup" aria-label={t('write.length')} className="flex rounded-full bg-sheet-2 p-1 text-sm font-semibold">
+                {(['short', 'long'] as const).map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    role="radio"
+                    aria-checked={length === value}
+                    onClick={() => setLength(value)}
+                    className={`rounded-full px-3 ${length === value ? 'bg-sheet text-ink shadow-sm' : 'text-muted'}`}
+                  >
+                    {value === 'short' ? t('write.lengthShort') : t('write.lengthLong')}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <p className="text-xs leading-relaxed text-muted">
+              {aiHint(ai, t)} {t('write.aiPromise')}
+            </p>
+          </>
+        )}
+        <Link to={`/tag/${data.date}/schreiben`} className={`${aiOn ? SOFT : PRIMARY} w-full`}>
           <PenLine size={18} aria-hidden /> {written ? t('write.continue') : t('write.self')}
         </Link>
       </div>

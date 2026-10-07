@@ -3,19 +3,21 @@
  * no menus. Where a phone starts (Settings, Look, "On the phone"). "Alles" leads into the whole app.
  *
  * The camera button takes or picks a photo for the next note; under the notes "Den Tag aufschreiben" leads to "Today".
- * The question of the day comes with the writing prompts; its place is marked below.
+ * Above the field stands the question of the day: tapped, the next note is the answer and keeps the question; the
+ * cross puts it away for this visit.
  */
-import { ArrowUp, Camera, Check, Flame, LayoutGrid, PenLine, X } from 'lucide-react'
+import { ArrowUp, Camera, Check, Flame, LayoutGrid, MessageCircleQuestion, PenLine, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 
-import { photoUrl } from '../api/client'
+import { photoUrl, type Question } from '../api/client'
 import { LogoMark } from '../components/Logo'
 import { PendingPhoto, usePendingPhoto } from '../components/PendingPhoto'
 import { longDate, timeOf } from '../lib/dates'
 import { errorText } from '../lib/errors'
 import { PHOTO_ACCEPT } from '../lib/upload'
+import { useAiState } from '../state/ai'
 import { useAuth } from '../state/auth'
 import { useToday } from '../state/today'
 
@@ -26,6 +28,11 @@ export function QuickPage() {
   // Text shared into nexdiary from another app arrives in the address; it is only put into the field.
   const [text, setText] = useState(() => (new URLSearchParams(window.location.search).get('text') ?? '').slice(0, 5000))
   const [sent, setSent] = useState(false)
+  /** The question the next note answers, while the person chose to answer it. */
+  const [asking, setAsking] = useState<Question | null>(null)
+  const [hidePrompt, setHidePrompt] = useState(false)
+  const ai = useAiState()
+  const question = today.data?.question
   const field = useRef<HTMLTextAreaElement>(null)
   const list = useRef<HTMLDivElement>(null)
   const file = useRef<HTMLInputElement>(null)
@@ -47,8 +54,9 @@ export function QuickPage() {
 
   const send = async () => {
     if (!text.trim() && !pending.photo) return
-    if (await today.addNote(text, pending.photo?.id ?? null)) {
+    if (await today.addNote(text, pending.photo?.id ?? null, asking)) {
       setText('')
+      setAsking(null)
       pending.sent()
       setSent(true)
       window.setTimeout(() => setSent(false), 900)
@@ -102,7 +110,7 @@ export function QuickPage() {
             <PenLine size={19} className="shrink-0 text-accent" aria-hidden />
             <span className="min-w-0 flex-1">
               <span className="block font-semibold">{t('quick.writeUp')}</span>
-              <span className="block text-xs text-muted">{t('quick.writeUpHint')}</span>
+              <span className="block text-xs text-muted">{ai?.available ? t('quick.writeUpHintAi') : t('quick.writeUpHint')}</span>
             </span>
             <span className="text-accent" aria-hidden>
               →
@@ -112,7 +120,26 @@ export function QuickPage() {
       </div>
 
       <div className="border-t border-line bg-sheet/95 px-3 pt-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur">
-        {/* The question of the day comes here with the writing prompts. */}
+        {!hidePrompt && question && (
+          <div className="mb-2 flex items-center gap-2 px-1">
+            <button
+              type="button"
+              aria-pressed={asking !== null}
+              aria-label={`${t('quick.promptAsk')}: ${question.text}`}
+              onClick={() => {
+                setAsking(asking ? null : question)
+                field.current?.focus()
+              }}
+              className={`flex min-w-0 flex-1 items-center gap-2 rounded-full px-3 py-1.5 text-left text-sm ${asking ? 'bg-accent text-accent-ink' : 'bg-accent-soft text-accent'}`}
+            >
+              <MessageCircleQuestion size={15} className="shrink-0" aria-hidden />
+              <span className="truncate font-serif">{question.text}</span>
+            </button>
+            <button type="button" onClick={() => (asking ? setAsking(null) : setHidePrompt(true))} className="rounded-full p-1.5 text-muted" aria-label={t('quick.promptHide')}>
+              <X size={15} />
+            </button>
+          </div>
+        )}
         {today.problem && (
           <p role="alert" className="mb-2 px-1 text-sm text-bad">
             {errorText(today.problem, today.problemValues)}
@@ -141,7 +168,7 @@ export function QuickPage() {
             rows={1}
             value={text}
             maxLength={5000}
-            aria-label={t('quick.placeholder')}
+            aria-label={asking ? t('quick.answerPlaceholder') : t('quick.placeholder')}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -150,7 +177,7 @@ export function QuickPage() {
               }
             }}
             enterKeyHint="send"
-            placeholder={t('quick.placeholder')}
+            placeholder={asking ? t('quick.answerPlaceholder') : t('quick.placeholder')}
             className="min-h-12 flex-1 resize-none rounded-3xl border border-line bg-paper px-4 py-3 text-[1.05rem] leading-snug text-ink placeholder:text-muted focus:border-accent focus:outline-none"
           />
           <button

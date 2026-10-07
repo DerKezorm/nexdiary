@@ -204,10 +204,12 @@ class Note(Base):
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
     updated_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
     text_enc: Mapped[bytes] = mapped_column(LargeBinary)
-    #: The question a note answers (writing prompts).
+    #: The question a note answers (writing prompts), as it was shown.
     prompt_enc: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     #: A photo that came with the note.
     photo_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    #: Which question that was (``schoen.0``, ``own.<hex>``), sealed too: "answered today" holds in every language.
+    prompt_ref_enc: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
 
 
 class ValueDef(Base):
@@ -271,6 +273,19 @@ class Draft(Base):
     date: Mapped[str] = mapped_column(String(10))
     content_enc: Mapped[bytes] = mapped_column(LargeBinary)
     base_revision: Mapped[int] = mapped_column(Integer, default=-1)
+    updated_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+
+class WritingPrompts(Base):
+    """The writing prompts a person chose, sealed like the diary: whether questions are shown, which groups, the own
+    questions (they say something about the person), and how often "another question" was asked on which day. One row
+    per person; a change is written only onto the revision it was read from."""
+
+    __tablename__ = "writing_prompts"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    content_enc: Mapped[bytes] = mapped_column(LargeBinary)
+    revision: Mapped[int] = mapped_column(Integer, default=0)
     updated_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
 
 
@@ -340,5 +355,6 @@ __all__ = [
     "ShareSeen",
     "UserKey",
     "ValueDef",
+    "WritingPrompts",
     "utcnow",
 ]

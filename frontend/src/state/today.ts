@@ -5,7 +5,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { ApiError, diaryApi, photosApi, type Note, type Photo, type TodayData } from '../api/client'
+import { ApiError, diaryApi, photosApi, promptsApi, type Note, type Photo, type Question, type TodayData } from '../api/client'
 import { newId } from '../lib/ids'
 import { uploadPhoto } from '../lib/upload'
 import { useAuth } from './auth'
@@ -68,23 +68,23 @@ export function useToday() {
    * text sent again (a double tap, a retry after a lost answer) goes out with the same id and stays one note. A text
    * changed after a send whose answer was lost gets a new id: the old id may already hold the old text.
    */
-  const addNote = useCallback(async (text: string, photoId: string | null = null): Promise<boolean> => {
+  const addNote = useCallback(async (text: string, photoId: string | null = null, prompt: Question | null = null): Promise<boolean> => {
     const clean = cleanNote(text)
     if ((!clean && !photoId) || sending.current) return false
     sending.current = true
     try {
-      const sent = `${clean}|${photoId ?? ''}`
+      const sent = `${clean}|${photoId ?? ''}|${prompt?.id ?? ''}`
       if (draftText.current !== null && draftText.current !== sent) draftId.current = newId()
       draftText.current = sent
       let note: Note
       try {
         // No date: the server keeps it on its own "today", which may have moved on since the page was loaded.
-        note = await diaryApi.addNote(draftId.current, clean, undefined, photoId)
+        note = await diaryApi.addNote(draftId.current, clean, undefined, photoId, prompt)
       } catch (error) {
         // The id holds another text already: this text is a note of its own.
         if (!(error instanceof ApiError && error.code === 'note_id_taken')) throw error
         draftId.current = newId()
-        note = await diaryApi.addNote(draftId.current, clean, undefined, photoId)
+        note = await diaryApi.addNote(draftId.current, clean, undefined, photoId, prompt)
       }
       if (note.text !== clean) {
         setProblem('note_id_taken')
@@ -92,7 +92,8 @@ export function useToday() {
       }
       draftId.current = newId()
       draftText.current = null
-      if (note.date !== shownDate) void load()
+      // An answer to the question of the day: the server asks the next one, which comes with the day loaded again.
+      if (note.date !== shownDate || prompt) void load()
       else setData((current) => (current && !current.notes.some((item) => item.id === note.id) ? { ...current, notes: [...current.notes, note] } : current))
       setProblem(null)
       return true
@@ -194,7 +195,19 @@ export function useToday() {
     }
   }, [load])
 
-  return { data, problem, problemValues, load, addNote, changeNote, deleteNote, rate, setTags, addPhoto, deletePhoto }
+  /** Another question of the day, kept by the server for the rest of the day. */
+  const anotherQuestion = useCallback(async () => {
+    try {
+      const { question } = await promptsApi.another()
+      setData((current) => (current ? { ...current, question } : current))
+      setProblem(null)
+    } catch (error) {
+      setProblem(codeOf(error))
+      setProblemValues(valuesOf(error))
+    }
+  }, [])
+
+  return { data, problem, problemValues, load, addNote, changeNote, deleteNote, rate, setTags, addPhoto, deletePhoto, anotherQuestion }
 }
 
 export type TodayState = ReturnType<typeof useToday>

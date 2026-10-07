@@ -1,9 +1,9 @@
 /**
  * The own account in tabs, as the mock (and nexlore): Profile (picture, display name, name, role, mail address),
- * Security (password, second factor, the link to the provider) and Connections (API tokens for programs). The tab
- * stands in the address (`?tab=`). Reminders and AI come with the blocks that build them.
+ * Security (password, second factor, the link to the provider), AI (the own switch, and what the operator set up)
+ * and Connections (API tokens for programs). The tab stands in the address (`?tab=`). Reminders come with their block.
  */
-import { Camera, KeyRound, Plug, ShieldCheck, Trash2, User } from 'lucide-react'
+import { Camera, KeyRound, Plug, ShieldCheck, Sparkles, Trash2, User } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
@@ -12,11 +12,13 @@ import { api, authApi, type Me, type Methods } from '../api/client'
 import { ApiTokens } from '../components/ApiTokens'
 import { Avatar } from '../components/Avatar'
 import { copyText } from '../lib/copy'
+import { providerName } from '../lib/aiProviders'
+import { useAiState } from '../state/ai'
 import { useAuth } from '../state/auth'
-import { Button, Card, Feedback, Input, saveAsFile, TabRow, useAction, type Tab } from './settings/ui'
+import { Button, Card, Feedback, Input, saveAsFile, TabRow, Toggle, useAction, type Tab } from './settings/ui'
 
-type Part = 'profile' | 'security' | 'connections'
-const PARTS: Part[] = ['profile', 'security', 'connections']
+type Part = 'profile' | 'security' | 'ai' | 'connections'
+const PARTS: Part[] = ['profile', 'security', 'ai', 'connections']
 
 export function AccountPage() {
   const { t } = useTranslation()
@@ -29,6 +31,7 @@ export function AccountPage() {
   const tabs: Tab<Part>[] = [
     { value: 'profile', label: t('me.tabs.profile'), icon: User },
     { value: 'security', label: t('me.tabs.security'), icon: ShieldCheck },
+    { value: 'ai', label: t('me.tabs.ai'), icon: Sparkles },
     { value: 'connections', label: t('me.tabs.connections'), icon: Plug },
   ]
   return (
@@ -38,9 +41,45 @@ export function AccountPage() {
       <div className="space-y-6 pt-1">
         {part === 'profile' && <Profile me={me} />}
         {part === 'security' && <Security me={me} />}
+        {part === 'ai' && <AiPart me={me} />}
         {part === 'connections' && <ApiTokens />}
       </div>
     </div>
+  )
+}
+
+/** "KI beim Schreiben", as the mock: the own switch, and below it what the operator set up for everybody. */
+function AiPart({ me }: { me: Me }) {
+  const { t } = useTranslation()
+  const { setMe } = useAuth()
+  const ai = useAiState()
+  const action = useAction()
+  const mine = me.profile.ai !== false
+  const provider = ai?.provider ?? 'none'
+  return (
+    <Card icon={Sparkles} title={t('me.ai.title')} text={t('me.ai.text')}>
+      <Toggle
+        label={t('me.ai.mine')}
+        hint={t('me.ai.mineHint')}
+        checked={mine}
+        onChange={(value) => {
+          setMe({ ...me, profile: { ...me.profile, ai: value } })
+          void action.run(async () => setMe({ ...me, profile: await authApi.preferences({ ai: value }) })).then(
+            (worked) => worked || setMe(me),
+          )
+        }}
+      />
+      {ai && (
+        <div className="mt-4 rounded-xl bg-sheet-2 px-4 py-3 text-sm">
+          <p>
+            <span className="font-semibold">{t('me.ai.byOperator')}</span> {providerName(provider, t)}
+            {provider === 'local' && ai.model && ` (${ai.model})`}
+          </p>
+          <p className="mt-1 text-ink-2">{t(`server.ai.${provider}Note`)}</p>
+        </div>
+      )}
+      <Feedback problem={action.problem} />
+    </Card>
   )
 }
 

@@ -54,10 +54,11 @@ def test_a_v3_database_with_a_diary_comes_to_v4_whole(client: TestClient, accoun
                                         "photo_id": on_note["id"]})
         ben.put("/api/days/2026-10-04", json={"title": "Bens Tag"})
         path = get_settings().database_path
-        # Back to what B2 made: the tables of version 4 gone, the version 3.
+        # Back to what B2 made: the tables of version 4 and later gone, the version 3.
         with closing(sqlite3.connect(path)) as connection:
             connection.execute("ALTER TABLE photos DROP COLUMN on_note")
-            for table in ("hearts", "share_seen", "shares"):
+            connection.execute("ALTER TABLE notes DROP COLUMN prompt_ref_enc")
+            for table in ("writing_prompts", "hearts", "share_seen", "shares"):
                 connection.execute(f"DROP TABLE {table}")
             connection.execute("PRAGMA user_version = 3")
             connection.commit()
@@ -65,10 +66,10 @@ def test_a_v3_database_with_a_diary_comes_to_v4_whole(client: TestClient, accoun
         made: list[str] = []
         monkeypatch.setattr(backups, "create", lambda **kwargs: made.append(kwargs.get("note", "")) or path)
         database.init_db()
-        assert made == ["before schema 4"]
+        assert made == [f"before schema {database.SCHEMA_VERSION}"]
         assert counts(path) == before, "no row lost"
         with closing(sqlite3.connect(path)) as connection:
-            assert int(connection.execute("PRAGMA user_version").fetchone()[0]) == database.SCHEMA_VERSION == 4
+            assert int(connection.execute("PRAGMA user_version").fetchone()[0]) == database.SCHEMA_VERSION
             migrated = schema_of(connection)
             foreign = connection.execute("PRAGMA foreign_key_list(shares)").fetchall()
         with closing(sqlite3.connect(":memory:")) as connection:

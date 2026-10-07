@@ -12,21 +12,32 @@
  *
  * On a phone "Save" stays at the bottom, above the keyboard; the menu bar of the app is not shown while writing.
  * Loaded only when somebody writes: the editor is the heaviest part of the app.
+ *
+ * **The AI** writes only when asked: "Ausformulieren" on "Today" comes here with the length in the history state, which
+ * is read once and cleared at once (a reload asks nothing); here the same button stands above the text of every day that
+ * has notes and no page yet (the day before, written up after midnight). Over a draft or a changed suggestion it asks
+ * first: keep it, or have it written anew. The suggestion lands in the editor as the writing, to be
+ * changed at will; "Länger"/"Kürzer" asks anew. A page begun from a suggestion counts as written with the AI, edited
+ * or not ("Mit KI ausformuliert" in the statistics): that is how it came about. The draft keeps it, the notes stay.
+ * Beside the text the questions to insert ("Weiterschreiben?").
  */
-import { Check, ImageIcon, Loader2 } from 'lucide-react'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Check, ImageIcon, Loader2, Shuffle, Sparkles } from 'lucide-react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 
-import { ApiError, diaryApi, photosApi, photoUrl, type DayChange, type DayPage, type DraftIn, type Note, type Photo } from '../api/client'
+import { aiApi, ApiError, diaryApi, photosApi, photoUrl, promptsApi, type AiLength, type DayChange, type DayPage, type DraftIn, type Note, type Photo, type Question } from '../api/client'
+import { Dialog } from '../components/Dialog'
 import { TagPicker } from '../components/TagPicker'
 import { CoverImage, CoverPicker, defaultCover } from '../covers/Cover'
 import { timeOfHour, type Time } from '../covers/suggest'
 import { DiaryEditor, type DiaryEditorHandle } from '../editor/DiaryEditor'
 import { copyText } from '../lib/copy'
+import { aiHint } from '../lib/aiProviders'
 import { longDate, timeOf } from '../lib/dates'
 import { errorText } from '../lib/errors'
 import { uploadPhoto } from '../lib/upload'
+import { useAiState } from '../state/ai'
 import { useAuth } from '../state/auth'
 
 /** After the last key, how long until the draft goes out; and the longest it waits while somebody types on. */
@@ -60,6 +71,12 @@ function nowIn(zone?: string): { date: string; hour: number } {
   } catch {
     return { date: moment.toISOString().slice(0, 10), hour: moment.getHours() }
   }
+}
+
+/** The length "Ausformulieren" on "Today" asked for, carried in the history state; anything else is nothing. */
+function askedLength(state: unknown): AiLength | null {
+  const asked = state && typeof state === 'object' ? (state as { formulate?: unknown }).formulate : null
+  return asked === 'short' || asked === 'long' ? asked : null
 }
 
 function codeOf(error: unknown): Problem {
@@ -98,6 +115,8 @@ export default function WritePage() {
   const { t, i18n } = useTranslation()
   const { me } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const ai = useAiState()
   const zone = me?.profile?.timezone
   const [today] = useState(() => nowIn(zone))
   const isToday = date === today.date
@@ -122,11 +141,24 @@ export default function WritePage() {
   const [uploading, setUploading] = useState(false)
   const inset = useKeyboardInset()
   const editor = useRef<DiaryEditorHandle>(null)
+  /** While the AI writes the suggestion. */
+  const [formulating, setFormulating] = useState(false)
+  /** Asking before the AI writes over something: the length asked for, and whether a draft or a changed suggestion
+   * stands. */
+  const [redo, setRedo] = useState<{ length: AiLength; over: 'draft' | 'suggestion' } | null>(null)
+  const [length, setLength] = useState<AiLength>('long')
+  const titleField = useRef<HTMLTextAreaElement>(null)
+  /** How this writing came about: from a suggestion of the AI (and the length asked for), or not. Kept with the draft. */
+  const [origin, setOrigin] = useState<{ by: 'ai' | null; length: AiLength }>({ by: null, length: 'long' })
+  /** The press of "Ausformulieren" that led here, taken once; and the text of the last suggestion. */
+  const wanted = useRef<AiLength | null>(askedLength(location.state))
+  const suggested = useRef<{ title: string; text: string } | null>(null)
+  const askingAi = useRef(false)
 
   /** What the page holds right now, for the timers and handlers that outlive a render. */
-  const latest = useRef({ page, base })
+  const latest = useRef({ page, base, origin })
   useEffect(() => {
-    latest.current = { page, base }
+    latest.current = { page, base, origin }
   })
   /** The server's page this writing started from; null when it is not known (a draft from an older revision). */
   const started = useRef<Page | null>(EMPTY)
@@ -159,8 +191,11 @@ export default function WritePage() {
         // A draft is writing that was never saved (a save ends it): it comes back, and names where it started.
         if (draft) {
           const kept: Page = { title: draft.title, text: draft.text, tags: draft.tags, cover: draft.cover }
+          const from = { by: draft.written_by === 'ai' ? ('ai' as const) : null, length: draft.ai_length ?? ('long' as const) }
           setPage(kept)
-          latest.current = { page: kept, base: draft.base_revision }
+          setOrigin(from)
+          if (from.by === 'ai') suggested.current = null
+          latest.current = { page: kept, base: draft.base_revision, origin: from }
           setBase(draft.base_revision)
           // What the draft holds differently from the page it started from was written here.
           started.current = draft.base_revision === (found?.revision ?? -1) ? server : null
@@ -169,7 +204,7 @@ export default function WritePage() {
           setRestored(timeOf(draft.updated_at, zone))
         } else {
           setPage(server)
-          latest.current = { page: server, base: found?.revision ?? -1 }
+          latest.current = { page: server, base: found?.revision ?? -1, origin: latest.current.origin }
           setBase(found?.revision ?? -1)
           started.current = server
           touched.current = new Set()
@@ -207,8 +242,8 @@ export default function WritePage() {
     pause.current = undefined
     longest.current = undefined
     if (!pending.current || done.current) return
-    const { page: now, base: from } = latest.current
-    const draft: DraftIn = { title: now.title, text: now.text, tags: now.tags, cover: now.cover, base_revision: from }
+    const { page: now, base: from, origin: came } = latest.current
+    const draft: DraftIn = { title: now.title, text: now.text, tags: now.tags, cover: now.cover, base_revision: from, ...(came.by === 'ai' ? { written_by: 'ai' as const, ai_length: came.length } : {}) }
     const body = JSON.stringify(draft)
     pending.current = false
     if (body === sentDraft.current) return
@@ -287,7 +322,9 @@ export default function WritePage() {
     const change: DayChange = { base_revision: from }
     for (const field of touched.current) if (field !== 'cover') Object.assign(change, { [field]: now[field] })
     if (touched.current.has('cover') || !against?.cover_chosen) change.cover = now.cover ?? defaultCover(date, now.tags, dayPhotos, time)
-    if (!against?.written_by) change.written_by = 'self'
+    // Begun from a suggestion of the AI: written with the AI, however much was changed after.
+    if (latest.current.origin.by === 'ai') change.written_by = 'ai'
+    else if (!against?.written_by) change.written_by = 'self'
     return change
   }
 
@@ -350,7 +387,8 @@ export default function WritePage() {
     if (!conflict) return
     const other = pageOf(conflict.revision >= 0 ? conflict : null)
     setPage(other)
-    latest.current = { page: other, base: conflict.revision }
+    setOrigin({ by: null, length: 'long' })
+    latest.current = { page: other, base: conflict.revision, origin: { by: null, length: 'long' } }
     setBase(conflict.revision)
     setDay(conflict.revision >= 0 ? conflict : null)
     started.current = other
@@ -379,7 +417,8 @@ export default function WritePage() {
     setRestored(null)
     const server = pageOf(day)
     setPage(server)
-    latest.current = { page: server, base: day?.revision ?? -1 }
+    setOrigin({ by: null, length: 'long' })
+    latest.current = { page: server, base: day?.revision ?? -1, origin: { by: null, length: 'long' } }
     started.current = server
     touched.current = new Set()
     setBase(day?.revision ?? -1)
@@ -418,8 +457,81 @@ export default function WritePage() {
     }
   }
 
+  // --- The AI -------------------------------------------------------------------------------------------------------
+
+  /** Asks the AI for a suggestion out of the notes of the day; it becomes the writing, title and text. */
+  const formulate = async (length: AiLength) => {
+    if (askingAi.current) return
+    askingAi.current = true
+    setFormulating(true)
+    setProblem(null)
+    try {
+      const suggestion = await aiApi.formulate(date, length)
+      const from = { by: 'ai' as const, length }
+      setOrigin(from)
+      latest.current = { ...latest.current, origin: from }
+      suggested.current = { title: suggestion.title, text: suggestion.text }
+      changed({ title: suggestion.title, text: suggestion.text })
+      setEditorKey((key) => key + 1)
+    } catch (error) {
+      setProblem(codeOf(error))
+    } finally {
+      askingAi.current = false
+      setFormulating(false)
+    }
+  }
+
+  // The press of "Ausformulieren" on "Today", taken once and forgotten at once: a reload of this page asks nothing.
+  useEffect(() => {
+    if (location.state && askedLength(location.state)) navigate(location.pathname, { replace: true, state: null })
+  }, [location.state, location.pathname, navigate])
+  useEffect(() => {
+    const length = wanted.current
+    if (!loaded || !length) return
+    wanted.current = null
+    // Only onto an empty page; over a draft only after asking; never over a page that was saved.
+    const now = latest.current.page
+    if (!now.title.trim() && !now.text.trim()) void formulate(length)
+    else if (!day?.text.trim()) setRedo({ length, over: latest.current.origin.by === 'ai' ? 'suggestion' : 'draft' })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded])
+
+  /** "Ausformulieren" here: onto an empty page at once, over a draft only after asking. */
+  const ask = (asked: AiLength) => {
+    const now = latest.current.page
+    if (!now.title.trim() && !now.text.trim()) void formulate(asked)
+    else setRedo({ length: asked, over: 'draft' })
+  }
+
+  /** "Länger"/"Kürzer": anew from the notes; over changes to the suggestion only when the person confirms. */
+  const again = (length: AiLength) => {
+    // The editor reports a change after a short pause in the typing; what it reported is what was changed.
+    const now = latest.current.page
+    const untouched = suggested.current !== null && now.text === suggested.current.text && now.title === suggested.current.title
+    if (untouched || (!now.text.trim() && !now.title.trim())) void formulate(length)
+    else setRedo({ length, over: latest.current.origin.by === 'ai' ? 'suggestion' : 'draft' })
+  }
+
+  const aiOn = Boolean(ai?.available)
+  // "Ausformulieren" above the text: a day with notes to write from and no saved page, before the AI wrote anything.
+  const offerAi = aiOn && loaded && !formulating && origin.by !== 'ai' && !day?.text.trim()
+    && notes.some((note) => note.text && !note.unreadable) && ((!page.title.trim() && !page.text.trim()) || restored !== null)
+
+  // The title wraps on a narrow screen: the field grows with it, and its words never hold a line break.
+  useLayoutEffect(() => {
+    const field = titleField.current
+    if (!field) return
+    const fit = () => {
+      field.style.height = 'auto'
+      field.style.height = `${field.scrollHeight}px`
+    }
+    fit()
+    window.addEventListener('resize', fit)
+    return () => window.removeEventListener('resize', fit)
+  }, [page.title, loaded, formulating])
+
   // From the editor itself, at once: the first letter on an empty page makes it savable.
-  const canSave = loaded && !editorEmpty && !saving
+  const canSave = loaded && !editorEmpty && !saving && !formulating
 
   return (
     <div className="page grid grid-cols-1 gap-6 pt-6 pb-28 lg:grid-cols-[minmax(0,1fr)_320px] lg:pb-12">
@@ -430,6 +542,16 @@ export default function WritePage() {
             <span className="hidden sm:inline">{t('write.back')}</span>
           </button>
           <div className="flex items-center gap-2">
+            {aiOn && origin.by === 'ai' && (
+              <button
+                type="button"
+                onClick={() => again(origin.length === 'short' ? 'long' : 'short')}
+                disabled={formulating}
+                className="inline-flex h-8 items-center justify-center gap-2 rounded-full px-3.5 text-sm font-semibold text-ink-2 transition hover:bg-sheet-2 disabled:pointer-events-none disabled:opacity-50"
+              >
+                <Sparkles size={15} aria-hidden /> {origin.length === 'short' ? t('write.longer') : t('write.shorter')}
+              </button>
+            )}
             {kept && (
               <span className="text-xs text-muted" role="status">
                 {t('write.draftKept')}
@@ -482,15 +604,64 @@ export default function WritePage() {
           <p className="mb-2 text-sm font-semibold tracking-wide text-muted uppercase">{date ? longDate(date, i18n.language, true) : ''}</p>
           {!loaded ? (
             <p className="py-6 text-sm text-muted">{problem ? '' : t('write.loading')}</p>
+          ) : formulating ? (
+            <div className="space-y-3 py-2" role="status">
+              <div className="shimmer h-9 w-2/3 rounded-lg" />
+              {[100, 94, 98, 70, 96, 88].map((width, index) => (
+                <div key={index} className="shimmer h-4 rounded" style={{ width: `${width}%` }} />
+              ))}
+              <p className="pt-3 text-sm text-muted">
+                <Sparkles size={14} className="mr-1 inline" aria-hidden /> {t('write.aiLoading')}
+              </p>
+            </div>
           ) : (
             <>
-              <input
+              {offerAi && ai && (
+                <div className="mb-6 space-y-2 rounded-2xl bg-accent-soft/50 p-4" data-offer-ai>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => ask(length)}
+                      className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-full bg-accent px-5 text-[0.95rem] font-semibold text-accent-ink shadow-soft transition hover:brightness-105"
+                    >
+                      <Sparkles size={18} aria-hidden /> {t('write.ai')}
+                    </button>
+                    <div role="radiogroup" aria-label={t('write.length')} className="flex rounded-full bg-sheet-2 p-1 text-sm font-semibold">
+                      {(['short', 'long'] as const).map((value) => (
+                        <button
+                          key={value}
+                          type="button"
+                          role="radio"
+                          aria-checked={length === value}
+                          onClick={() => setLength(value)}
+                          className={`rounded-full px-3 ${length === value ? 'bg-sheet text-ink shadow-sm' : 'text-muted'}`}
+                        >
+                          {value === 'short' ? t('write.lengthShort') : t('write.lengthLong')}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <p className="text-xs leading-relaxed text-muted">
+                    {aiHint(ai, t)} {t('write.aiPromise')}
+                  </p>
+                </div>
+              )}
+              <textarea
+                ref={titleField}
+                rows={1}
                 value={page.title}
                 maxLength={200}
-                onChange={(e) => changed({ title: e.target.value })}
+                onChange={(e) => changed({ title: e.target.value.replace(/[\r\n]+/g, ' ') })}
+                onKeyDown={(e) => {
+                  // A title is one line: Enter goes on to the text.
+                  if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                    e.preventDefault()
+                    editor.current?.focus()
+                  }
+                }}
                 placeholder={t('write.titlePlaceholder')}
                 aria-label={t('write.titleLabel')}
-                className="mb-5 w-full bg-transparent font-display text-3xl font-semibold tracking-tight text-ink placeholder:text-muted/60 focus:outline-none sm:text-4xl"
+                className="mb-5 block w-full resize-none overflow-hidden bg-transparent font-display text-3xl leading-tight font-semibold tracking-tight text-ink placeholder:text-muted/60 focus:outline-none sm:text-4xl"
               />
               <div className="relative mb-6 overflow-hidden rounded-2xl">
                 <CoverImage cover={shownCover} large className="aspect-[16/8] w-full" alt={t('write.coverLabel')} />
@@ -513,12 +684,18 @@ export default function WritePage() {
                 placeholder={t('write.bodyPlaceholder')}
                 label={t('write.bodyLabel')}
               />
+              {origin.by === 'ai' && (
+                <p className="mt-6 rounded-xl bg-sheet-2 px-4 py-3 text-sm text-ink-2">
+                  <Sparkles size={14} className="mr-1 inline text-accent" aria-hidden />
+                  {t('write.aiSuggestion')}
+                </p>
+              )}
             </>
           )}
         </article>
       </div>
       <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
-        {/* The writing prompts ("Weiterschreiben?") come here with the questions; `editor.current.insertHeading`. */}
+        {loaded && !formulating && <WritePrompts date={date} onInsert={(question) => editor.current?.insertHeading(question)} />}
         {loaded && (
           <section className="card p-5">
             <h2 className="mb-3 font-display text-lg font-semibold">{t('today.tags')}</h2>
@@ -551,6 +728,28 @@ export default function WritePage() {
         <SaveButton className="h-11 w-full px-5 text-[0.95rem]" onSave={() => void save()} disabled={!canSave} saving={saving} />
       </div>
 
+      {redo && (
+        <Dialog title={redo.over === 'draft' ? t('write.aiDraftTitle') : t('write.aiRedoTitle')} onClose={() => setRedo(null)}>
+          <p className="text-sm text-ink-2">{redo.over === 'draft' ? t('write.aiDraftText') : t('write.aiRedoText')}</p>
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <button type="button" onClick={() => setRedo(null)} className="inline-flex h-10 items-center rounded-full border border-line px-4 text-sm font-semibold text-ink-2 hover:bg-sheet-2">
+              {redo.over === 'draft' ? t('write.aiDraftKeep') : t('common.cancel')}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const asked = redo.length
+                setRedo(null)
+                void formulate(asked)
+              }}
+              className="inline-flex h-10 items-center rounded-full bg-accent px-4 text-sm font-semibold text-accent-ink hover:brightness-105"
+            >
+              {redo.over === 'draft' ? t('write.aiDraftAnew') : t('write.aiRedoConfirm')}
+            </button>
+          </div>
+        </Dialog>
+      )}
+
       {picking && (
         <CoverPicker
           date={date}
@@ -566,6 +765,46 @@ export default function WritePage() {
         />
       )}
     </div>
+  )
+}
+
+/** "Weiterschreiben?", as the mock: four questions at a time to put in as a subheading at the end, more on a tap. */
+function WritePrompts({ date, onInsert }: { date: string; onInsert: (question: string) => void }) {
+  const { t } = useTranslation()
+  const [pool, setPool] = useState<Question[]>([])
+  // As the mock: the question of the day stood on "Today" already; the writing begins two further on.
+  const [start, setStart] = useState(2)
+  useEffect(() => {
+    let alive = true
+    promptsApi.pool(date).then(
+      (found) => alive && setPool(Array.isArray(found?.questions) ? found.questions : []),
+      () => undefined,
+    )
+    return () => {
+      alive = false
+    }
+  }, [date])
+  if (pool.length === 0) return null
+  const shown = Array.from({ length: Math.min(4, pool.length) }, (_, index) => pool[(start + index) % pool.length])
+  return (
+    <section className="card p-5">
+      <div className="mb-1 flex items-center justify-between">
+        <h2 className="font-display text-lg font-semibold">{t('write.morePrompts')}</h2>
+        <button type="button" onClick={() => setStart(start + 4)} className="rounded-full p-1.5 text-muted hover:bg-sheet-2 hover:text-ink" aria-label={t('write.otherPrompts')}>
+          <Shuffle size={15} />
+        </button>
+      </div>
+      <p className="mb-3 text-xs text-muted">{t('write.morePromptsHint')}</p>
+      <ul className="space-y-1.5">
+        {shown.map((question) => (
+          <li key={question.id}>
+            <button type="button" onClick={() => onInsert(question.text)} className="w-full rounded-xl bg-sheet-2/70 px-3 py-2 text-left font-serif text-sm text-ink-2 hover:bg-accent-soft hover:text-ink">
+              {question.text}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 

@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..deps import Account, DbSession
 from ..errors import error
-from ..services import brakes, diary, journal, photos, vault
+from ..services import brakes, diary, journal, photos, prompts, vault
 
 router = APIRouter(prefix="/api", tags=["diary"])
 
@@ -29,6 +29,8 @@ class NoteIn(Strict):
     #: Empty: today in the person's time zone.
     date: str = Field(default="", max_length=10)
     prompt: str | None = Field(default=None, max_length=diary.PROMPT_MAX * 4)
+    #: Which question the note answers (``schoen.0``, ``own.<hex>``), with ``prompt`` its words as shown.
+    prompt_id: str | None = Field(default=None, max_length=32)
     #: One of the person's own photos (``POST /api/photos``); with a photo the text may be empty.
     photo_id: str | None = Field(default=None, max_length=32)
 
@@ -61,6 +63,9 @@ class DraftIn(Strict):
     tags: list[Annotated[str, Field(max_length=diary.TAG_MAX * 4)]] | None = Field(default=None,
                                                                                   max_length=diary.TAGS_MAX * 2)
     cover: str | None = Field(default=None, max_length=diary.COVER_MAX)
+    #: "ai" while the writing began as a suggestion of the AI, and the length it was asked for.
+    written_by: Literal["ai", "self"] | None = None
+    ai_length: Literal["short", "long"] | None = None
     base_revision: int = Field(ge=-1)
 
 
@@ -123,6 +128,8 @@ def today(request: Request, account: Account, db: DbSession) -> dict[str, Any]:
         "values": diary.list_values(db, account.id, dek),
         "streak": diary.streak(db, account.id, dek, day),
         "photos": photos.list_of_day(db, account.id, key),
+        # The question of the day (writing prompts); null when the person switched questions off.
+        "question": prompts.question_of_day(db, account.id, dek, day, _language(account, request)),
     }
 
 
@@ -141,7 +148,7 @@ def add_note(payload: NoteIn, response: Response, account: Account, db: DbSessio
     brakes.take("new_note", account.id)
     day = diary.check_date(account, payload.date) if payload.date else diary.today_of(account).isoformat()
     note, new = diary.add_note(db, account.id, vault.dek_for(account.id), uid, day, payload.text, payload.prompt,
-                               payload.photo_id)
+                               payload.photo_id, payload.prompt_id)
     response.status_code = 201 if new else 200
     return note
 

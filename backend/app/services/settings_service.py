@@ -46,6 +46,13 @@ DEFAULTS: dict[str, Any] = {
     "smtp_from": "",
     #: What one person may keep in photos and drafts, in GB; 0: no limit.
     "storage_per_person_gb": 5,
+    #: The AI that writes a day up from its notes (``services/ai.py``), one for everybody, set up by the operator only:
+    #: none | local | openai | messages. None from the start: notes leave the server only when the operator wants it.
+    "ai_provider": "none",
+    "ai_url": "",
+    "ai_model": "",
+    #: Sealed with the server's secret (context ``operator:ai-key``); never shown again.
+    "ai_key_enc": "",
 }
 
 

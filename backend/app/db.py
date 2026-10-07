@@ -37,7 +37,7 @@ _settings.data_dir.mkdir(parents=True, exist_ok=True)
 BUSY_SECONDS = 15
 
 #: The version of the schema the models describe.
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 def _v2_diary(connection: Connection) -> None:
@@ -130,8 +130,24 @@ def _v4_sharing(connection: Connection) -> None:
         connection.exec_driver_sql(statement)
 
 
+def _v5_writing_prompts(connection: Connection) -> None:
+    """Version 5: the writing prompts each person chose, sealed; and on a note which question it answers, sealed too.
+    Written out as it stood then, not taken from the models."""
+    for statement in (
+        (
+            "CREATE TABLE writing_prompts ( user_id INTEGER NOT NULL, content_enc BLOB NOT NULL, "
+            "revision INTEGER NOT NULL, updated_at DATETIME NOT NULL, PRIMARY KEY (user_id), "
+            "FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE )"
+        ),
+        "ALTER TABLE notes ADD COLUMN prompt_ref_enc BLOB",
+    ):
+        connection.exec_driver_sql(statement)
+
+
 #: ``MIGRATIONS[n]`` brings a database from version ``n - 1`` to ``n``. Version 1 is the first schema; it has no step.
-MIGRATIONS: dict[int, Callable[[Connection], None]] = {2: _v2_diary, 3: _v3_photos_and_drafts, 4: _v4_sharing}
+MIGRATIONS: dict[int, Callable[[Connection], None]] = {
+    2: _v2_diary, 3: _v3_photos_and_drafts, 4: _v4_sharing, 5: _v5_writing_prompts,
+}
 
 # No pool with an upper bound: with the default pool the sixteenth concurrent request would block the event
 # loop waiting for a connection. Opening a SQLite connection costs a fraction of a millisecond.

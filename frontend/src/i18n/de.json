@@ -35,7 +35,12 @@
     "ownTag": "Eigener Tag",
     "addTagButton": "Hinzufügen",
     "tagSuggestions": "familie, arbeit, draußen, herbst, gesundheit, freunde, urlaub, kochen, sport, gedanken",
-    "unreadable": "Nicht lesbar. Diese Notiz ist in der Datenbank beschädigt und lässt sich nur noch löschen."
+    "unreadable": "Nicht lesbar. Diese Notiz ist in der Datenbank beschädigt und lässt sich nur noch löschen.",
+    "promptTitle": "Frage des Tages",
+    "promptAnswer": "Antworten",
+    "promptOther": "Andere Frage",
+    "promptPlaceholder": "Ein paar Worte reichen.",
+    "promptLabel": "Deine Antwort auf die Frage des Tages"
   },
   "quick": {
     "nothingYet": "Noch nichts notiert",
@@ -47,7 +52,10 @@
     "open": "Schnell notieren",
     "writeUp": "Den Tag aufschreiben",
     "writeUpHint": "In Ruhe, mit Werten und Fotos",
-    "writeUpHintAi": "In Ruhe, mit Werten, Fotos und auf Wunsch der KI"
+    "writeUpHintAi": "In Ruhe, mit Werten, Fotos und auf Wunsch der KI",
+    "promptHide": "Frage ausblenden",
+    "promptAsk": "Auf die Frage antworten",
+    "answerPlaceholder": "Deine Antwort …"
   },
   "journal": {
     "title": "Dein Tagebuch",
@@ -133,7 +141,8 @@
       "api": "API",
       "backups": "Sicherung",
       "languages": "Sprachen",
-      "log": "Log"
+      "log": "Log",
+      "ai": "KI"
     },
     "language": {
       "title": "Sprache",
@@ -201,6 +210,22 @@
         "name": "Zeitleiste",
         "idea": "Nach Monaten gruppiert, eine Zeile je Tag mit kleinem Bild. Mehr auf einen Blick, gut zum Suchen."
       }
+    },
+    "prompts": {
+      "title": "Schreibimpulse",
+      "text": "Kleine Fragen für Tage, an denen dir nichts einfällt. Auf „Heute“ steht eine Frage des Tages; beim Schreiben am Abend kannst du weitere einfügen.",
+      "show": "Fragen zeigen",
+      "showHint": "Aus: keine Frage auf „Heute“ und keine im Schreibfeld.",
+      "which": "Welche Fragen",
+      "whichText": "Ganze Gruppen an- oder abschalten.",
+      "more_one": "„{{first}}“ und {{count}} weitere",
+      "more_other": "„{{first}}“ und {{count}} weitere",
+      "own": "Eigene Fragen",
+      "ownText": "Kommen zu den anderen dazu.",
+      "remove": "Frage entfernen",
+      "new": "Neue Frage",
+      "newPlaceholder": "Was hat dich heute überrascht?",
+      "add": "Hinzufügen"
     }
   },
   "auth": {
@@ -287,7 +312,8 @@
     "tabs": {
       "profile": "Profil",
       "security": "Sicherheit",
-      "connections": "Verbindungen"
+      "connections": "Verbindungen",
+      "ai": "KI"
     },
     "profile": {
       "text": "So sehen dich die anderen in der Familie, wenn du einen Tag mit ihnen teilst.",
@@ -329,7 +355,14 @@
       "operator": "Betreiber",
       "member": "Mitglied"
     },
-    "setupFirst": "Der Betreiber verlangt einen zweiten Faktor. Richte ihn hier ein, dann geht es weiter."
+    "setupFirst": "Der Betreiber verlangt einen zweiten Faktor. Richte ihn hier ein, dann geht es weiter.",
+    "ai": {
+      "title": "KI beim Schreiben",
+      "text": "Macht aus deinen Notizen des Tages einen Vorschlag für die Seite. Nur, wenn du auf „Ausformulieren“ drückst.",
+      "mine": "KI-Funktionen für mich",
+      "mineHint": "Aus: Der Knopf „Ausformulieren“ verschwindet für dich, und deine Texte gehen nie an ein Modell.",
+      "byOperator": "Vom Betreiber eingestellt:"
+    }
   },
   "twofactor": {
     "title": "Zweiter Faktor",
@@ -611,7 +644,30 @@
     "checkNewer": "Diese Sicherung stammt aus einer neueren Version von nexdiary. Erst nexdiary aktualisieren, dann wiederherstellen.",
     "storage": "Speicher je Person",
     "storageHint": "Wie viel jede Person für Fotos und Entwürfe belegen darf. 0 heißt unbegrenzt.",
-    "storageGb": "GB je Person"
+    "storageGb": "GB je Person",
+    "ai": {
+      "title": "KI zum Ausformulieren",
+      "text": "Gilt für alle in der Familie. Die KI läuft nur, wenn jemand auf „Ausformulieren“ drückt, und jede Person kann sie in ihrem Konto für sich abschalten.",
+      "none": "Keine KI",
+      "noneNote": "Der Knopf „Ausformulieren“ erscheint nicht.",
+      "local": "Lokales Modell",
+      "localNote": "Ollama oder ein anderer Dienst im eigenen Netz. Nichts verlässt das Haus.",
+      "messagesNote": "Eigener API-Schlüssel. Die Notizen gehen beim Ausformulieren an den Anbieter.",
+      "openai": "OpenAI-kompatibel",
+      "openaiNote": "Eigener API-Schlüssel und Adresse. Die Notizen gehen beim Ausformulieren an den Anbieter.",
+      "address": "Adresse",
+      "key": "API-Schlüssel",
+      "keyKept": "gespeichert, leer lassen zum Behalten",
+      "model": "Modell",
+      "models": "Modelle abrufen",
+      "pick": "Modell wählen",
+      "saveTry": "Speichern und ausprobieren",
+      "probed": "Gespeichert. Probe: Das Modell hat in {{seconds}} Sekunden geantwortet.",
+      "outgoing": "Was hinausgeht: beim Druck auf „Ausformulieren“ die Notizen dieses einen Tages mit ihrer Uhrzeit und, wo eine Notiz eine Frage beantwortet, mit der Frage. Ohne Namen des Kontos, ohne Datum, ohne Fotos und ohne Werte. Sonst nichts. Wer das nicht will, schaltet die KI in seinem Konto ab.",
+      "saved": "Gespeichert.",
+      "keyOptional": "API-Schlüssel (falls nötig)",
+      "keyLocalHint": "Nur, wenn der Dienst einen verlangt, etwa LiteLLM. Ollama braucht keinen."
+    }
   },
   "editor": {
     "tools": "Formatieren",
@@ -654,7 +710,28 @@
     "loading": "Lädt …",
     "photoNote": "Foto",
     "conflictHint": "Speicherst du deine Fassung, ersetzt sie dort, was du hier geändert hast. Kopiere vorher, was du von der anderen behalten willst.",
-    "otherVersion": "Die andere Fassung"
+    "otherVersion": "Die andere Fassung",
+    "ai": "Ausformulieren",
+    "length": "Länge",
+    "lengthShort": "kurz",
+    "lengthLong": "lang",
+    "aiLocal": "Wird mit dem lokalen Modell eures Servers formuliert. Nichts verlässt das Haus.",
+    "aiTo": "Deine Notizen gehen dabei an {{name}}.",
+    "aiPromise": "Die KI ordnet und glättet nur, sie erfindet nichts dazu.",
+    "longer": "Länger",
+    "shorter": "Kürzer",
+    "aiLoading": "Deine Notizen werden zu einer Seite …",
+    "aiSuggestion": "Ein Vorschlag. Ändere, was nicht nach dir klingt.",
+    "aiRedoTitle": "Neu ausformulieren?",
+    "aiRedoText": "Der Vorschlag wird neu geschrieben. Was du daran geändert hast, geht dabei verloren. Deine Notizen bleiben, wie sie sind.",
+    "aiRedoConfirm": "Neu schreiben",
+    "morePrompts": "Weiterschreiben?",
+    "morePromptsHint": "Antippen setzt die Frage als Zwischenüberschrift ans Ende.",
+    "otherPrompts": "Andere Fragen",
+    "aiDraftTitle": "Entwurf behalten?",
+    "aiDraftText": "Für diesen Tag gibt es schon einen Entwurf. Du kannst ihn behalten oder die KI aus deinen Notizen neu ausformulieren lassen; der Entwurf geht dann verloren. Deine Notizen bleiben, wie sie sind.",
+    "aiDraftKeep": "Entwurf behalten",
+    "aiDraftAnew": "Neu ausformulieren"
   },
   "covers": {
     "title": "Titelbild für diesen Tag",
@@ -844,7 +921,37 @@
     "wrong_password": "Das Passwort stimmt nicht.",
     "person_unknown": "Diese Person gibt es hier nicht.",
     "too_many_people": "Mit so vielen auf einmal geht das nicht.",
-    "cover_other_day": "Als Titelbild geht nur ein Foto von diesem Tag."
+    "cover_other_day": "Als Titelbild geht nur ein Foto von diesem Tag.",
+    "ai_off": "Auf diesem Server ist keine KI eingerichtet.",
+    "ai_switched_off": "Du hast die KI für dich abgeschaltet (Mein Konto, KI).",
+    "ai_incomplete": "Die KI ist noch nicht ganz eingerichtet. Der Betreiber muss Adresse und Modell eintragen.",
+    "ai_provider_unknown": "Diese Art von KI-Dienst gibt es nicht.",
+    "ai_address_missing": "Gib die Adresse des Dienstes an.",
+    "ai_address_invalid": "Das ist keine Adresse eines Dienstes, etwa http://ollama:11434/v1.",
+    "ai_https_required": "Ein Dienst im Internet wird nur über https erreicht.",
+    "ai_address_refused": "Diese Adresse wird nie aufgerufen.",
+    "ai_address_private": "Diese Adresse liegt im eigenen Netz. Wähle dafür „Lokales Modell“.",
+    "ai_address_public": "Diese Adresse liegt im Internet. Ein lokales Modell muss im eigenen Netz bleiben, sonst stimmt „Nichts verlässt das Haus“ nicht.",
+    "ai_unreachable": "Der Server erreicht den KI-Dienst nicht.",
+    "ai_timeout": "Der KI-Dienst hat zu lange gebraucht (über {{seconds}} Sekunden).",
+    "ai_key_refused": "Der KI-Dienst hat den Schlüssel abgelehnt.",
+    "ai_address_not_found": "Der KI-Dienst kennt diese Adresse oder dieses Modell nicht.",
+    "ai_service_busy": "Der KI-Dienst ist gerade ausgelastet. Versuch es gleich noch einmal.",
+    "ai_service_failed": "Der KI-Dienst hat mit einem Fehler geantwortet ({{answered}}). {{said}}",
+    "ai_unreadable": "Die Antwort des KI-Dienstes ließ sich nicht lesen.",
+    "ai_empty": "Der KI-Dienst hat nichts geschrieben.",
+    "ai_no_list": "Dieser Dienst nennt keine Modelle. Trag den Namen des Modells selbst ein.",
+    "ai_no_models": "Dieser Dienst bietet keine Modelle an.",
+    "ai_no_notes": "An diesem Tag gibt es keine Notizen, aus denen die KI schreiben könnte.",
+    "ai_notes_too_long": "Die Notizen dieses Tages sind zu lang für die KI.",
+    "ai_too_often": "Zu viele Anfragen an die KI. Warte einen Moment.",
+    "ai_busy": "Die KI schreibt schon für dich.",
+    "ai_server_busy": "Die KI schreibt gerade für andere. Versuch es gleich noch einmal.",
+    "prompt_set_unknown": "Diese Gruppe von Fragen gibt es nicht.",
+    "question_too_long": "Die Frage ist zu lang, höchstens {{max}} Zeichen.",
+    "too_many_questions": "Mehr als {{max}} eigene Fragen gehen nicht.",
+    "ai_daily_limit": "Das war die letzte Anfrage an die KI für heute. Morgen geht es wieder.",
+    "question_empty": "Eine Frage braucht ein paar Worte."
   },
   "entry": {
     "back": "← Tagebuch",

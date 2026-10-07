@@ -2,11 +2,12 @@
  * Writing a day up against a server stand-in: the page loads with its revision, a double click saves once, only what
  * was changed here is sent, the draft goes out while typing, when the page is left and when it is hidden, a field
  * changed meanwhile elsewhere is never overwritten unseen (the other version stands there to copy from), and a photo
- * can be deleted from the cover picker.
+ * can be deleted from the cover picker. The AI writes only on the press of the button that led here, once; its
+ * suggestion becomes the writing, "Länger"/"Kürzer" ask anew, and the questions to insert become subheadings.
  */
 import { act, useEffect } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 
 import '../i18n'
 import { changeLanguage } from '../i18n'
@@ -27,6 +28,13 @@ let draft: Record<string, unknown> | null = null
 let photos: Record<string, unknown>[] = []
 /** What the next save meets: another device's page that came in between. */
 let meanwhile: Day | null = null
+let aiState: Record<string, unknown> = { provider: 'local', to: '', model: 'llama3.1:8b', mine: true, available: true }
+let pool: { id: string; text: string; answered: boolean }[] = []
+let dayNotes: Record<string, unknown>[] = []
+/** What the router holds as the history state, seen from outside the page. */
+let seenState: unknown = 'unset'
+/** What the AI answers next: a suggestion, or an error code. */
+let suggestion: { title: string; text: string } | string = { title: 'Kastanien', text: 'Am Abend habe ich mit Mia Kastanien gesammelt.' }
 
 function page(fields: Partial<Day>): Day {
   return { date: DATE, title: '', text: '', tags: [], values: {}, cover: 'illu:baum.abend.herbst', cover_chosen: false, written_by: 'self', words: 0, revision: 0, created_at: '', updated_at: '2026-10-06T17:00:00+00:00', ...fields }
@@ -72,7 +80,14 @@ function serve(): void {
         photos = photos.filter((photo) => !url.endsWith(String(photo.id)))
         return new Response(null, { status: 204 })
       }
-      if (url.startsWith('/api/notes')) return json([])
+      if (url === '/api/ai/formulate') {
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        if (typeof suggestion === 'string') return json({ detail: { code: suggestion, message: 'x' } }, 502)
+        return json({ ...suggestion, length: body!.length })
+      }
+      if (url === '/api/ai') return json(aiState)
+      if (url.startsWith('/api/prompts/pool')) return json({ questions: pool })
+      if (url.startsWith('/api/notes')) return json(dayNotes)
       if (url.startsWith('/api/photos')) return json(photos)
       if (url.startsWith('/api/today')) return json({ date: DATE, notes: [], day, values: [], streak: 5, photos: [] })
       return json([])
@@ -91,20 +106,22 @@ async function settle(ms = 30): Promise<void> {
 /** Leaves the writing page within the app, as a link or the back button would. */
 function Away() {
   const navigate = useNavigate()
+  const state = useLocation().state
   useEffect(() => {
+    seenState = state
     away.leave = () => void navigate('/woanders')
   })
   return null
 }
 
-async function show(): Promise<void> {
+async function show(state: unknown = null): Promise<void> {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   box = document.createElement('div')
   document.body.appendChild(box)
   root = createRoot(box)
   await act(async () =>
     root.render(
-      <MemoryRouter initialEntries={[`/tag/${DATE}/schreiben`]}>
+      <MemoryRouter initialEntries={[{ pathname: `/tag/${DATE}/schreiben`, state }]}>
         <Away />
         <Routes>
           <Route path="/tag/:date/schreiben" element={<WritePage />} />
@@ -117,12 +134,12 @@ async function show(): Promise<void> {
   await settle(20)
 }
 
-function title(): HTMLInputElement {
-  return box.querySelector<HTMLInputElement>('input[aria-label="Überschrift"]')!
+function title(): HTMLTextAreaElement {
+  return box.querySelector<HTMLTextAreaElement>('textarea[aria-label="Überschrift"]')!
 }
 
-function type(field: HTMLInputElement, value: string): void {
-  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
+function type(field: HTMLTextAreaElement, value: string): void {
+  const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!
   act(() => {
     setter.call(field, value)
     field.dispatchEvent(new Event('input', { bubbles: true }))
@@ -149,6 +166,7 @@ function saveButtons(): HTMLButtonElement[] {
 
 const puts = () => calls.filter((call) => call.method === 'PUT' && call.url === `/api/days/${DATE}`)
 const drafts = () => calls.filter((call) => call.method === 'PUT' && call.url.endsWith('/draft'))
+const asked = () => calls.filter((call) => call.url === '/api/ai/formulate')
 
 beforeEach(async () => {
   await changeLanguage('de', false)
@@ -156,6 +174,11 @@ beforeEach(async () => {
   draft = null
   meanwhile = null
   photos = []
+  pool = []
+  dayNotes = []
+  seenState = 'unset'
+  aiState = { provider: 'local', to: '', model: 'llama3.1:8b', mine: true, available: true }
+  suggestion = { title: 'Kastanien', text: 'Am Abend habe ich mit Mia Kastanien gesammelt.' }
   serve()
 })
 
@@ -306,5 +329,173 @@ describe('writing a day up', () => {
     expect(box.querySelector(`img[src^="/api/photos/${PHOTO}"]`)).toBeNull()
     await act(async () => button('Schließen').click())
     expect(box.querySelector('article svg[role=img]')).not.toBeNull()
+  })
+
+  it('asks the AI only on the press of the button that led here, once, and the suggestion becomes the writing', async () => {
+    await show({ formulate: 'short' })
+    await settle(80)
+    expect(asked()).toHaveLength(1)
+    expect(asked()[0].body).toEqual({ date: DATE, length: 'short' })
+    expect(title().value).toBe('Kastanien')
+    expect(box.querySelector('[contenteditable]')!.textContent).toBe('Am Abend habe ich mit Mia Kastanien gesammelt.')
+    expect(box.textContent).toContain('Ein Vorschlag. Ändere, was nicht nach dir klingt.')
+    // The draft keeps how the writing came about; saved, the page counts as written with the AI.
+    await settle(1700)
+    expect(drafts().at(-1)!.body).toMatchObject({ title: 'Kastanien', written_by: 'ai', ai_length: 'short' })
+    await act(async () => saveButtons()[0].click())
+    await settle(80)
+    expect(puts()[0].body).toMatchObject({ title: 'Kastanien', text: 'Am Abend habe ich mit Mia Kastanien gesammelt.', written_by: 'ai', base_revision: -1 })
+    expect(asked()).toHaveLength(1)
+  })
+
+  it('never asks on its own: not on opening, not for a draft begun with the AI', async () => {
+    await show()
+    await settle(80)
+    expect(asked()).toHaveLength(0)
+    act(() => root.unmount())
+    box.remove()
+    draft = { title: 'Halb', text: 'Vom Vorschlag.', tags: [], cover: null, written_by: 'ai', ai_length: 'long', base_revision: -1, updated_at: '2026-10-06T17:30:00+00:00' }
+    await show()
+    await settle(80)
+    expect(asked()).toHaveLength(0)
+    // Begun with the AI: "Kürzer" is offered, and only a press asks.
+    expect(button('Kürzer')).toBeTruthy()
+    expect(box.textContent).toContain('Ein Vorschlag.')
+  })
+
+  it('writes nothing over a page that is not empty', async () => {
+    day = page({ title: 'Schon da', text: 'Selbst geschrieben.', revision: 2 })
+    await show({ formulate: 'long' })
+    await settle(80)
+    expect(asked()).toHaveLength(0)
+    expect(title().value).toBe('Schon da')
+  })
+
+  it('asks anew for "Länger", and over changes to the suggestion only after asking', async () => {
+    await show({ formulate: 'short' })
+    await settle(80)
+    suggestion = { title: 'Kastanien', text: 'Ein längerer Text über den Abend mit Mia.' }
+    await act(async () => button('Länger').click())
+    await settle(80)
+    expect(asked().map((call) => call.body!.length)).toEqual(['short', 'long'])
+    expect(box.querySelector('[contenteditable]')!.textContent).toBe('Ein längerer Text über den Abend mit Mia.')
+    await typeInEditor('Ein längerer Text, von mir geändert.')
+    await settle(600)
+    await act(async () => button('Kürzer').click())
+    expect(box.textContent).toContain('Neu ausformulieren?')
+    expect(asked()).toHaveLength(2)
+    await act(async () => button('Abbrechen').click())
+    expect(asked()).toHaveLength(2)
+    await act(async () => button('Kürzer').click())
+    await act(async () => button('Neu schreiben').click())
+    await settle(80)
+    expect(asked().map((call) => call.body!.length)).toEqual(['short', 'long', 'short'])
+  })
+
+  it('offers no "Länger" when the person switched the AI off', async () => {
+    aiState = { provider: 'local', to: '', model: '', mine: false, available: false }
+    draft = { title: 'Halb', text: 'Vom Vorschlag.', tags: [], cover: null, written_by: 'ai', ai_length: 'short', base_revision: -1, updated_at: '2026-10-06T17:30:00+00:00' }
+    await show()
+    await settle(50)
+    expect(button('Länger')).toBeUndefined()
+  })
+
+  it('says why a suggestion failed and leaves the page to write on', async () => {
+    suggestion = 'ai_unreachable'
+    await show({ formulate: 'long' })
+    await settle(80)
+    expect(box.querySelector('[role=alert]')!.textContent).toBe('Der Server erreicht den KI-Dienst nicht.')
+    expect(box.querySelector('[contenteditable]')).not.toBeNull()
+    expect(title().value).toBe('')
+  })
+
+  it('offers questions to insert, four at a time, and puts a tapped one in as a subheading', async () => {
+    pool = ['eins', 'zwei', 'drei', 'vier', 'fünf', 'sechs'].map((word, index) => ({ id: `schoen.${index}`, text: `Frage ${word}?`, answered: false }))
+    day = page({ title: 'Tag', text: 'Erster Absatz.', revision: 0 })
+    await show()
+    await settle(30)
+    expect(box.textContent).toContain('Weiterschreiben?')
+    const shown = () => [...box.querySelectorAll('aside li button')].map((item) => item.textContent)
+    expect(shown()).toEqual(['Frage drei?', 'Frage vier?', 'Frage fünf?', 'Frage sechs?'])
+    await act(async () => button('Andere Fragen').click())
+    expect(shown()).toEqual(['Frage eins?', 'Frage zwei?', 'Frage drei?', 'Frage vier?'])
+    await act(async () => button('Frage zwei?').click())
+    await settle(30)
+    expect(box.querySelector('[contenteditable] h2')!.textContent).toBe('Frage zwei?')
+  })
+
+  it('shows no questions when the person switched them off', async () => {
+    pool = []
+    await show()
+    await settle(30)
+    expect(box.textContent).not.toContain('Weiterschreiben?')
+  })
+
+  it('forgets the press that led here at once: the history state is cleared, a reload asks nothing', async () => {
+    await show({ formulate: 'long' })
+    await settle(80)
+    expect(asked()).toHaveLength(1)
+    expect(seenState).toBeNull()
+  })
+
+  it('offers "Ausformulieren" above the text of a day with notes and no page, and asks only on the press', async () => {
+    dayNotes = [{ id: 'n1', date: DATE, text: 'kastanien gesammelt', unreadable: false, prompt: null, prompt_id: null, photo_id: null, created_at: '2026-10-06T16:50:00+00:00', updated_at: null }]
+    await show()
+    await settle(50)
+    const offer = box.querySelector('[data-offer-ai]')!
+    expect(offer.textContent).toContain('Wird mit dem lokalen Modell eures Servers formuliert. Nichts verlässt das Haus.')
+    expect(asked()).toHaveLength(0)
+    await act(async () => [...offer.querySelectorAll<HTMLButtonElement>('[role=radio]')].find((item) => item.textContent === 'kurz')!.click())
+    await act(async () => button('Ausformulieren').click())
+    await settle(80)
+    expect(asked().map((call) => call.body)).toEqual([{ date: DATE, length: 'short' }])
+    expect(box.querySelector('[data-offer-ai]')).toBeNull()
+    expect(title().value).toBe('Kastanien')
+  })
+
+  it('offers it neither over a saved page, nor without notes, nor with the AI off', async () => {
+    const withNote = [{ id: 'n1', date: DATE, text: 'kastanien', unreadable: false, prompt: null, prompt_id: null, photo_id: null, created_at: '2026-10-06T16:50:00+00:00', updated_at: null }]
+    for (const [notes, saved, available] of [[withNote, true, true], [[], false, true], [withNote, false, false]] as const) {
+      dayNotes = [...notes]
+      day = saved ? page({ title: 'Tag', text: 'Geschrieben.', revision: 0 }) : null
+      aiState = { provider: 'local', to: '', model: 'm', mine: available, available }
+      await show()
+      await settle(50)
+      expect(box.querySelector('[data-offer-ai]')).toBeNull()
+      act(() => root.unmount())
+      box.remove()
+    }
+    await show()
+  })
+
+  it('asks before writing over a draft: keep it, or have it written anew', async () => {
+    dayNotes = [{ id: 'n1', date: DATE, text: 'kastanien', unreadable: false, prompt: null, prompt_id: null, photo_id: null, created_at: '2026-10-06T16:50:00+00:00', updated_at: null }]
+    draft = { title: 'Mein Entwurf', text: 'Selbst angefangen.', tags: [], cover: null, base_revision: -1, updated_at: '2026-10-06T17:30:00+00:00' }
+    await show({ formulate: 'long' })
+    await settle(80)
+    expect(box.textContent).toContain('Entwurf behalten?')
+    expect(asked()).toHaveLength(0)
+    await act(async () => button('Entwurf behalten').click())
+    expect(title().value).toBe('Mein Entwurf')
+    expect(asked()).toHaveLength(0)
+    // The button above the text asks the same.
+    await act(async () => button('Ausformulieren').click())
+    expect(box.textContent).toContain('Entwurf behalten?')
+    await act(async () => button('Neu ausformulieren').click())
+    await settle(80)
+    expect(asked()).toHaveLength(1)
+    expect(title().value).toBe('Kastanien')
+  })
+
+  it('keeps the title one line that wraps: no line break in it, Enter goes on to the text', async () => {
+    await show()
+    type(title(), 'Erste Zeile\nzweite Zeile')
+    expect(title().value).toBe('Erste Zeile zweite Zeile')
+    const enter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+    act(() => {
+      title().dispatchEvent(enter)
+    })
+    expect(enter.defaultPrevented).toBe(true)
+    expect(title().tagName).toBe('TEXTAREA')
   })
 })

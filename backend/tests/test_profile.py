@@ -27,7 +27,7 @@ def test_a_display_name_is_not_too_long_and_has_no_control_characters(client: Te
 
 
 DEFAULTS = {"mode": "system", "layout": "page", "quick_start": True, "journal": "blog", "timezone_source": "browser",
-            "timezone": ""}
+            "ai": True, "timezone": ""}
 
 
 def test_light_or_dark_is_kept_with_the_account(client: TestClient, account: Account) -> None:
@@ -56,7 +56,7 @@ def test_the_layout_of_today_the_quick_start_and_the_time_zone_are_kept_with_the
     assert saved.status_code == 200
     assert client.get("/api/auth/me").json()["profile"] == {
         "mode": "system", "layout": "chat", "quick_start": False, "journal": "blog", "timezone_source": "browser",
-        "timezone": "Asia/Tokyo"}
+        "ai": True, "timezone": "Asia/Tokyo"}
     for wrong in ({"layout": "seite"}, {"layout": 1}, {"quick_start": 1}, {"quick_start": "yes"},
                   {"timezone": "Mars/Olympus"}, {"timezone": "../../etc/passwd"}, {"timezone": 7}, {"timezone": ""},
                   {"timezone": "x" * 300}):

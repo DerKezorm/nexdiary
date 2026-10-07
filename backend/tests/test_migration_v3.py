@@ -33,7 +33,8 @@ def test_a_v2_database_with_a_diary_comes_to_v3_whole(client: TestClient, accoun
     path = get_settings().database_path
     # Back to what B1 made: the tables of version 3 and later gone, the version 2.
     with closing(sqlite3.connect(path)) as connection:
-        for later in ("hearts", "share_seen", "shares"):
+        connection.execute("ALTER TABLE notes DROP COLUMN prompt_ref_enc")
+        for later in ("writing_prompts", "hearts", "share_seen", "shares"):
             connection.execute(f"DROP TABLE {later}")
         connection.execute("DROP TABLE photos")
         connection.execute("DROP TABLE drafts")

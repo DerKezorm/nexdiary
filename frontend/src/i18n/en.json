@@ -35,7 +35,12 @@
     "ownTag": "Your own tag",
     "addTagButton": "Add",
     "tagSuggestions": "family, work, outdoors, autumn, health, friends, holiday, cooking, sport, thoughts",
-    "unreadable": "Not readable. This note is damaged in the database and can only be deleted."
+    "unreadable": "Not readable. This note is damaged in the database and can only be deleted.",
+    "promptTitle": "Question of the day",
+    "promptAnswer": "Answer",
+    "promptOther": "Another question",
+    "promptPlaceholder": "A few words are enough.",
+    "promptLabel": "Your answer to the question of the day"
   },
   "quick": {
     "nothingYet": "Nothing noted yet",
@@ -47,7 +52,10 @@
     "open": "Quick note",
     "writeUp": "Write the day up",
     "writeUpHint": "At leisure, with values and photos",
-    "writeUpHintAi": "At leisure, with values, photos and the AI if you like"
+    "writeUpHintAi": "At leisure, with values, photos and the AI if you like",
+    "promptHide": "Hide the question",
+    "promptAsk": "Answer the question",
+    "answerPlaceholder": "Your answer …"
   },
   "journal": {
     "title": "Your journal",
@@ -133,7 +141,8 @@
       "api": "API",
       "backups": "Backup",
       "languages": "Languages",
-      "log": "Log"
+      "log": "Log",
+      "ai": "AI"
     },
     "language": {
       "title": "Language",
@@ -201,6 +210,22 @@
         "name": "Timeline",
         "idea": "Grouped by month, one line per day with a small picture. More at a glance, good for searching."
       }
+    },
+    "prompts": {
+      "title": "Writing prompts",
+      "text": "Small questions for the days when nothing comes to mind. \"Today\" shows a question of the day; when you write in the evening you can add more.",
+      "show": "Show questions",
+      "showHint": "Off: no question on \"Today\" and none while writing.",
+      "which": "Which questions",
+      "whichText": "Switch whole groups on or off.",
+      "more_one": "\"{{first}}\" and {{count}} more",
+      "more_other": "\"{{first}}\" and {{count}} more",
+      "own": "Your own questions",
+      "ownText": "They join the others.",
+      "remove": "Remove the question",
+      "new": "New question",
+      "newPlaceholder": "What surprised you today?",
+      "add": "Add"
     }
   },
   "auth": {
@@ -287,7 +312,8 @@
     "tabs": {
       "profile": "Profile",
       "security": "Security",
-      "connections": "Connections"
+      "connections": "Connections",
+      "ai": "AI"
     },
     "profile": {
       "text": "How the others in the family see you when you share a day with them.",
@@ -329,7 +355,14 @@
       "operator": "Operator",
       "member": "Member"
     },
-    "setupFirst": "The operator requires a second factor. Set it up here, then you can go on."
+    "setupFirst": "The operator requires a second factor. Set it up here, then you can go on.",
+    "ai": {
+      "title": "AI when writing",
+      "text": "Turns your notes of the day into a suggestion for the page. Only when you press \"Write it up\".",
+      "mine": "AI for me",
+      "mineHint": "Off: the button \"Write it up\" disappears for you, and your texts never go to a model.",
+      "byOperator": "Set by the operator:"
+    }
   },
   "twofactor": {
     "title": "Second factor",
@@ -611,7 +644,30 @@
     "checkNewer": "This backup comes from a newer version of nexdiary. Update nexdiary first, then restore.",
     "storage": "Storage per person",
     "storageHint": "How much each person may use for photos and drafts. 0 means no limit.",
-    "storageGb": "GB per person"
+    "storageGb": "GB per person",
+    "ai": {
+      "title": "AI to write the day up",
+      "text": "Applies to everyone in the family. The AI runs only when someone presses \"Write it up\", and everyone can switch it off for themselves in their account.",
+      "none": "No AI",
+      "noneNote": "The button \"Write it up\" does not appear.",
+      "local": "Local model",
+      "localNote": "Ollama or another service in the own network. Nothing leaves the house.",
+      "messagesNote": "Your own API key. When writing up, the notes go to the provider.",
+      "openai": "OpenAI compatible",
+      "openaiNote": "Your own API key and address. When writing up, the notes go to the provider.",
+      "address": "Address",
+      "key": "API key",
+      "keyKept": "saved, leave empty to keep it",
+      "model": "Model",
+      "models": "Fetch models",
+      "pick": "Choose a model",
+      "saveTry": "Save and try it",
+      "probed": "Saved. Test: the model answered in {{seconds}} seconds.",
+      "outgoing": "What goes out: when someone presses \"Write it up\", the notes of that one day with their times and, where a note answers a question, with the question. Without the name of the account, without the date, without photos and without ratings. Nothing else. Whoever does not want that switches the AI off in their account.",
+      "saved": "Saved.",
+      "keyOptional": "API key (if needed)",
+      "keyLocalHint": "Only when the service asks for one, such as LiteLLM. Ollama needs none."
+    }
   },
   "editor": {
     "tools": "Formatting",
@@ -654,7 +710,28 @@
     "loading": "Loading …",
     "photoNote": "Photo",
     "conflictHint": "Saving your version replaces there what you changed here. Copy first what you want to keep of the other one.",
-    "otherVersion": "The other version"
+    "otherVersion": "The other version",
+    "ai": "Write it up",
+    "length": "Length",
+    "lengthShort": "short",
+    "lengthLong": "long",
+    "aiLocal": "Written with the local model of your server. Nothing leaves the house.",
+    "aiTo": "Your notes go to {{name}} for this.",
+    "aiPromise": "The AI only orders and smooths, it makes nothing up.",
+    "longer": "Longer",
+    "shorter": "Shorter",
+    "aiLoading": "Your notes are becoming a page …",
+    "aiSuggestion": "A suggestion. Change whatever does not sound like you.",
+    "aiRedoTitle": "Write it up again?",
+    "aiRedoText": "The suggestion is written anew. What you changed in it is lost. Your notes stay as they are.",
+    "aiRedoConfirm": "Write anew",
+    "morePrompts": "Keep writing?",
+    "morePromptsHint": "Tap a question to add it as a subheading at the end.",
+    "otherPrompts": "Other questions",
+    "aiDraftTitle": "Keep the draft?",
+    "aiDraftText": "There is a draft for this day already. You can keep it, or have the AI write it up anew from your notes; the draft is lost then. Your notes stay as they are.",
+    "aiDraftKeep": "Keep the draft",
+    "aiDraftAnew": "Write it up anew"
   },
   "covers": {
     "title": "Cover for this day",
@@ -844,7 +921,37 @@
     "wrong_password": "The password is wrong.",
     "person_unknown": "There is no such person here.",
     "too_many_people": "Not with that many people at once.",
-    "cover_other_day": "Only a photo of this day can be the cover."
+    "cover_other_day": "Only a photo of this day can be the cover.",
+    "ai_off": "No AI is set up on this server.",
+    "ai_switched_off": "You switched the AI off for yourself (My account, AI).",
+    "ai_incomplete": "The AI is not set up completely yet. The operator has to enter the address and the model.",
+    "ai_provider_unknown": "There is no such kind of AI service.",
+    "ai_address_missing": "Give the address of the service.",
+    "ai_address_invalid": "This is not the address of a service, such as http://ollama:11434/v1.",
+    "ai_https_required": "A service on the internet is reached over https only.",
+    "ai_address_refused": "This address is never called.",
+    "ai_address_private": "This address lies in the own network. Choose \"Local model\" for it.",
+    "ai_address_public": "This address lies on the internet. A local model has to stay in the own network, or \"Nothing leaves the house\" would not be true.",
+    "ai_unreachable": "The server cannot reach the AI service.",
+    "ai_timeout": "The AI service took too long (more than {{seconds}} seconds).",
+    "ai_key_refused": "The AI service refused the key.",
+    "ai_address_not_found": "The AI service does not know this address or this model.",
+    "ai_service_busy": "The AI service is busy right now. Try again in a moment.",
+    "ai_service_failed": "The AI service answered with an error ({{answered}}). {{said}}",
+    "ai_unreadable": "The answer of the AI service could not be read.",
+    "ai_empty": "The AI service wrote nothing.",
+    "ai_no_list": "This service names no models. Type the name of the model yourself.",
+    "ai_no_models": "This service offers no models.",
+    "ai_no_notes": "There are no notes on this day for the AI to write from.",
+    "ai_notes_too_long": "The notes of this day are too long for the AI.",
+    "ai_too_often": "Too many requests to the AI. Wait a moment.",
+    "ai_busy": "The AI is already writing for you.",
+    "ai_server_busy": "The AI is writing for others right now. Try again in a moment.",
+    "prompt_set_unknown": "There is no such group of questions.",
+    "question_too_long": "The question is too long, at most {{max}} characters.",
+    "too_many_questions": "No more than {{max}} own questions.",
+    "ai_daily_limit": "That was the last request to the AI for today. Tomorrow it works again.",
+    "question_empty": "A question needs a few words."
   },
   "entry": {
     "back": "← Journal",

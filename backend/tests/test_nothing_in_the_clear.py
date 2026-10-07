@@ -83,6 +83,12 @@ def write_everywhere(client: TestClient, word: str) -> None:
     assert photo.status_code == 201
     assert client.post("/api/notes", json={"id": str(uuid.uuid4()), "text": "", "photo_id": photo.json()["id"]}
                        ).status_code == 201
+    # The own writing prompts: an own question says something about the person; and "another question" for today.
+    assert client.post("/api/prompts/own", json={"text": f"Frage {word}?"}).status_code == 201
+    assert client.put("/api/prompts/sets/schoen", json={"on": False}).status_code == 200
+    assert client.post("/api/prompts/another").status_code == 200
+    pool = client.get("/api/prompts/pool", params={"date": "2026-10-05"}).json()["questions"]
+    assert word in "".join(entry["text"] for entry in pool)
     share_everything(client, word)
 
 

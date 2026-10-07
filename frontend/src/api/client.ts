@@ -124,6 +124,8 @@ export type Profile = {
   timezone: string
   /** Reported by a browser, or chosen by the person (then no browser changes it). */
   timezone_source: 'browser' | 'manual'
+  /** The AI for this person (Account, AI); off: no button to write a day up, and the server refuses. */
+  ai: boolean
 }
 
 export type Me = {
@@ -235,7 +237,8 @@ export type DayPage = {
 /** `on_note`: taken for a note; it goes with the notes, never with the photos of the day. */
 export type Photo = { id: string; date: string; source: 'upload' | 'immich'; width: number; height: number; created_at: string; on_note: boolean }
 
-export type TodayData = { date: string; notes: Note[]; day: DayPage | null; values: ValueDef[]; streak: number; photos: Photo[] }
+/** `question`: the question of the day (writing prompts), null when the person switched questions off. */
+export type TodayData = { date: string; notes: Note[]; day: DayPage | null; values: ValueDef[]; streak: number; photos: Photo[]; question?: Question | null }
 
 export type DayChange = {
   title?: string
@@ -248,14 +251,27 @@ export type DayChange = {
   base_revision?: number
 }
 
-export type Draft = { title: string; text: string; tags: string[]; cover: string | null; base_revision: number; updated_at: string }
+/** `written_by` "ai" while the writing began as a suggestion of the AI, and `ai_length` the length asked for. */
+export type Draft = {
+  title: string
+  text: string
+  tags: string[]
+  cover: string | null
+  written_by?: 'ai' | 'self' | null
+  ai_length?: AiLength | null
+  base_revision: number
+  updated_at: string
+}
 export type DraftIn = Omit<Draft, 'updated_at'>
 
 export const diaryApi = {
   today: () => api<TodayData>('/api/today'),
   notes: (date: string) => api<Note[]>('/api/notes', { query: { date } }),
-  addNote: (id: string, text: string, date?: string, photoId?: string | null) =>
-    api<Note>('/api/notes', { method: 'POST', body: { id, text, ...(date ? { date } : {}), ...(photoId ? { photo_id: photoId } : {}) } }),
+  addNote: (id: string, text: string, date?: string, photoId?: string | null, prompt?: Question | null) =>
+    api<Note>('/api/notes', {
+      method: 'POST',
+      body: { id, text, ...(date ? { date } : {}), ...(photoId ? { photo_id: photoId } : {}), ...(prompt ? { prompt: prompt.text, prompt_id: prompt.id } : {}) },
+    }),
   changeNote: (id: string, text: string) => api<Note>(`/api/notes/${encodeURIComponent(id)}`, { method: 'PUT', body: { text } }),
   deleteNote: (id: string) => api<void>(`/api/notes/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   day: (date: string) => api<DayPage>(`/api/days/${encodeURIComponent(date)}`),
@@ -271,6 +287,42 @@ export const diaryApi = {
   draft: (date: string) => api<Draft | null>(`/api/days/${encodeURIComponent(date)}/draft`),
   saveDraft: (date: string, draft: DraftIn, keepalive = false) => api<Draft>(`/api/days/${encodeURIComponent(date)}/draft`, { method: 'PUT', body: draft, keepalive }),
   deleteDraft: (date: string) => api<void>(`/api/days/${encodeURIComponent(date)}/draft`, { method: 'DELETE' }),
+}
+
+// ---- The AI and the writing prompts ---------------------------------------------------------------------------------
+
+export type AiProvider = 'none' | 'local' | 'openai' | 'messages'
+export type AiLength = 'short' | 'long'
+/** What a person may know about the AI: whether there is one for them (`available`), of which kind, the host the notes
+ * go to for a service on the internet (`to`), and the own switch (`mine`). */
+export type AiState = { provider: AiProvider; to: string; model: string; mine: boolean; available: boolean }
+export type AiSettings = { provider: AiProvider; url: string; model: string; key_set: boolean }
+export type AiModel = { id: string; name: string }
+
+export const aiApi = {
+  state: () => api<AiState>('/api/ai'),
+  /** Only on a press of the button: the own notes of the day go to the operator's service. */
+  formulate: (date: string, length: AiLength) => api<{ title: string; text: string; length: AiLength }>('/api/ai/formulate', { method: 'POST', body: { date, length } }),
+  settings: () => api<AiSettings>('/api/settings/ai'),
+  save: (change: Partial<Omit<AiSettings, 'key_set'>> & { key?: string }) => api<AiSettings>('/api/settings/ai', { method: 'PUT', body: change }),
+  models: (typed: { provider?: AiProvider; url?: string; key?: string }) => api<AiModel[]>('/api/settings/ai/models', { method: 'POST', body: typed }),
+  probe: () => api<{ seconds: number }>('/api/settings/ai/probe', { method: 'POST' }),
+}
+
+/** A writing prompt: its stable id (`schoen.0`, `own.<hex>`) and its words in the person's language. */
+export type Question = { id: string; text: string }
+export type PromptSet = { id: string; name: string; questions: string[]; on: boolean }
+export type PromptChoice = { on: boolean; sets: PromptSet[]; own: Question[] }
+
+/** Every change is a single one, made on what stands: two tabs never overwrite each other's choice. */
+export const promptsApi = {
+  choice: () => api<PromptChoice>('/api/prompts'),
+  switch: (on: boolean) => api<PromptChoice>('/api/prompts', { method: 'PUT', body: { on } }),
+  switchSet: (id: string, on: boolean) => api<PromptChoice>(`/api/prompts/sets/${encodeURIComponent(id)}`, { method: 'PUT', body: { on } }),
+  addOwn: (text: string) => api<PromptChoice>('/api/prompts/own', { method: 'POST', body: { text } }),
+  removeOwn: (id: string) => api<PromptChoice>(`/api/prompts/own/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  another: () => api<{ question: Question | null }>('/api/prompts/another', { method: 'POST' }),
+  pool: (date: string) => api<{ questions: (Question & { answered: boolean })[] }>('/api/prompts/pool', { query: { date } }),
 }
 
 /** Photos of a day: uploaded as they are, drawn anew by the server without anything but their pixels. */
