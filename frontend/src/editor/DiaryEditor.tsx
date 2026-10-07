@@ -27,6 +27,7 @@ import { Bold, Heading2, Italic, List, Quote, Undo2, type LucideIcon } from 'luc
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { tame } from '../lib/markdown'
 import { diaryPlugins, HEADING_LEVEL } from './setup'
 
 export type DiaryEditorHandle = {
@@ -127,7 +128,8 @@ export function DiaryEditor({
     const made = Editor.make()
       .config((ctx) => {
         ctx.set(rootCtx, element)
-        ctx.set(defaultValueCtx, first.current)
+        // Within the limits a page has: remark needs seconds, or overflows its stack, on texts made to do that.
+        ctx.set(defaultValueCtx, tame(first.current))
         ctx.update(editorViewOptionsCtx, (options) => ({
           ...options,
           // The caret stays clear of the sticky bars: the top bar and the editor's own above, "Save" below on a phone.

@@ -26,7 +26,8 @@ def test_a_display_name_is_not_too_long_and_has_no_control_characters(client: Te
     assert client.get("/api/auth/me").json()["display_name"] == "x" * 80
 
 
-DEFAULTS = {"mode": "system", "layout": "page", "quick_start": True, "timezone_source": "browser", "timezone": ""}
+DEFAULTS = {"mode": "system", "layout": "page", "quick_start": True, "journal": "blog", "timezone_source": "browser",
+            "timezone": ""}
 
 
 def test_light_or_dark_is_kept_with_the_account(client: TestClient, account: Account) -> None:
@@ -54,7 +55,8 @@ def test_the_layout_of_today_the_quick_start_and_the_time_zone_are_kept_with_the
     saved = client.put("/api/me/preferences", json={"layout": "chat", "quick_start": False, "timezone": "Asia/Tokyo"})
     assert saved.status_code == 200
     assert client.get("/api/auth/me").json()["profile"] == {
-        "mode": "system", "layout": "chat", "quick_start": False, "timezone_source": "browser", "timezone": "Asia/Tokyo"}
+        "mode": "system", "layout": "chat", "quick_start": False, "journal": "blog", "timezone_source": "browser",
+        "timezone": "Asia/Tokyo"}
     for wrong in ({"layout": "seite"}, {"layout": 1}, {"quick_start": 1}, {"quick_start": "yes"},
                   {"timezone": "Mars/Olympus"}, {"timezone": "../../etc/passwd"}, {"timezone": 7}, {"timezone": ""},
                   {"timezone": "x" * 300}):
@@ -74,3 +76,14 @@ def test_a_browser_does_not_overrule_a_time_zone_the_person_chose(client: TestCl
     back = client.put("/api/me/preferences", json={"timezone": "Europe/Berlin", "timezone_source": "manual"})
     assert back.json()["timezone"] == "Europe/Berlin"
     assert client.put("/api/me/preferences", json={"timezone_source": "phone"}).status_code == 422
+
+
+def test_the_journal_is_a_blog_or_a_timeline_kept_with_the_account(client: TestClient, account: Account) -> None:
+    assert client.get("/api/auth/me").json()["profile"]["journal"] == "blog"
+    saved = client.put("/api/me/preferences", json={"journal": "timeline"})
+    assert saved.status_code == 200 and saved.json()["journal"] == "timeline"
+    assert client.get("/api/auth/me").json()["profile"]["journal"] == "timeline"
+    for wrong in ({"journal": "zeitleiste"}, {"journal": True}, {"journal": ["blog"]}):
+        answer = client.put("/api/me/preferences", json=wrong)
+        assert answer.status_code == 422 and answer.json()["detail"]["code"] == "bad_preference", wrong
+    assert client.get("/api/auth/me").json()["profile"]["journal"] == "timeline"

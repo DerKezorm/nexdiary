@@ -110,6 +110,7 @@ async function once<T>(path: string, options: Options): Promise<T> {
 // ---- Types ----------------------------------------------------------------------------------------------------------
 
 export type Layout = 'page' | 'columns' | 'chat'
+export type JournalLook = 'blog' | 'timeline'
 
 export type Profile = {
   mode: 'system' | 'light' | 'dark'
@@ -117,6 +118,8 @@ export type Profile = {
   layout: Layout
   /** A phone opens on the quick note. */
   quick_start: boolean
+  /** How the journal shows the days: large cards, or a line per day grouped by month. */
+  journal: JournalLook
   /** The time zone; what "today" means for the server. */
   timezone: string
   /** Reported by a browser, or chosen by the person (then no browser changes it). */
@@ -229,7 +232,8 @@ export type DayPage = {
   updated_at: string
 }
 
-export type Photo = { id: string; date: string; source: 'upload' | 'immich'; width: number; height: number; created_at: string }
+/** `on_note`: taken for a note; it goes with the notes, never with the photos of the day. */
+export type Photo = { id: string; date: string; source: 'upload' | 'immich'; width: number; height: number; created_at: string; on_note: boolean }
 
 export type TodayData = { date: string; notes: Note[]; day: DayPage | null; values: ValueDef[]; streak: number; photos: Photo[] }
 
@@ -271,8 +275,8 @@ export const diaryApi = {
 
 /** Photos of a day: uploaded as they are, drawn anew by the server without anything but their pixels. */
 export const photosApi = {
-  upload: (file: Blob, uploadId: string, date?: string) =>
-    api<Photo>('/api/photos', { method: 'POST', raw: file, query: { upload_id: uploadId, ...(date ? { date } : {}) } }),
+  upload: (file: Blob, uploadId: string, date?: string, forNote = false) =>
+    api<Photo>('/api/photos', { method: 'POST', raw: file, query: { upload_id: uploadId, ...(date ? { date } : {}), ...(forNote ? { note: true } : {}) } }),
   list: (date: string) => api<Photo[]>('/api/photos', { query: { date } }),
   remove: (id: string) => api<void>(`/api/photos/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 }
@@ -280,4 +284,84 @@ export const photosApi = {
 /** Where a photo is shown from; the smaller copy for lists and tiles. */
 export function photoUrl(id: string, preview = false): string {
   return `/api/photos/${encodeURIComponent(id)}${preview ? '/preview' : ''}`
+}
+
+// ---- The journal and sharing ----------------------------------------------------------------------------------------
+
+/** Somebody on this server, as everybody may see them. */
+export type Person = { id: number; name: string; display_name: string; avatar: string | null }
+
+/** Somebody a day is shared with, what they see, and the heart they sent (when). */
+export type Recipient = Person & { with_values: boolean; with_notes: boolean; heart: string | null }
+
+export type JournalDay = {
+  date: string
+  title: string
+  /** The start of the text in plain words. */
+  excerpt: string
+  tags: string[]
+  cover: string
+  written_by: 'ai' | 'self' | null
+  /** The first value asked, as rated that day. */
+  first_value: { name: string; value: number } | null
+  shared_with: Recipient[]
+  unreadable: boolean
+}
+
+export type JournalPage = { days: JournalDay[]; more: boolean }
+export type JournalOverview = { count: number; since: string | null; tags: { tag: string; count: number }[] }
+
+export type SearchHit = { date: string; kind: 'title' | 'text' | 'tag' | 'note'; snippet: string; note_id?: string }
+export type SearchResult = { results: SearchHit[]; more: boolean; days: Record<string, JournalDay> }
+
+export type DayShares = { date: string; people: Recipient[]; with_values: boolean; with_notes: boolean }
+export type SharedByMe = { date: string; title: string; cover: string; people: Recipient[]; unreadable: boolean }
+
+export type SharedItem = { from: Person; date: string; title: string; excerpt: string; cover: string; new: boolean; heart: string | null }
+
+export type SharedDay = {
+  from: Person
+  date: string
+  title: string
+  text: string
+  tags: string[]
+  cover: string
+  photos: { id: string; width: number; height: number }[]
+  with_values: boolean
+  with_notes: boolean
+  heart: string | null
+  shared_at: string
+  /** Only when the day was shared with its ratings. */
+  values?: { name: string; low: string; high: string; value: number }[]
+  /** Only when the day was shared with its notes. */
+  notes?: { text: string; prompt: string | null; photo_id: string | null; created_at: string }[]
+}
+
+export const journalApi = {
+  /** In the body, never in the address: tags are as private as the text. */
+  page: (before?: string, tag?: string, limit = 24) => api<JournalPage>('/api/journal', { method: 'POST', body: { limit, ...(before ? { before } : {}), ...(tag ? { tag } : {}) } }),
+  overview: () => api<JournalOverview>('/api/journal/overview'),
+  /** In the body, never in the address: an address ends up in logs and the history. */
+  search: (q: string) => api<SearchResult>('/api/search', { method: 'POST', body: { q } }),
+}
+
+const shared = (owner: number, date: string) => `/api/shared/${encodeURIComponent(String(owner))}/${encodeURIComponent(date)}`
+
+export const sharingApi = {
+  people: () => api<Person[]>('/api/people'),
+  ofDay: (date: string) => api<DayShares>(`/api/days/${encodeURIComponent(date)}/shares`),
+  share: (date: string, to: number[], withValues: boolean, withNotes: boolean) =>
+    api<DayShares>(`/api/days/${encodeURIComponent(date)}/shares`, { method: 'PUT', body: { to, with_values: withValues, with_notes: withNotes } }),
+  stop: (date: string) => api<void>(`/api/days/${encodeURIComponent(date)}/shares`, { method: 'DELETE' }),
+  byMe: () => api<SharedByMe[]>('/api/shares'),
+  withMe: () => api<SharedItem[]>('/api/shared'),
+  count: () => api<{ new: number }>('/api/shared/count'),
+  day: (owner: number, date: string) => api<SharedDay>(shared(owner, date)),
+  seen: (owner: number, date: string) => api<void>(`${shared(owner, date)}/seen`, { method: 'POST' }),
+  heart: (owner: number, date: string, on: boolean) => api<{ heart: string | null }>(`${shared(owner, date)}/heart`, { method: on ? 'PUT' : 'DELETE' }),
+}
+
+/** A photo of a day shared with me: only through the share, never through the owner's own address. */
+export function sharedPhotoUrl(owner: number, date: string, id: string, preview = false): string {
+  return `${shared(owner, date)}/photos/${encodeURIComponent(id)}${preview ? '/preview' : ''}`
 }

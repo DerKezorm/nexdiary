@@ -31,7 +31,9 @@ async def upload(
     db: DbSession,
     upload_id: Annotated[str, Query(max_length=photos.UPLOAD_ID_LENGTH)],
     date: Annotated[str, Query(max_length=10)] = "",
+    note: bool = False,
 ) -> dict[str, Any]:
+    """With ``note`` the photo is for a note: it goes with the notes of the day, never with its photos."""
     key = diary.check_date(account, date) if date else diary.today_of(account).isoformat()
     upload = photos.check_upload_id(upload_id)
     brakes.take("upload", account.id)
@@ -45,7 +47,7 @@ async def upload(
             raise error("photo_too_large", "The photo is too large.", 422, max_mb=MAX_MB) from exc
         raise error("photo_not_a_picture", "This is not a photo nexdiary takes.", 422) from exc
     dek = vault.dek_for(account.id)
-    photo, new = await run_in_threadpool(photos.add, db, account.id, dek, key, upload, drawn, diary.now())
+    photo, new = await run_in_threadpool(photos.add, db, account.id, dek, key, upload, drawn, diary.now(), note)
     response.status_code = 201 if new else 200
     return photo
 

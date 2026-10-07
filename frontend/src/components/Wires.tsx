@@ -1,5 +1,7 @@
-// Small sketches of the layouts of "Today", for choosing one under Settings, Look. As the mock's.
-import type { Layout } from '../api/client'
+// Small sketches of the layouts of "Today" and of the journal, for choosing one under Settings, Look. As the mock's;
+// where the mock draws its photo scenes, the illustrations of the covers stand in.
+import type { JournalLook, Layout } from '../api/client'
+import { Illustration } from '../covers/drawings'
 
 const bar = 'rounded bg-line'
 
@@ -53,6 +55,44 @@ export function LayoutWire({ kind }: { kind: Layout }) {
         ))}
       </div>
       <div className="h-5 rounded-md bg-accent" />
+    </div>
+  )
+}
+
+export function JournalWire({ kind }: { kind: JournalLook }) {
+  if (kind === 'blog')
+    return (
+      <div className="space-y-1.5 rounded-xl border border-line bg-paper p-2" aria-hidden="true">
+        <div className="grid grid-cols-[1.2fr_1fr] gap-1.5 rounded-md border border-line bg-sheet p-1">
+          <Illustration id="berge.tag.sommer" className="h-10 w-full rounded" />
+          <div className="space-y-1 py-1">
+            <div className="h-2 w-4/5 rounded bg-ink/30" />
+            <div className={`h-1.5 ${bar}`} />
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-1.5">
+          {['baum.tag.herbst', 'wald.tag.sommer', 'regen.tag.herbst'].map((id) => (
+            <div key={id} className="rounded-md border border-line bg-sheet p-0.5">
+              <Illustration id={id} className="h-6 w-full rounded" />
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  return (
+    <div className="space-y-1 rounded-xl border border-line bg-paper p-2" aria-hidden="true">
+      <div className="divide-y divide-line rounded-md border border-line bg-sheet">
+        {['berge.tag.sommer', 'regen.tag.herbst', 'wald.tag.sommer', 'feld.tag.sommer'].map((id, i) => (
+          <div key={id} className="flex items-center gap-1.5 p-1">
+            <span className="w-3 text-center font-display text-[0.6rem] font-bold text-accent">{5 - i}</span>
+            <div className="flex-1 space-y-0.5">
+              <div className="h-1.5 w-3/5 rounded bg-ink/25" />
+              <div className={`h-1 ${bar}`} />
+            </div>
+            <Illustration id={id} className="h-4 w-6 rounded-sm" />
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

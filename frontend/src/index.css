@@ -105,6 +105,8 @@ body {
 }
 body {
   min-height: 100dvh;
+  /* A word or an address longer than the line breaks instead of running over the edge of a card. */
+  overflow-wrap: break-word;
 }
 /* In the base layer, so a field's own focus look (border instead of ring) still wins. */
 @layer base {
@@ -142,6 +144,8 @@ body {
     box-shadow: var(--shadow);
   }
   .prose-diary {
+    /* Anywhere, not only at the edge: a page's text never widens its card, however long a word. */
+    overflow-wrap: anywhere;
     font-family: var(--font-serif);
     font-size: 1.075rem;
     line-height: 1.8;
@@ -167,6 +171,15 @@ body {
     list-style: disc;
     padding-left: 1.4em;
     margin: 0 0 1em;
+  }
+  .prose-diary ol {
+    list-style: decimal;
+    padding-left: 1.4em;
+    margin: 0 0 1em;
+  }
+  .prose-diary li > p,
+  .prose-diary blockquote > p:last-child {
+    margin-bottom: 0;
   }
   .prose-diary:focus {
     outline: none;

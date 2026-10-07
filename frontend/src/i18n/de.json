@@ -50,13 +50,53 @@
     "writeUpHintAi": "In Ruhe, mit Werten, Fotos und auf Wunsch der KI"
   },
   "journal": {
-    "title": "Dein Tagebuch"
+    "title": "Dein Tagebuch",
+    "count_one": "{{count}} Tag aufgeschrieben, seit {{since}}.",
+    "count_other": "{{count}} Tage aufgeschrieben, seit {{since}}.",
+    "search": "Suchen in Texten und Notizen",
+    "hits_one": "{{count}} Treffer",
+    "hits_other": "{{count}} Treffer",
+    "hitsMore": "mehr als {{count}} Treffer",
+    "all": "Alle",
+    "tagFilter": "Nach Tag filtern",
+    "nothing": "Nichts gefunden. Vielleicht anders geschrieben?",
+    "empty": "Noch kein Tag aufgeschrieben. Abends wird aus deinen Notizen die erste Seite.",
+    "toToday": "Zu „Heute“",
+    "shared": "geteilt",
+    "ai": "mit KI ausformuliert",
+    "more": "Mehr laden",
+    "loading": "Lädt …",
+    "onlyNotes": "Nur Notizen, noch keine Seite",
+    "untitled": "Ohne Titel",
+    "unreadable": "Dieser Tag lässt sich nicht lesen."
   },
   "stats": {
     "title": "Statistik"
   },
   "shared": {
-    "title": "Geteilt"
+    "title": "Geteilt",
+    "intro": "Einzelne Tage, die ihr euch in der Familie zeigt. Alles andere bleibt bei jedem selbst.",
+    "withMe": "Mit mir geteilt",
+    "withMeNew": "Mit mir geteilt ({{count}} neu)",
+    "byMe": "Von mir geteilt",
+    "new": "neu",
+    "heartSent": "Du hast ein Herz geschickt",
+    "noneByMe": "Du hast noch keinen Tag geteilt. Öffne einen Tag und tippe auf „Teilen“.",
+    "noneWithMe": "Noch hat niemand einen Tag mit dir geteilt.",
+    "stop": "Teilen beenden",
+    "stopped": "„{{title}}“ ist nicht mehr geteilt.",
+    "note": "Geteilt wird immer nur ein einzelner Tag an bestimmte Personen. Weiterteilen geht nicht, und wer geteilt hat, kann es jederzeit zurücknehmen.",
+    "back": "Geteilt",
+    "onlyForYou": "nur für dich geteilt",
+    "gone": "Dieser Tag ist nicht (mehr) mit dir geteilt.",
+    "heart": "Herz schicken",
+    "hearted": "Herz geschickt",
+    "heartHint": "Ein stilles Zeichen, dass du es gelesen hast. Mehr nicht.",
+    "heartToast": "{{name}} sieht dein Herz.",
+    "values": "Werte von dem Tag",
+    "notes": "Notizen von dem Tag",
+    "badge_one": "{{count}} neu geteilter Tag",
+    "badge_other": "{{count}} neu geteilte Tage"
   },
   "theme": {
     "system": "Wie das System",
@@ -148,6 +188,18 @@
       "chat": {
         "name": "Wie ein Chat",
         "idea": "Notizen als Nachrichten an dich selbst, das Eingabefeld unten wie im Messenger. Werte und Fotos hinter „Dein Tag“. Am schnellsten auf dem Handy."
+      }
+    },
+    "journal": {
+      "title": "Aufbau des Tagebuchs",
+      "text": "Wie deine Tage aussehen, wenn du zurückblätterst.",
+      "blog": {
+        "name": "Blog",
+        "idea": "Große Karten mit Foto, der neueste Tag ganz oben groß. Blättern wie in einem Magazin."
+      },
+      "timeline": {
+        "name": "Zeitleiste",
+        "idea": "Nach Monaten gruppiert, eine Zeile je Tag mit kleinem Bild. Mehr auf einen Blick, gut zum Suchen."
       }
     }
   },
@@ -789,6 +841,41 @@
     "value_out_of_range": "Ein Wert geht von 1 bis 10.",
     "value_unknown": "Diesen Wert gibt es nicht mehr. Lade die Seite neu.",
     "wrong_credentials": "Name oder Passwort stimmt nicht.",
-    "wrong_password": "Das Passwort stimmt nicht."
+    "wrong_password": "Das Passwort stimmt nicht.",
+    "person_unknown": "Diese Person gibt es hier nicht.",
+    "too_many_people": "Mit so vielen auf einmal geht das nicht.",
+    "cover_other_day": "Als Titelbild geht nur ein Foto von diesem Tag."
+  },
+  "entry": {
+    "back": "← Tagebuch",
+    "edit": "Bearbeiten",
+    "share": "Teilen",
+    "changeCover": "Titelbild ändern",
+    "onlyYou": "Nur für dich",
+    "sharedWith": "Geteilt mit",
+    "heartFrom": "{{name}} hat ein Herz geschickt",
+    "notes": "Deine Notizen von dem Tag",
+    "yearAgo": "Heute vor einem Jahr",
+    "missing": "Diesen Tag gibt es nicht.",
+    "write": "Den Tag aufschreiben"
+  },
+  "share": {
+    "title": "Diesen Tag teilen",
+    "intro": "Nur dieser eine Tag. Du kannst das jederzeit zurücknehmen.",
+    "search": "Person suchen",
+    "whatSees": "Was sieht {{name}}?",
+    "whatSeesFamily": "Was sieht die Familie?",
+    "textPhotos": "Text und Fotos",
+    "always": "immer",
+    "values": "Deine Werte (Stimmung, Gesundheit …)",
+    "valuesLabel": "Werte mit teilen",
+    "notes": "Deine Notizen von dem Tag",
+    "notesLabel": "Notizen mit teilen",
+    "coverFromNotes": "Das Titelbild ist ein Foto aus deinen Notizen und wird mitgezeigt.",
+    "share": "Teilen",
+    "stop": "Teilen beenden",
+    "done": "Geteilt mit {{names}}.",
+    "stopped": "Nicht mehr geteilt.",
+    "nobody": "Außer dir nutzt noch niemand nexdiary auf diesem Server. Lade jemanden ein, dann kannst du Tage teilen."
   }
 }

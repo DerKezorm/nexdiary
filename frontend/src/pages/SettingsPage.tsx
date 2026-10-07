@@ -3,13 +3,13 @@
  * the operator with a second row for its parts. The tab is in the address (`?tab=server&sub=backups`), so a link can
  * point at one; a tab someone may not see falls back to General. The own account is `AccountPage.tsx`.
  */
-import { Eye, Globe, HardDrive, KeyRound, Languages, ListChecks, Mail, Palette, Plug, ScrollText, Shield, Smartphone, Users } from 'lucide-react'
+import { Database, Eye, Globe, HardDrive, KeyRound, Languages, ListChecks, Mail, Palette, Plug, ScrollText, Shield, Smartphone, Users } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
 
-import { authApi, type Layout, type Me, type Profile } from '../api/client'
-import { LayoutWire } from '../components/Wires'
+import { authApi, type JournalLook, type Layout, type Me, type Profile } from '../api/client'
+import { JournalWire, LayoutWire } from '../components/Wires'
 import { changeLanguage, languageOptions, type LanguageOption } from '../i18n'
 import { applyMode, storedMode, type Mode } from '../lib/theme'
 import { useAuth } from '../state/auth'
@@ -55,6 +55,7 @@ export function SettingsPage() {
             <LooksCard />
             <PhoneCard />
             <LayoutCard />
+            <JournalCard />
           </>
         )}
         {top === 'server' && <ServerPart part={part} />}
@@ -192,6 +193,26 @@ function LayoutCard() {
         {LAYOUTS.map((layout) => (
           <Choice key={layout} on={(profile?.layout ?? 'page') === layout} onClick={() => choose({ layout })} title={t(`settings.layout.${layout}.name`)} text={t(`settings.layout.${layout}.idea`)}>
             <LayoutWire kind={layout} />
+          </Choice>
+        ))}
+      </div>
+      <Feedback problem={problem} />
+    </Card>
+  )
+}
+
+const JOURNALS: JournalLook[] = ['blog', 'timeline']
+
+/** How the journal shows the days: as a blog or as a timeline. */
+function JournalCard() {
+  const { t } = useTranslation()
+  const { profile, choose, problem } = useProfileChoice()
+  return (
+    <Card icon={Database} title={t('settings.journal.title')} text={t('settings.journal.text')}>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {JOURNALS.map((journal) => (
+          <Choice key={journal} on={(profile?.journal ?? 'blog') === journal} onClick={() => choose({ journal })} title={t(`settings.journal.${journal}.name`)} text={t(`settings.journal.${journal}.idea`)}>
+            <JournalWire kind={journal} />
           </Choice>
         ))}
       </div>

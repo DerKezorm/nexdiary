@@ -167,6 +167,45 @@ def words_in(value: str) -> int:
     return len(_WORD.findall(value))
 
 
+#: How much of a page a list shows as its start.
+EXCERPT_MAX = 320
+_BLOCK_MARKS = re.compile(r"^\s{0,3}(?:#{1,6}\s+|>\s?|[-*+]\s+|\d{1,9}[.)]\s+)+")
+_STARS = re.compile(r"(?<!\\)\*+")
+#: Underscores that mark emphasis: not those inside a word (``snake_case`` is written as it is).
+_UNDERSCORES = re.compile(r"(?<!\\)(?:(?<!\w)_+|_+(?!\w))")
+_ESCAPED = re.compile(r"\\([!-/:-@\[-`{-~])")
+
+
+def plain_text(markdown: str) -> str:
+    """A page as plain words in one line: the marks of headings, quotes, lists, bold and italic gone, escaped
+    characters as themselves. For lists and the start of a page, never for showing the page itself."""
+    lines = []
+    for line in markdown.split("\n"):
+        line = _BLOCK_MARKS.sub("", line)
+        line = _UNDERSCORES.sub("", _STARS.sub("", line))
+        line = _ESCAPED.sub(r"\1", line.rstrip()).rstrip("\\")
+        lines.append(line)
+    return " ".join(" ".join(lines).split())
+
+
+#: How much of a page the start is made from: enough for ``EXCERPT_MAX`` words even among many marks, and a list of
+#: long pages stays as quick as one of short ones.
+EXCERPT_SOURCE = EXCERPT_MAX * 8
+
+
+def excerpt(markdown: str, limit: int = EXCERPT_MAX) -> str:
+    """The start of a page in plain words, cut at a word."""
+    cut_source = len(markdown) > EXCERPT_SOURCE
+    words = plain_text(markdown[:EXCERPT_SOURCE])
+    if cut_source and words and len(words) <= limit:
+        return words.rstrip(" ,;:") + " …"
+    if len(words) <= limit:
+        return words
+    cut = words[:limit]
+    space = cut.rfind(" ")
+    return (cut[:space] if space > limit // 2 else cut).rstrip(" ,;:") + " …"
+
+
 # --- Values ---------------------------------------------------------------------------------------------------------
 
 #: The values every person starts with, as in the mock: four asked, one off. The language is the account's.
@@ -427,6 +466,9 @@ def add_note(db: Session, account_id: int, dek: bytes, uid: str, day: str, note_
          "text": vault.seal_text(dek, note_text, _note_aad(account_id, uid, day, "text")),
          "prompt": vault.seal_text(dek, prompt, _note_aad(account_id, uid, day, "prompt")) if prompt else None},
     )
+    if inserted.rowcount == 1:
+        # In the same transaction: a photo on a note is a note's for good, never a photo of the day.
+        _mark_on_note(db, account_id, photo_id)
     db.commit()
     row = _note_row(db, account_id, uid)
     if row is None:
@@ -460,6 +502,8 @@ def change_note(db: Session, account_id: int, dek: bytes, uid: str, note_text: s
     changed = db.execute(update(Note).where(Note.user_id == account_id, Note.uid == uid, Note.date == row.date).values(
         text_enc=vault.seal_text(dek, note_text, _note_aad(account_id, uid, row.date, "text")),
         photo_id=photo, updated_at=now()))
+    if changed.rowcount == 1:
+        _mark_on_note(db, account_id, photo)
     db.commit()
     # Deleted in between (another tab): gone, like any note that is not there.
     found = _note_row(db, account_id, uid) if changed.rowcount == 1 else None
@@ -468,11 +512,40 @@ def change_note(db: Session, account_id: int, dek: bytes, uid: str, note_text: s
     return _note_view(account_id, dek, found)
 
 
-def delete_note(db: Session, account_id: int, uid: str) -> None:
+def _mark_on_note(db: Session, account_id: int, uid: str | None) -> None:
+    if uid is not None:
+        db.execute(update(Photo).where(Photo.user_id == account_id, Photo.uid == uid).values(on_note=True))
+
+
+def _is_cover(account_id: int, dek: bytes, sealed: bytes | None, day: str, uid: str) -> bool:
+    if sealed is None:
+        return False
+    content = _readable_content(account_id, dek, day, sealed)
+    # A page that does not open keeps the photo: it may be its cover.
+    return content is None or content.get("cover") == covers.PHOTO_PREFIX + uid
+
+
+def delete_note(db: Session, account_id: int, dek: bytes, uid: str) -> list[str]:
+    """Deletes a note, and the photo that came with it, unless that photo is the cover of its day or another note
+    holds it too. One transaction; the files of a deleted photo are the caller's to remove (the ids returned)."""
+    row = db.execute(select(Note.photo_id).where(Note.user_id == account_id, Note.uid == uid)).first()
     gone = db.execute(delete(Note).where(Note.user_id == account_id, Note.uid == uid))
-    db.commit()
     if gone.rowcount != 1:
+        db.rollback()
         raise error("not_found", "Not found.", 404)
+    removed: list[str] = []
+    photo = row.photo_id if row is not None else None
+    if photo is not None:
+        found = db.execute(select(Photo.date, Photo.on_note).where(Photo.user_id == account_id, Photo.uid == photo)
+                           ).first()
+        others = db.scalar(select(Note.id).where(Note.user_id == account_id, Note.photo_id == photo).limit(1))
+        if found is not None and found.on_note and others is None:
+            sealed = db.scalar(select(Day.content_enc).where(Day.user_id == account_id, Day.date == found.date))
+            if not _is_cover(account_id, dek, sealed, found.date, photo):
+                db.execute(delete(Photo).where(Photo.user_id == account_id, Photo.uid == photo))
+                removed.append(photo)
+    db.commit()
+    return removed
 
 
 # --- Days -----------------------------------------------------------------------------------------------------------
@@ -630,7 +703,7 @@ def merge(content: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def clean_day_patch(db: Session, account_id: int, fields: dict[str, Any]) -> dict[str, Any]:
+def clean_day_patch(db: Session, account_id: int, day: str, fields: dict[str, Any]) -> dict[str, Any]:
     patch: dict[str, Any] = {}
     if fields.get("title") is not None:
         patch["title"] = clean_line(fields["title"], TITLE_MAX, "title_too_long")
@@ -645,13 +718,13 @@ def clean_day_patch(db: Session, account_id: int, fields: dict[str, Any]) -> dic
     if fields.get("values") is not None:
         patch["values"] = check_values(db, account_id, fields["values"])
     if "cover" in fields:
-        patch["cover"] = check_cover(db, account_id, fields["cover"])
+        patch["cover"] = check_cover(db, account_id, day, fields["cover"])
     return patch
 
 
-def check_cover(db: Session, account_id: int, cover: Any) -> str | None:
-    """A cover a day may store: a known illustration, or one of the person's own photos (any other photo answers
-    like one that is not there). None: the suggestion again."""
+def check_cover(db: Session, account_id: int, day: str, cover: Any) -> str | None:
+    """A cover a day may store: a known illustration, or one of the person's own photos of that very day, whether it
+    came with a note or not (any other photo answers like one that is not there). None: the suggestion again."""
     if cover is None:
         return None
     if not isinstance(cover, str) or len(cover) > COVER_MAX:
@@ -660,6 +733,8 @@ def check_cover(db: Session, account_id: int, cover: Any) -> str | None:
         return cover
     if cover.startswith(covers.PHOTO_PREFIX):
         uid = check_own_photo(db, account_id, cover[len(covers.PHOTO_PREFIX):])
+        if db.scalar(select(Photo.date).where(Photo.user_id == account_id, Photo.uid == uid)) != day:
+            raise error("cover_other_day", "The cover is a photo of this day.", 422)
         return covers.PHOTO_PREFIX + str(uid)
     raise error("cover_unknown", "There is no such cover.", 422)
 
@@ -716,7 +791,7 @@ def _draft_aad(account_id: int, day: str) -> bytes:
     return vault.aad(account_id, "drafts", "content", day)
 
 
-def clean_draft(db: Session, account_id: int, fields: dict[str, Any]) -> dict[str, Any]:
+def clean_draft(db: Session, account_id: int, day: str, fields: dict[str, Any]) -> dict[str, Any]:
     """What a draft holds: title, text, tags and cover, cleaned and limited like the page itself."""
     draft: dict[str, Any] = {"title": "", "text": "", "tags": [], "cover": None}
     if fields.get("title") is not None:
@@ -726,7 +801,7 @@ def clean_draft(db: Session, account_id: int, fields: dict[str, Any]) -> dict[st
     if fields.get("tags") is not None:
         draft["tags"] = clean_tags(fields["tags"])
     if fields.get("cover") is not None:
-        draft["cover"] = check_cover(db, account_id, fields["cover"])
+        draft["cover"] = check_cover(db, account_id, day, fields["cover"])
     return draft
 
 

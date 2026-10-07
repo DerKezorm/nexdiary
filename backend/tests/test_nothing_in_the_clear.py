@@ -83,6 +83,25 @@ def write_everywhere(client: TestClient, word: str) -> None:
     assert photo.status_code == 201
     assert client.post("/api/notes", json={"id": str(uuid.uuid4()), "text": "", "photo_id": photo.json()["id"]}
                        ).status_code == 201
+    share_everything(client, word)
+
+
+def share_everything(client: TestClient, word: str) -> None:
+    """The day shared with everything there is to share, and read, hearted and opened by the one it is for: a share
+    keeps no copy, not in the database, not in a backup, not in the log."""
+    from .conftest import make_account, new_client
+
+    rike = make_account("rike")
+    shared = client.put("/api/days/2026-10-05/shares", json={"to": [rike.id], "with_values": True,
+                                                            "with_notes": True})
+    assert shared.status_code == 200
+    owner = client.get("/api/auth/me").json()["id"]
+    with new_client(rike) as reader:
+        day = reader.get(f"/api/shared/{owner}/2026-10-05")
+        assert day.status_code == 200 and word in day.text
+        assert word in reader.get("/api/shared").text
+        assert reader.post(f"/api/shared/{owner}/2026-10-05/seen").status_code == 204
+        assert reader.put(f"/api/shared/{owner}/2026-10-05/heart").status_code == 200
 
 
 def photo_with(word: str) -> bytes:

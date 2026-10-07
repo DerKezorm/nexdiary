@@ -50,13 +50,53 @@
     "writeUpHintAi": "At leisure, with values, photos and the AI if you like"
   },
   "journal": {
-    "title": "Your journal"
+    "title": "Your journal",
+    "count_one": "{{count}} day written down, since {{since}}.",
+    "count_other": "{{count}} days written down, since {{since}}.",
+    "search": "Search texts and notes",
+    "hits_one": "{{count}} result",
+    "hits_other": "{{count}} results",
+    "hitsMore": "more than {{count}} results",
+    "all": "All",
+    "tagFilter": "Filter by tag",
+    "nothing": "Nothing found. Maybe it was written differently?",
+    "empty": "No day written down yet. In the evening your notes become the first page.",
+    "toToday": "Go to “Today”",
+    "shared": "shared",
+    "ai": "written up with AI",
+    "more": "Load more",
+    "loading": "Loading …",
+    "onlyNotes": "Notes only, no page yet",
+    "untitled": "Untitled",
+    "unreadable": "This day cannot be read."
   },
   "stats": {
     "title": "Statistics"
   },
   "shared": {
-    "title": "Shared"
+    "title": "Shared",
+    "intro": "Single days you show each other in the family. Everything else stays with each of you.",
+    "withMe": "Shared with me",
+    "withMeNew": "Shared with me ({{count}} new)",
+    "byMe": "Shared by me",
+    "new": "new",
+    "heartSent": "You sent a heart",
+    "noneByMe": "You have not shared a day yet. Open a day and tap “Share”.",
+    "noneWithMe": "Nobody has shared a day with you yet.",
+    "stop": "Stop sharing",
+    "stopped": "“{{title}}” is no longer shared.",
+    "note": "Only ever a single day is shared, with particular people. It cannot be passed on, and whoever shared it can take it back at any time.",
+    "back": "Shared",
+    "onlyForYou": "shared only with you",
+    "gone": "This day is not (or no longer) shared with you.",
+    "heart": "Send a heart",
+    "hearted": "Heart sent",
+    "heartHint": "A quiet sign that you have read it. Nothing more.",
+    "heartToast": "{{name}} sees your heart.",
+    "values": "Values of the day",
+    "notes": "Notes from the day",
+    "badge_one": "{{count}} newly shared day",
+    "badge_other": "{{count}} newly shared days"
   },
   "theme": {
     "system": "Like the system",
@@ -148,6 +188,18 @@
       "chat": {
         "name": "Like a chat",
         "idea": "Notes as messages to yourself, the text field at the bottom as in a messenger. Values and photos behind \"Your day\". The quickest on the phone."
+      }
+    },
+    "journal": {
+      "title": "Journal layout",
+      "text": "How your days look when you page back.",
+      "blog": {
+        "name": "Blog",
+        "idea": "Large cards with a photo, the newest day big at the top. Browse it like a magazine."
+      },
+      "timeline": {
+        "name": "Timeline",
+        "idea": "Grouped by month, one line per day with a small picture. More at a glance, good for searching."
       }
     }
   },
@@ -789,6 +841,41 @@
     "value_out_of_range": "A value goes from 1 to 10.",
     "value_unknown": "This value no longer exists. Reload the page.",
     "wrong_credentials": "Name or password is wrong.",
-    "wrong_password": "The password is wrong."
+    "wrong_password": "The password is wrong.",
+    "person_unknown": "There is no such person here.",
+    "too_many_people": "Not with that many people at once.",
+    "cover_other_day": "Only a photo of this day can be the cover."
+  },
+  "entry": {
+    "back": "← Journal",
+    "edit": "Edit",
+    "share": "Share",
+    "changeCover": "Change cover",
+    "onlyYou": "Only for you",
+    "sharedWith": "Shared with",
+    "heartFrom": "{{name}} sent a heart",
+    "notes": "Your notes from that day",
+    "yearAgo": "One year ago today",
+    "missing": "This day does not exist.",
+    "write": "Write the day down"
+  },
+  "share": {
+    "title": "Share this day",
+    "intro": "Only this one day. You can take it back at any time.",
+    "search": "Find a person",
+    "whatSees": "What does {{name}} see?",
+    "whatSeesFamily": "What does the family see?",
+    "textPhotos": "Text and photos",
+    "always": "always",
+    "values": "Your values (mood, health …)",
+    "valuesLabel": "Share values too",
+    "notes": "Your notes from that day",
+    "notesLabel": "Share notes too",
+    "coverFromNotes": "The cover is a photo from your notes and is shown too.",
+    "share": "Share",
+    "stop": "Stop sharing",
+    "done": "Shared with {{names}}.",
+    "stopped": "No longer shared.",
+    "nobody": "Nobody but you uses nexdiary on this server yet. Invite someone, then you can share days."
   }
 }

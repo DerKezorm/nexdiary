@@ -16,7 +16,7 @@ export function usePendingPhoto(today: TodayState) {
   const [busy, setBusy] = useState(false)
   const pick = async (file: File) => {
     setBusy(true)
-    const made = await today.addPhoto(file)
+    const made = await today.addPhoto(file, true)
     setBusy(false)
     if (made) setPhoto(made)
   }

@@ -84,7 +84,7 @@ export function TodayPage({ now }: { now?: Date }) {
     return (
       <div className="page pb-28 lg:pb-12">
         <Header now={now} today={today} />
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
           <div className="space-y-4">
             <Capture today={today} />
             {problem}
@@ -156,7 +156,7 @@ function PhotosBlock({ today, bare = false }: { today: TodayState; bare?: boolea
   const file = useRef<HTMLInputElement>(null)
   // The photos of the day itself; a photo that came with a note stands with its note.
   const onNotes = new Set((today.data?.notes ?? []).map((note) => note.photo_id).filter(Boolean))
-  const photos = (today.data?.photos ?? []).filter((photo) => !onNotes.has(photo.id))
+  const photos = (today.data?.photos ?? []).filter((photo) => !photo.on_note && !onNotes.has(photo.id))
   const add = async (picked: File) => {
     setBusy(true)
     await today.addPhoto(picked)

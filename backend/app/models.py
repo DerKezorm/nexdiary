@@ -14,6 +14,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     LargeBinary,
@@ -252,6 +253,9 @@ class Photo(Base):
     size: Mapped[int] = mapped_column(Integer)
     preview_size: Mapped[int] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    #: Taken for a note (a raw note of the day), not for the page: it goes with the notes, never with the photos of
+    #: the day, whether or not a note still holds it. Set once, never taken back.
+    on_note: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
 
 
 class Draft(Base):
@@ -270,6 +274,51 @@ class Draft(Base):
     updated_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
 
 
+# --- Sharing ---------------------------------------------------------------------------------------------------------
+#
+# A share lets one other person read one day of the owner. Nothing is copied: whoever reads a shared day gets it opened
+# from the owner's own sealed page at that moment (``services/sharing.py``), and only the parts the share allows.
+
+
+class Share(Base):
+    """One day of ``owner_id``, shown to ``to_user_id``. Bound to the day itself: deleting the page deletes its shares,
+    deleting either account too. Read only for the person it is shared with; they cannot pass it on."""
+
+    __tablename__ = "shares"
+    __table_args__ = (
+        UniqueConstraint("owner_id", "day_date", "to_user_id", name="uq_shares_owner_day_to"),
+        ForeignKeyConstraint(["owner_id", "day_date"], ["days.user_id", "days.date"], ondelete="CASCADE"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    day_date: Mapped[str] = mapped_column(String(10))
+    to_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    #: The ratings of the day go with it.
+    with_values: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: The raw notes of the day go with it, and the photos that came with them.
+    with_notes: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+
+class Heart(Base):
+    """The one sign a person can send back for a day shared with them; at most one per share."""
+
+    __tablename__ = "hearts"
+
+    share_id: Mapped[int] = mapped_column(ForeignKey("shares.id", ondelete="CASCADE"), primary_key=True)
+    at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+
+class ShareSeen(Base):
+    """When the person a day is shared with first opened it: until then it counts as new."""
+
+    __tablename__ = "share_seen"
+
+    share_id: Mapped[int] = mapped_column(ForeignKey("shares.id", ondelete="CASCADE"), primary_key=True)
+    at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+
 __all__ = [
     "MEMBER",
     "OPERATOR",
@@ -282,10 +331,13 @@ __all__ = [
     "Base",
     "Day",
     "Draft",
+    "Heart",
     "Invite",
     "Note",
     "Photo",
     "Setting",
+    "Share",
+    "ShareSeen",
     "UserKey",
     "ValueDef",
     "utcnow",

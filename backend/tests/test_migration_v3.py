@@ -31,8 +31,10 @@ def test_a_v2_database_with_a_diary_comes_to_v3_whole(client: TestClient, accoun
     client.put("/api/days/2026-10-06", json={"title": "Kastanien", "text": "Ein langer Tag.", "tags": ["herbst"],
                                              "values": {value["id"]: 8}, "written_by": "self"})
     path = get_settings().database_path
-    # Back to what B1 made: the tables of version 3 gone, the version 2.
+    # Back to what B1 made: the tables of version 3 and later gone, the version 2.
     with closing(sqlite3.connect(path)) as connection:
+        for later in ("hearts", "share_seen", "shares"):
+            connection.execute(f"DROP TABLE {later}")
         connection.execute("DROP TABLE photos")
         connection.execute("DROP TABLE drafts")
         connection.execute("PRAGMA user_version = 2")
@@ -40,7 +42,7 @@ def test_a_v2_database_with_a_diary_comes_to_v3_whole(client: TestClient, accoun
     made: list[str] = []
     monkeypatch.setattr(backups, "create", lambda **kwargs: made.append(kwargs.get("note", "")) or path)
     database.init_db()
-    assert made == ["before schema 3"]
+    assert made == [f"before schema {database.SCHEMA_VERSION}"]
     with closing(sqlite3.connect(path)) as connection:
         assert int(connection.execute("PRAGMA user_version").fetchone()[0]) == database.SCHEMA_VERSION
         migrated = schema_of(connection)

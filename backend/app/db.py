@@ -37,7 +37,7 @@ _settings.data_dir.mkdir(parents=True, exist_ok=True)
 BUSY_SECONDS = 15
 
 #: The version of the schema the models describe.
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 def _v2_diary(connection: Connection) -> None:
@@ -98,8 +98,40 @@ def _v3_photos_and_drafts(connection: Connection) -> None:
         connection.exec_driver_sql(statement)
 
 
+def _v4_sharing(connection: Connection) -> None:
+    """Version 4: sharing single days with others on the server, the heart sent back, and when a share was first
+    opened. Nothing of the day is copied. Photos learn whether they were taken for a note: until now that showed only
+    in a note holding them, which is what marks them here. Written out as it stood then, not taken from the models."""
+    for statement in (
+        "ALTER TABLE photos ADD COLUMN on_note BOOLEAN DEFAULT 0 NOT NULL",
+        (
+            "UPDATE photos SET on_note = 1 WHERE EXISTS (SELECT 1 FROM notes WHERE notes.user_id = photos.user_id "
+            "AND notes.photo_id = photos.uid)"
+        ),
+        (
+            "CREATE TABLE shares ( id INTEGER NOT NULL, owner_id INTEGER NOT NULL, day_date VARCHAR(10) NOT NULL, "
+            "to_user_id INTEGER NOT NULL, with_values BOOLEAN NOT NULL, with_notes BOOLEAN NOT NULL, "
+            "created_at DATETIME NOT NULL, PRIMARY KEY (id), "
+            "CONSTRAINT uq_shares_owner_day_to UNIQUE (owner_id, day_date, to_user_id), "
+            "FOREIGN KEY(owner_id, day_date) REFERENCES days (user_id, date) ON DELETE CASCADE, "
+            "FOREIGN KEY(owner_id) REFERENCES users (id) ON DELETE CASCADE, "
+            "FOREIGN KEY(to_user_id) REFERENCES users (id) ON DELETE CASCADE )"
+        ),
+        "CREATE INDEX ix_shares_to_user_id ON shares (to_user_id)",
+        (
+            "CREATE TABLE hearts ( share_id INTEGER NOT NULL, at DATETIME NOT NULL, PRIMARY KEY (share_id), "
+            "FOREIGN KEY(share_id) REFERENCES shares (id) ON DELETE CASCADE )"
+        ),
+        (
+            "CREATE TABLE share_seen ( share_id INTEGER NOT NULL, at DATETIME NOT NULL, PRIMARY KEY (share_id), "
+            "FOREIGN KEY(share_id) REFERENCES shares (id) ON DELETE CASCADE )"
+        ),
+    ):
+        connection.exec_driver_sql(statement)
+
+
 #: ``MIGRATIONS[n]`` brings a database from version ``n - 1`` to ``n``. Version 1 is the first schema; it has no step.
-MIGRATIONS: dict[int, Callable[[Connection], None]] = {2: _v2_diary, 3: _v3_photos_and_drafts}
+MIGRATIONS: dict[int, Callable[[Connection], None]] = {2: _v2_diary, 3: _v3_photos_and_drafts, 4: _v4_sharing}
 
 # No pool with an upper bound: with the default pool the sixteenth concurrent request would block the event
 # loop waiting for a connection. Opening a SQLite connection costs a fraction of a millisecond.

@@ -5,9 +5,12 @@ import { AppShell } from './components/AppShell'
 import { AboutPage } from './pages/AboutPage'
 import { AccountPage } from './pages/AccountPage'
 import { InvitePage, LoginPage, SetupPage } from './pages/AuthPages'
-import { JournalPage, SharedPage, StatsPage } from './pages/Pages'
+import { EntryPage } from './pages/EntryPage'
+import { JournalPage } from './pages/JournalPage'
+import { StatsPage } from './pages/Pages'
 import { QuickPage } from './pages/QuickPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { SharedEntryPage, SharedPage } from './pages/SharedPage'
 import { TodayPage } from './pages/TodayPage'
 import { useAuth } from './state/auth'
 
@@ -52,6 +55,8 @@ export default function App() {
         <Route path="tagebuch" element={<JournalPage />} />
         <Route path="statistik" element={<StatsPage />} />
         <Route path="geteilt" element={<SharedPage />} />
+        <Route path="geteilt/:from/:date" element={<SharedEntryPage />} />
+        <Route path="tag/:date" element={<EntryPage />} />
         <Route path="konto" element={<AccountPage />} />
         <Route path="einstellungen" element={<SettingsPage />} />
         <Route path="ueber" element={<AboutPage />} />

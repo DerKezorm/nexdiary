@@ -165,10 +165,10 @@ export function useToday() {
     }
   }, [data])
 
-  /** A photo of today, uploaded; null when the server refused it (the page says why). */
-  const addPhoto = useCallback(async (file: Blob): Promise<Photo | null> => {
+  /** A photo of today, uploaded (for a note, or for the day); null when the server refused it (the page says why). */
+  const addPhoto = useCallback(async (file: Blob, forNote = false): Promise<Photo | null> => {
     try {
-      const photo = await uploadPhoto(file)
+      const photo = await uploadPhoto(file, undefined, forNote)
       setData((current) => (current && current.date === photo.date && !current.photos.some((item) => item.id === photo.id) ? { ...current, photos: [...current.photos, photo] } : current))
       setProblem(null)
       return photo

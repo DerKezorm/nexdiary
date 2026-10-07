@@ -13,7 +13,7 @@ import { changeLanguage } from '../i18n'
 import WritePage from './WritePage'
 
 vi.mock('../state/auth', () => ({
-  useAuth: () => ({ me: { name: 'jule', display_name: 'Jule', profile: { mode: 'light', layout: 'page', quick_start: false, timezone: 'Europe/Berlin', timezone_source: 'manual' } } }),
+  useAuth: () => ({ me: { name: 'jule', display_name: 'Jule', profile: { mode: 'light', layout: 'page', quick_start: false, journal: 'blog', timezone: 'Europe/Berlin', timezone_source: 'manual' } } }),
 }))
 
 const DATE = '2026-10-06'

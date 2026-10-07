@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Link, NavLink, Outlet, useLocation, useMatch, useNavigate } from 'react-router-dom'
 
 import { useAuth } from '../state/auth'
+import { SharedProvider, useShared } from '../state/shared'
 
 import { AccountMenu } from './AccountMenu'
 import { Wordmark } from './Logo'
@@ -78,7 +79,16 @@ function Toast() {
 }
 
 export function AppShell() {
+  return (
+    <SharedProvider>
+      <Frame />
+    </SharedProvider>
+  )
+}
+
+function Frame() {
   const { t } = useTranslation()
+  const { unseen } = useShared()
   useQuickStart()
   // While writing, the page is the writing: "Save" takes the place of the menu bar on a phone.
   const writing = useMatch('/tag/:date/schreiben') !== null
@@ -98,6 +108,11 @@ export function AppShell() {
               className={({ isActive }) => `flex items-center gap-3 rounded-xl px-3 py-2.5 font-semibold transition ${isActive || (writing && to === '/') ? 'bg-accent-soft text-accent' : 'text-ink-2 hover:bg-sheet-2'}`}
             >
               <Icon size={19} /> {t(label)}
+              {to === '/geteilt' && unseen > 0 && (
+                <span className="ml-auto rounded-full bg-accent px-1.5 text-xs font-bold text-accent-ink" aria-label={t('shared.badge', { count: unseen })}>
+                  {unseen}
+                </span>
+              )}
             </NavLink>
           ))}
         </nav>
@@ -125,6 +140,7 @@ export function AppShell() {
         {NAV.map(({ to, label, icon: Icon }) => (
           <NavLink key={to} to={to} end={to === '/'} className={({ isActive }) => `relative flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[0.7rem] font-bold ${isActive ? 'text-accent' : 'text-muted'}`}>
             <Icon size={21} /> {t(label)}
+            {to === '/geteilt' && unseen > 0 && <span className="absolute top-1.5 left-1/2 ml-2 h-2 w-2 rounded-full bg-accent" role="img" aria-label={t('shared.badge', { count: unseen })} />}
           </NavLink>
         ))}
       </nav>

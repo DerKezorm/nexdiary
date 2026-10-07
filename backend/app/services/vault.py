@@ -291,6 +291,19 @@ def dek_for(user_id: int) -> bytes:
     return _unwrap(key, user_id, wrapped)
 
 
+def dek_of(user_id: int) -> bytes:
+    """The data key of a person who has one; never makes one. For reading what somebody else shared: a share stands
+    only on a page that was sealed, so the key is there, and a missing one is an error, not a reason to make one."""
+    from ..db import SessionLocal
+
+    key = master()
+    with SessionLocal() as db:
+        wrapped = db.scalar(select(UserKey.wrapped_dek).where(UserKey.user_id == user_id))
+    if wrapped is None:
+        raise SealError("no data key for this account")
+    return _unwrap(key, user_id, wrapped)
+
+
 # --- Fields ---------------------------------------------------------------------------------------------------------
 
 

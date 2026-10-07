@@ -380,7 +380,7 @@ def set_language(payload: LanguageIn, account: Account, db: DbSession) -> dict[s
 
 
 #: What a person may set for themselves, with the values allowed; the first one is the default. The rest of the
-#: profile (palette, the journal) comes with the blocks that use it.
+#: profile (the palette) comes with the block that uses it.
 PROFILE: dict[str, tuple[Any, ...]] = {
     #: Light, dark, or as the system is set.
     "mode": ("system", "light", "dark"),
@@ -388,6 +388,8 @@ PROFILE: dict[str, tuple[Any, ...]] = {
     "layout": ("page", "columns", "chat"),
     #: A phone opens on the quick note.
     "quick_start": (True, False),
+    #: How the journal shows the days: large cards like a blog, or a line per day grouped by month.
+    "journal": ("blog", "timeline"),
     #: Where the time zone came from: the browser in use, or the person's own choice, which no browser overrides.
     "timezone_source": ("browser", "manual"),
 }

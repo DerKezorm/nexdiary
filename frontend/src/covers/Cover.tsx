@@ -18,10 +18,23 @@ export function defaultCover(date: string, tags: string[], photos: Photo[], time
   return photos[0] ? `${PHOTO}${photos[0].id}` : `${ILLU}${suggestIllus(date, tags, time)[0]}`
 }
 
-/** A cover as a picture: an own photo (the large one or its smaller copy) or an illustration. */
-export function CoverImage({ cover, className = '', large = false, alt = '' }: { cover: string; className?: string; large?: boolean; alt?: string }) {
+/** A cover as a picture: an own photo (the large one or its smaller copy) or an illustration. A photo of a day shared
+ * by somebody else comes through the share (`src`), never through the owner's own address. */
+export function CoverImage({
+  cover,
+  className = '',
+  large = false,
+  alt = '',
+  src = photoUrl,
+}: {
+  cover: string
+  className?: string
+  large?: boolean
+  alt?: string
+  src?: (id: string, preview: boolean) => string
+}) {
   const photo = photoOf(cover)
-  if (photo) return <img src={photoUrl(photo, !large)} alt={alt} className={`object-cover ${className}`} draggable={false} />
+  if (photo) return <img src={src(photo, !large)} alt={alt} className={`object-cover ${className}`} draggable={false} />
   return <Illustration id={isIllustration(cover) ? cover.slice(ILLU.length) : 'baum.abend.herbst'} className={className} />
 }
 

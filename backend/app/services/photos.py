@@ -171,10 +171,11 @@ def view(row: Any) -> dict[str, Any]:
         "width": row.width,
         "height": row.height,
         "created_at": row.created_at.isoformat(),
+        "on_note": bool(row.on_note),
     }
 
 
-_COLUMNS = (Photo.uid, Photo.date, Photo.source, Photo.width, Photo.height, Photo.created_at)
+_COLUMNS = (Photo.uid, Photo.date, Photo.source, Photo.width, Photo.height, Photo.created_at, Photo.on_note)
 
 
 def check_id(uid: str) -> str:
@@ -209,7 +210,7 @@ def _by_upload(db: Session, account_id: int, upload_id: str) -> Any:
 
 
 def add(db: Session, account_id: int, dek: bytes, day: str, upload_id: str, drawn: Drawn,
-        moment: Any) -> tuple[dict[str, Any], bool]:
+        moment: Any, on_note: bool = False) -> tuple[dict[str, Any], bool]:
     """Keeps a drawn photo: files first, then the row; the photo and whether it is new. The same upload id again
     returns the photo that stands (a double tap, a retry after a lost answer) and leaves no files behind. The row is
     written only while the day has room and the person's storage too (``quota``), checked in the same statement."""
@@ -226,14 +227,15 @@ def add(db: Session, account_id: int, dek: bytes, day: str, upload_id: str, draw
         inserted = db.execute(
             text(
                 "INSERT INTO photos (uid, user_id, date, source, upload_id, width, height, size, preview_size, "  # noqa: S608 - constants
-                "created_at) SELECT :uid, :user, :date, 'upload', :upload, :width, :height, :size, :preview, :now "
+                "created_at, on_note) SELECT :uid, :user, :date, 'upload', :upload, :width, :height, :size, :preview, "
+                ":now, :on_note "
                 "WHERE (SELECT count(*) FROM photos WHERE user_id = :user AND date = :date) < :limit "
                 f"AND (:quota IS NULL OR {quota.USED} + :size + :preview <= :quota) "
                 "ON CONFLICT (user_id, upload_id) DO NOTHING"
             ).bindparams(bindparam("now", type_=UtcDateTime())),
             {"uid": uid, "user": account_id, "date": day, "upload": upload_id, "width": drawn.width,
              "height": drawn.height, "size": len(original), "preview": len(preview), "now": moment,
-             "limit": PHOTOS_PER_DAY, "quota": limit},
+             "limit": PHOTOS_PER_DAY, "quota": limit, "on_note": bool(on_note)},
         )
         db.commit()
     except Exception:

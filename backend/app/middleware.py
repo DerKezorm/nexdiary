@@ -77,6 +77,10 @@ class RequestContextMiddleware:
                 # A response that brings its own policy keeps it; every other gets the app's.
                 present = {name.lower() for name, _value in headers}
                 headers.extend(header for header in SECURITY_HEADERS if header[0] not in present)
+                # What the API answers is a diary: kept by no browser and no proxy, unless a route says otherwise
+                # (the own photos and the profile pictures, under addresses that change with them).
+                if path.startswith("/api/") and b"cache-control" not in present:
+                    headers.append((b"cache-control", b"no-store"))
             await send(message)
 
         method = scope.get("method", "WS")

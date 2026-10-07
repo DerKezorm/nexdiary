@@ -141,7 +141,7 @@ export default function WritePage() {
 
   /** The photos of the day itself (not those that came with a note): the first of them is the cover to begin with,
    * else the illustration that fits. */
-  const dayPhotos = photos.filter((photo) => !notes.some((note) => note.photo_id === photo.id))
+  const dayPhotos = photos.filter((photo) => !photo.on_note && !notes.some((note) => note.photo_id === photo.id))
   const shownCover = page.cover ?? defaultCover(date, page.tags, dayPhotos, time)
 
   // --- Loading ------------------------------------------------------------------------------------------------------
@@ -422,7 +422,7 @@ export default function WritePage() {
   const canSave = loaded && !editorEmpty && !saving
 
   return (
-    <div className="page grid gap-6 pt-6 pb-28 lg:grid-cols-[minmax(0,1fr)_320px] lg:pb-12">
+    <div className="page grid grid-cols-1 gap-6 pt-6 pb-28 lg:grid-cols-[minmax(0,1fr)_320px] lg:pb-12">
       <div>
         <div className="sticky top-0 z-20 -mx-4 mb-4 flex items-center justify-between gap-3 bg-paper/95 px-4 py-2.5 backdrop-blur lg:static lg:mx-0 lg:mb-5 lg:bg-transparent lg:px-0 lg:py-0 lg:backdrop-blur-none">
           <button type="button" onClick={() => void back()} className="text-sm font-semibold text-muted hover:text-ink">

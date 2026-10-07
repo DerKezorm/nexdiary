@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..deps import Account, DbSession
 from ..errors import error
-from ..services import brakes, diary, photos, vault
+from ..services import brakes, diary, journal, photos, vault
 
 router = APIRouter(prefix="/api", tags=["diary"])
 
@@ -157,7 +157,9 @@ def change_note(note_id: str, payload: NoteChangeIn, account: Account, db: DbSes
 
 @router.delete("/notes/{note_id}", status_code=204, summary="Delete a note")
 def delete_note(note_id: str, account: Account, db: DbSession) -> None:
-    diary.delete_note(db, account.id, diary.check_note_id(note_id))
+    """The photo that came with the note goes with it, unless it is the cover of its day."""
+    removed = diary.delete_note(db, account.id, vault.dek_for(account.id), diary.check_note_id(note_id))
+    photos.remove_files(removed)
 
 
 # --- Days -----------------------------------------------------------------------------------------------------------
@@ -191,7 +193,7 @@ def put_day(date: str, payload: DayIn, request: Request, account: Account, db: D
     if not diary.day_exists(db, account.id, key):
         brakes.take("new_day", account.id)
     fields = {name: getattr(payload, name) for name in payload.model_fields_set if name != "base_revision"}
-    patch = diary.clean_day_patch(db, account.id, fields)
+    patch = diary.clean_day_patch(db, account.id, key, fields)
     return diary.change_day(db, account.id, dek, key, lambda content: diary.merge(content, patch),
                             base_revision=payload.base_revision,
                             discard_draft=payload.base_revision is not None)
@@ -211,7 +213,7 @@ def draft(date: str, account: Account, db: DbSession) -> dict[str, Any] | None:
 def put_draft(date: str, payload: DraftIn, account: Account, db: DbSession) -> dict[str, Any]:
     key = diary.check_date(account, date)
     brakes.take("draft", account.id)
-    content = diary.clean_draft(db, account.id, payload.model_dump(exclude={"base_revision"}))
+    content = diary.clean_draft(db, account.id, key, payload.model_dump(exclude={"base_revision"}))
     return diary.save_draft(db, account.id, vault.dek_for(account.id), key, content, payload.base_revision)
 
 
@@ -274,5 +276,9 @@ def delete_value(value_id: str, account: Account, db: DbSession) -> None:
 
 @router.post("/search", summary="Search the own titles, texts, tags and notes")
 def search(payload: SearchIn, account: Account, db: DbSession) -> dict[str, Any]:
+    """The hits, and for every day among them that has a page its entry as the journal lists it (``days``)."""
     with diary.SearchBrake(account.id):
-        return diary.search(db, account.id, vault.dek_for(account.id), payload.q)
+        dek = vault.dek_for(account.id)
+        found = diary.search(db, account.id, dek, payload.q)
+        dates = list(dict.fromkeys(hit["date"] for hit in found["results"]))
+        return {**found, "days": journal.items_for_dates(db, account.id, dek, dates)}
