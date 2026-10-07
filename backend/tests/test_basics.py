@@ -121,3 +121,17 @@ def test_build_output_and_data_never_go_into_a_commit() -> None:
     bad = [path for path in listed if any(part in "/" + path for part in forbidden)
            or path.endswith((".tsbuildinfo", ".pyc", ".db", ".db-wal", "secret.key"))]
     assert bad == []
+
+
+def test_the_entrypoint_does_as_root_only_what_the_compose_file_allows() -> None:
+    """The compose file drops every capability but CHOWN, DAC_READ_SEARCH, SETUID and SETGID. Root then may not
+    delete a file of the user nexdiary: the write test is made and removed by that user, never by root (found on
+    the first start of the image, which stopped with "Permission denied")."""
+    root = Path(__file__).resolve().parents[2]
+    entrypoint = (root / "docker" / "entrypoint.sh").read_text(encoding="utf-8")
+    compose = (root / "docker-compose.yml").read_text(encoding="utf-8")
+    assert "touch /data/.write-test && rm -f /data/.write-test" in entrypoint
+    as_root = [line.strip() for line in entrypoint.splitlines() if line.strip().startswith(("rm ", "rm -"))]
+    assert as_root == [], "root removes nothing in /data"
+    for capability in ("CHOWN", "DAC_READ_SEARCH", "SETUID", "SETGID"):
+        assert f"- {capability}" in compose

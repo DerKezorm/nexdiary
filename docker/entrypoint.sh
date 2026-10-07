@@ -62,7 +62,9 @@ fi
 # Owner does not mean writable: on a NAS the directory can belong to the right user and still be closed by
 # an access list. Then a long Python error would appear mid-start that nobody reads the cause from. So we
 # really write here, as the user that does it later.
-if ! gosu nexdiary sh -c 'touch /data/.write-test' 2>/dev/null; then
+# Written and removed as that user: root keeps no right to delete another user's file once the compose file
+# drops all capabilities but the few the start needs.
+if ! gosu nexdiary sh -c 'touch /data/.write-test && rm -f /data/.write-test' 2>/dev/null; then
     echo "nexdiary: the data directory is not writable." >&2
     echo "" >&2
     echo "  nexdiary runs as uid $PUID, gid $PGID and cannot write to the" >&2
@@ -77,6 +79,5 @@ if ! gosu nexdiary sh -c 'touch /data/.write-test' 2>/dev/null; then
     echo "  run 'id' on the host and use the uid and gid it reports." >&2
     exit 1
 fi
-rm -f /data/.write-test
 
 exec gosu nexdiary "$@"
