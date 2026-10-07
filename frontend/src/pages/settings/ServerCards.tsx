@@ -18,6 +18,8 @@ export type ServerSettings = {
   public_url: string
   password_login: boolean
   two_factor_required: boolean
+  oidc_second_factor_by_provider: boolean
+  master_key_saved_at: string | null
   backup_schedule: 'off' | 'daily' | 'weekly'
   backup_keep: number
   smtp_host: string
@@ -31,7 +33,7 @@ export type ServerSettings = {
   storage_per_person_gb: number
 }
 
-type Change = Partial<ServerSettings> & { smtp_password?: string }
+type Change = Partial<ServerSettings> & { smtp_password?: string; current_password?: string }
 type Server = ReturnType<typeof useServerSettings>
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -48,7 +50,7 @@ export function useServerSettings() {
     const ok = await action.run(async () => setSettings(await api<ServerSettings>('/api/settings', { method: 'PUT', body: change })), done)
     if (!ok) setSettings(before)
   }
-  return { settings, save, ...action }
+  return { settings, save, setSettings, ...action }
 }
 
 type AccountRow = Me & { locked: boolean; blocked?: boolean; has_password?: boolean; created_at: string; last_seen_at: string | null }
@@ -279,6 +281,8 @@ export function SignInCard({ server }: { server: Server }) {
   const [address, setAddress] = useState<string | null>(null)
   const [authentik, setAuthentik] = useState({ url: '', token: '' })
   const [steps, setSteps] = useState<Steps | null>(null)
+  // Switches that make signing in weaker ask for the operator's password first.
+  const [weaker, setWeaker] = useState<'two_factor_off' | 'provider_checks' | null>(null)
   const { busy, problem, done, run } = useAction()
 
   const loadOidc = useCallback(async () => {
@@ -292,7 +296,8 @@ export function SignInCard({ server }: { server: Server }) {
 
   const s = server.settings
   if (!s) return null
-  const ownFirst = !s.two_factor_required && me?.sign_in === 'password' && !me?.two_factor
+  const ownFirst = !s.two_factor_required && !me?.two_factor
+  const provider = oidc?.provider_name || 'OpenID Connect'
   return (
     <Card id="sign-in" icon={Shield} title={t('server.signin')} text={t('server.signinText')}>
       <Toggle label={t('server.passwordLogin')} hint={t('server.passwordLoginHint')} checked={s.password_login} onChange={(password_login) => void server.save({ password_login })} />
@@ -302,8 +307,31 @@ export function SignInCard({ server }: { server: Server }) {
         hint={ownFirst ? t('server.ownSecondFactorFirst') : t('server.twoFactorRequiredHint')}
         checked={s.two_factor_required}
         disabled={ownFirst}
-        onChange={(two_factor_required) => void server.save({ two_factor_required })}
+        onChange={(on) => (on ? void server.save({ two_factor_required: true }) : setWeaker('two_factor_off'))}
       />
+      {oidc?.configured && (
+        <Toggle
+          label={t('server.providerChecks', { name: provider })}
+          hint={t('server.providerChecksHint', { name: provider })}
+          checked={s.oidc_second_factor_by_provider}
+          onChange={(on) => (on ? setWeaker('provider_checks') : void server.save({ oidc_second_factor_by_provider: false }))}
+        />
+      )}
+      {weaker && (
+        <Confirm
+          title={t(`server.confirm.${weaker}.title`)}
+          text={t(`server.confirm.${weaker}.text`, { name: provider })}
+          confirm={t(`server.confirm.${weaker}.button`)}
+          danger
+          password={me?.sign_in === 'password'}
+          onCancel={() => setWeaker(null)}
+          onConfirm={async (current_password) => {
+            const change: Change = weaker === 'two_factor_off' ? { two_factor_required: false } : { oidc_second_factor_by_provider: true }
+            server.setSettings(await api<ServerSettings>('/api/settings', { method: 'PUT', body: { ...change, current_password } }))
+            setWeaker(null)
+          }}
+        />
+      )}
       <form
         className="flex flex-wrap items-start gap-2"
         onSubmit={(event) => {
@@ -623,6 +651,7 @@ export function BackupsCard({ server }: { server: Server }) {
           {t('server.uploadBackup')}
         </Button>
       </div>
+      <p className="text-xs text-muted">{t('server.withoutMasterKey')}</p>
       <ul className="space-y-2 text-sm">
         {list.length === 0 && <li className="text-muted">{t('server.noBackups')}</li>}
         {list.map((entry) => (

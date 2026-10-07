@@ -27,6 +27,7 @@ import hmac
 import io
 import logging
 import re
+import ssl
 import threading
 import time
 from collections.abc import AsyncIterator, Callable, Iterator
@@ -284,29 +285,32 @@ def state(db: Session, account_id: int, dek_of: Callable[[], bytes]) -> dict[str
 
 def check_url(url: str) -> str:
     """The address of an Immich, cleaned: http or https, a host, a port if one is written, no credentials, query or
-    fragment; a path only as a prefix (``/api`` at its end is dropped, the API lies there anyway)."""
+    fragment, and no path but ``/api`` (dropped: the API lies there anyway). Immich answers at the root of its host;
+    a path of one's choosing would only be a way to other things on the same host."""
     url = (url or "").strip()
     if not url:
         raise fail("immich_address_missing")
     if len(url) > URL_MAX:
         raise fail("immich_address_invalid")
-    parts = urlsplit(url)
-    if parts.scheme.lower() not in ("http", "https") or not parts.hostname or parts.username or parts.password:
+    try:
+        # A broken bracket ("http://[::1"), a name that changes under NFKC: Python refuses them with ValueError.
+        parts = urlsplit(url)
+        hostname = parts.hostname
+        port = parts.port
+    except ValueError as exc:
+        raise fail("immich_address_invalid") from exc
+    if parts.scheme.lower() not in ("http", "https") or not hostname or parts.username or parts.password:
         raise fail("immich_address_invalid")
     if parts.query or parts.fragment:
         raise fail("immich_address_invalid")
     try:
-        port = parts.port
-        host = normal_host(parts.hostname)
+        host = normal_host(hostname)
     except ValueError as exc:
         raise fail("immich_address_invalid") from exc
-    path = parts.path.rstrip("/")
-    if path.lower().endswith("/api"):
-        path = path[:-4]
-    if any(char in path for char in "\\%") or any(not char.isprintable() or char.isspace() for char in path):
+    if parts.path.rstrip("/").lower() not in ("", "/api"):
         raise fail("immich_address_invalid")
     shown = f"[{host}]" if ":" in host else host
-    return f"{parts.scheme.lower()}://{shown}{f':{port}' if port is not None else ''}{path}"
+    return f"{parts.scheme.lower()}://{shown}{f':{port}' if port is not None else ''}"
 
 
 def _clean_key(key: str) -> str:
@@ -517,6 +521,11 @@ def _exchange(db: Session, account_id: int, link: Link, method: str, path: str, 
             _log(what, "unreadable", started)
             raise fail("immich_unreadable", 502) from exc
         except httpx.HTTPError as exc:
+            if _certificate_refused(exc):
+                # Checked, never switched off: a certificate the server does not trust (made by oneself) is said as
+                # such, with the way out (http in the home network, or a valid certificate).
+                _log(what, "tls", started)
+                raise fail("immich_tls", 502) from exc
             _log(what, "unreachable", started)
             raise fail("immich_unreachable", 502) from exc
         except HTTPException as exc:
@@ -529,6 +538,18 @@ def _exchange(db: Session, account_id: int, link: Link, method: str, path: str, 
         raise
     _log(what, "ok", started)
     return answer
+
+
+def _certificate_refused(exc: BaseException) -> bool:
+    """Whether a failed connection failed on the certificate, however deep in the chain of causes."""
+    seen: BaseException | None = exc
+    for _ in range(10):
+        if seen is None:
+            return False
+        if isinstance(seen, ssl.SSLCertVerificationError) or "CERTIFICATE_VERIFY_FAILED" in str(seen):
+            return True
+        seen = seen.__cause__ or seen.__context__
+    return False
 
 
 def _json(answer: httpx.Response) -> Any:

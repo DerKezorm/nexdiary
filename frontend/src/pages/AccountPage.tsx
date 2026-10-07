@@ -12,12 +12,12 @@ import { useSearchParams } from 'react-router-dom'
 import { api, authApi, type Me, type Methods } from '../api/client'
 import { ApiTokens } from '../components/ApiTokens'
 import { Avatar } from '../components/Avatar'
-import { copyText } from '../lib/copy'
 import { providerName } from '../lib/aiProviders'
 import { useAiState } from '../state/ai'
 import { useAuth } from '../state/auth'
-import { RemindersPart, SignInNoticeCard } from './settings/PushCards'
-import { Button, Card, Feedback, Input, saveAsFile, TabRow, Toggle, useAction, type Tab } from './settings/ui'
+import { RemindersPart } from './settings/PushCards'
+import { DevicesCard, PasskeysCard, SecondFactorCard } from './settings/SecurityCards'
+import { Button, Card, Feedback, Input, TabRow, Toggle, useAction, type Tab } from './settings/ui'
 
 type Part = 'profile' | 'security' | 'reminders' | 'ai' | 'connections'
 const PARTS: Part[] = ['profile', 'security', 'reminders', 'ai', 'connections']
@@ -172,17 +172,24 @@ function Security({ me }: { me: Me }) {
   const link = useAction()
   const [linkDone] = useState(params.get('linked') ? t('me.oidc.linkedNow') : null)
   const [linkProblem] = useState(params.get('error'))
+  // Until the second factor is set up, the server answers nothing else: only its cards are shown.
+  const restricted = Boolean(me.second_factor_setup_required)
   useEffect(() => {
-    authApi.methods().then(setMethods, () => setMethods(null))
-  }, [])
+    if (!restricted) authApi.methods().then(setMethods, () => setMethods(null))
+  }, [restricted])
   const provider = methods?.oidc_name || 'OpenID Connect'
-  return (
-    <>
-      {me.second_factor_setup_required && (
+  if (restricted)
+    return (
+      <>
         <p role="note" className="rounded-xl border border-warn/40 bg-warn/10 px-4 py-3 text-sm font-semibold text-warn">
           {t('me.setupFirst')}
         </p>
-      )}
+        <SecondFactorCard me={me} />
+        <PasskeysCard me={me} />
+      </>
+    )
+  return (
+    <>
       {me.sign_in === 'password' && (
         <Card icon={KeyRound} title={t('me.password.title')} text={t('me.password.text')}>
           <form
@@ -212,9 +219,8 @@ function Security({ me }: { me: Me }) {
         </Card>
       )}
 
-      <Card icon={ShieldCheck} title={t('twofactor.title')} text={t('twofactor.lead')}>
-        <SecondFactor me={me} />
-      </Card>
+      <SecondFactorCard me={me} />
+      <PasskeysCard me={me} />
 
       {(methods?.oidc || me.sign_in === 'oidc' || me.oidc_linked) && (
         <Card icon={ShieldCheck} title={t('me.oidc.title')} text={t('me.oidc.text', { name: provider })}>
@@ -257,155 +263,7 @@ function Security({ me }: { me: Me }) {
         </Card>
       )}
 
-      <SignInNoticeCard me={me} />
+      <DevicesCard me={me} />
     </>
-  )
-}
-
-/** Below this many recovery codes the account is told to make new ones. */
-const LOW_CODES = 3
-
-type Enrolment = { secret: string; uri: string; qr_svg: string }
-
-/**
- * The second factor of the own account: set up (scan the code, type one code and the password), new recovery codes,
- * turn off. Recovery codes are shown once, right after they were made, to copy or save as a file.
- */
-function SecondFactor({ me }: { me: Me }) {
-  const { t } = useTranslation()
-  const { refresh } = useAuth()
-  const [enrolment, setEnrolment] = useState<Enrolment | null>(null)
-  const [asking, setAsking] = useState<'disable' | 'renew' | null>(null)
-  const [digits, setDigits] = useState('')
-  const [password, setPassword] = useState('')
-  const [codes, setCodes] = useState<string[] | null>(null)
-  const [copied, setCopied] = useState(false)
-  const action = useAction()
-
-  if (me.sign_in !== 'password') return <p className="text-sm text-ink-2">{t('twofactor.provider')}</p>
-
-  const close = () => {
-    setEnrolment(null)
-    setAsking(null)
-    setDigits('')
-    setPassword('')
-    action.clear()
-  }
-  const codesText = (codes ?? []).join('\n')
-
-  if (codes)
-    return (
-      <div className="space-y-3" data-testid="recovery-codes">
-        <p className="text-sm text-ink-2">{t('twofactor.codesLead')}</p>
-        <ol className="grid grid-cols-2 gap-2 rounded-xl bg-sheet-2 p-4 font-mono text-sm sm:grid-cols-4">
-          {codes.map((entry) => (
-            <li key={entry}>{entry}</li>
-          ))}
-        </ol>
-        <div className="flex flex-wrap gap-2">
-          <Button onClick={() => void copyText(codesText).then(setCopied)}>{copied ? t('common.copied') : t('common.copy')}</Button>
-          <Button onClick={() => saveAsFile(`nexdiary-recovery-codes-${me.name}.txt`, new Blob([codesText + '\n'], { type: 'text/plain' }))}>{t('twofactor.codesDownload')}</Button>
-          <Button
-            primary
-            onClick={() => {
-              setCodes(null)
-              setCopied(false)
-              void refresh()
-            }}
-          >
-            {t('twofactor.codesDone')}
-          </Button>
-        </div>
-      </div>
-    )
-
-  if (enrolment)
-    return (
-      <div className="grid gap-5 sm:grid-cols-[10rem_1fr]">
-        <img src={'data:image/svg+xml;utf8,' + encodeURIComponent(enrolment.qr_svg)} alt={t('twofactor.qr')} className="h-40 w-40 rounded-xl bg-white p-1" />
-        <form
-          className="space-y-3"
-          onSubmit={(event) => {
-            event.preventDefault()
-            void action.run(async () => {
-              const result = await api<{ recovery_codes: string[] }>('/api/auth/totp/confirm', { method: 'POST', body: { code: digits.trim(), password } })
-              close()
-              setCodes(result.recovery_codes)
-            })
-          }}
-        >
-          <p className="text-sm text-ink-2">{t('twofactor.scan')}</p>
-          <p className="font-mono text-xs break-all text-muted" data-testid="totp-secret">
-            {enrolment.secret.replace(/(.{4})/g, '$1 ').trim()}
-          </p>
-          <Input label={t('twofactor.code')} value={digits} onChange={setDigits} autoComplete="one-time-code" autoFocus />
-          <Input label={t('auth.password')} value={password} onChange={setPassword} type="password" autoComplete="current-password" hint={t('twofactor.passwordHint')} />
-          <Feedback problem={action.problem} />
-          <div className="flex flex-wrap gap-2">
-            <Button type="submit" primary busy={action.busy} disabled={digits.trim().length !== 6 || !password}>
-              {t('twofactor.confirm')}
-            </Button>
-            <Button onClick={close}>{t('common.cancel')}</Button>
-          </div>
-        </form>
-      </div>
-    )
-
-  if (asking)
-    return (
-      <form
-        className="space-y-3"
-        onSubmit={(event) => {
-          event.preventDefault()
-          void action.run(async () => {
-            if (asking === 'disable') {
-              await api('/api/auth/totp/disable', { method: 'POST', body: { password } })
-              close()
-              await refresh()
-            } else {
-              const result = await api<{ recovery_codes: string[] }>('/api/auth/totp/recovery', { method: 'POST', body: { password } })
-              close()
-              setCodes(result.recovery_codes)
-            }
-          })
-        }}
-      >
-        <p className="text-sm text-ink-2">{asking === 'disable' ? t('twofactor.disableText') : t('twofactor.renewText')}</p>
-        <Input label={t('auth.password')} value={password} onChange={setPassword} type="password" autoComplete="current-password" autoFocus className="max-w-sm" />
-        <Feedback problem={action.problem} />
-        <div className="flex flex-wrap gap-2">
-          <Button type="submit" busy={action.busy} disabled={!password} primary={asking === 'renew'} danger={asking === 'disable'}>
-            {asking === 'disable' ? t('twofactor.disable') : t('twofactor.renew')}
-          </Button>
-          <Button onClick={close}>{t('common.cancel')}</Button>
-        </div>
-      </form>
-    )
-
-  return (
-    <div className="space-y-3">
-      {me.two_factor ? (
-        <div className="flex flex-wrap items-center gap-3 text-sm">
-          <span className="text-ink-2">{t('twofactor.on', { count: me.two_factor_recovery_left })}</span>
-          <Button onClick={() => setAsking('renew')}>{t('twofactor.renew')}</Button>
-          <Button danger onClick={() => setAsking('disable')}>
-            {t('twofactor.disable')}
-          </Button>
-        </div>
-      ) : (
-        <div className="flex items-center gap-3 text-sm">
-          <span className="text-ink-2">{t('twofactor.off')}</span>
-          <Button primary busy={action.busy} onClick={() => void action.run(async () => setEnrolment(await api<Enrolment>('/api/auth/totp/begin', { method: 'POST' })))}>
-            {t('twofactor.enable')}
-          </Button>
-        </div>
-      )}
-      {me.two_factor && me.two_factor_recovery_left < LOW_CODES && (
-        <p role="note" className="rounded-xl border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">
-          {t('twofactor.lowCodes')}
-        </p>
-      )}
-      <Feedback problem={action.problem} />
-    </div>
   )
 }

@@ -1,20 +1,24 @@
 /**
  * The pages before signing in, built as the mock's: the first account (with the setup code from the server's log),
- * signing in (password, then the second factor; or the provider's button), and accepting an invitation.
+ * signing in (password, then the second factor; a passkey alone; or the provider's button), setting up the second
+ * factor right after the password where the operator asks for one, and accepting an invitation.
  */
-import { useEffect, useState, type ReactNode } from 'react'
+import { Fingerprint } from 'lucide-react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
-import { ApiError, api, authApi, type Me, type Methods } from '../api/client'
+import { ApiError, api, authApi, passkeyApi, type Me, type Methods } from '../api/client'
 import { Wordmark } from '../components/Logo'
+import { KeepCodes, RecoveryCodes } from '../components/RecoveryCodes'
 import { ThemeSwitcher } from '../components/ThemeSwitcher'
 import i18n from '../i18n'
 import { errorText } from '../lib/errors'
+import { answerWithPasskey, passkeysAvailable } from '../lib/webauthn'
 import { safeNext, useAuth } from '../state/auth'
 import { Input } from './settings/ui'
 
-function AuthFrame({ title, text, children }: { title: string; text?: string; children: ReactNode }) {
+function AuthFrame({ title, text, children, wide = false }: { title: string; text?: string; children: ReactNode; wide?: boolean }) {
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="flex items-center justify-between px-5 py-4">
@@ -22,7 +26,7 @@ function AuthFrame({ title, text, children }: { title: string; text?: string; ch
         <ThemeSwitcher />
       </header>
       <main className="flex flex-1 items-start justify-center px-4 pt-[8vh] pb-10">
-        <div className="card w-full max-w-sm p-7">
+        <div className={`card w-full p-7 ${wide ? 'max-w-lg' : 'max-w-sm'}`}>
           <h1 className="font-display text-2xl font-semibold tracking-tight">{title}</h1>
           {text && <p className="mt-1 text-sm text-ink-2">{text}</p>}
           <div className="mt-6">{children}</div>
@@ -102,27 +106,61 @@ export function SetupPage() {
   )
 }
 
+/** "Auf diesem Gerät angemeldet bleiben", as the mock: on from the start. */
+function Remember({ on, onChange }: { on: boolean; onChange: (value: boolean) => void }) {
+  const { t } = useTranslation()
+  return (
+    <label className="flex items-start gap-3 text-sm">
+      <input type="checkbox" checked={on} onChange={(event) => onChange(event.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--accent)]" />
+      <span>
+        <span className="font-semibold">{t('auth.remember.label')}</span>
+        <span className="block text-xs text-muted">{t('auth.remember.hint')}</span>
+      </span>
+    </label>
+  )
+}
+
+/** The browser said no to a passkey: cancelled, or none there. Anything else is the server's word. */
+function passkeyProblem(error: unknown): string {
+  if (error instanceof ApiError) return error.code
+  if (error instanceof DOMException && (error.name === 'NotAllowedError' || error.name === 'AbortError')) return 'passkey_cancelled'
+  if (error instanceof Error && error.message === 'cancelled') return 'passkey_cancelled'
+  return 'passkey_unsupported'
+}
+
 export function LoginPage() {
   const { t } = useTranslation()
-  const { status, setMe } = useAuth()
+  const { status, me, setMe } = useAuth()
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const [methods, setMethods] = useState<Methods | null>(null)
   const [name, setName] = useState('')
   const [password, setPassword] = useState('')
-  const [step, setStep] = useState<'password' | 'code'>('password')
+  // Back from the provider with a second factor to give: the code step at once.
+  const [step, setStep] = useState<'password' | 'code'>(params.get('step') === 'code' ? 'code' : 'password')
+  const [waiting, setWaiting] = useState<{ totp: boolean; passkey: boolean }>({ totp: true, passkey: false })
   const [code, setCode] = useState('')
+  const [remember, setRemember] = useState(true)
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState<string | null>(params.get('error'))
   const next = safeNext(params.get('next'))
 
   useEffect(() => {
-    void authApi.methods().then(setMethods, () => setMethods({ password: true, oidc: false, oidc_name: '' }))
+    void authApi.methods().then(setMethods, () => setMethods({ password: true, oidc: false, oidc_name: '', passkeys: false }))
   }, [])
 
   if (status === 'loading') return null
   if (status === 'setup') return <Navigate to="/setup" replace />
+  if (status === 'signedIn' && me && (me.session_stage === 'setup' || me.session_stage === 'codes')) return <SecondFactorSetup me={me} next={next} />
   if (status === 'signedIn') return <Navigate to={next} replace />
+
+  const passkeys = Boolean(methods?.passkeys) && passkeysAvailable()
+
+  const signedIn = async () => {
+    const account = await authApi.me()
+    setMe(account)
+    if (account.session_stage === 'full' || !account.session_stage) navigate(next, { replace: true })
+  }
 
   const submit = async () => {
     if (step === 'password' && !name.trim()) return setProblem('name_missing')
@@ -130,17 +168,18 @@ export function LoginPage() {
     setBusy(true)
     setProblem(null)
     try {
-      let answer: Me | { second_factor: true }
-      if (step === 'code') answer = await authApi.code(code.trim())
-      else answer = await authApi.login(name.trim(), password)
-      if ('second_factor' in answer) {
-        setPassword('')
-        setCode('')
-        setStep('code')
-        return
+      if (step === 'code') await authApi.code(code.trim(), remember)
+      else {
+        const answer = await authApi.login(name.trim(), password, remember)
+        if ('second_factor' in answer) {
+          setPassword('')
+          setCode('')
+          setWaiting({ totp: answer.totp, passkey: answer.passkey })
+          setStep('code')
+          return
+        }
       }
-      setMe(await authApi.me())
-      navigate(next, { replace: true })
+      await signedIn()
     } catch (error) {
       const found = codeOf(error)
       setProblem(found)
@@ -153,9 +192,31 @@ export function LoginPage() {
     }
   }
 
+  const withPasskey = async () => {
+    setBusy(true)
+    setProblem(null)
+    try {
+      const { options } = await passkeyApi.signInBegin()
+      const credential = await answerWithPasskey(options)
+      await passkeyApi.signIn(credential, remember)
+      await signedIn()
+    } catch (error) {
+      setProblem(passkeyProblem(error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const passkeyButton = (
+    <button type="button" disabled={busy} onClick={() => void withPasskey()} className={OUTLINE + ' disabled:opacity-50'}>
+      <Fingerprint size={17} aria-hidden /> {t('auth.login.passkey')}
+    </button>
+  )
+
   if (step === 'code') {
+    const onlyPasskey = !waiting.totp && waiting.passkey
     return (
-      <AuthFrame title={t('auth.code.title')} text={t('auth.code.text')}>
+      <AuthFrame title={t('auth.code.title')} text={onlyPasskey ? t('auth.code.textPasskey') : t('auth.code.text')}>
         <form
           className="space-y-4"
           onSubmit={(event) => {
@@ -164,8 +225,17 @@ export function LoginPage() {
           }}
         >
           <Problem code={problem} />
-          <Input label={t('auth.code.label')} value={code} onChange={setCode} autoComplete="one-time-code" autoFocus hint={t('auth.code.hint')} />
+          <Input
+            label={onlyPasskey ? t('auth.code.recoveryLabel') : t('auth.code.label')}
+            value={code}
+            onChange={setCode}
+            autoComplete="one-time-code"
+            autoFocus
+            hint={onlyPasskey ? undefined : t('auth.code.hint')}
+          />
+          <Remember on={remember} onChange={setRemember} />
           <Primary busy={busy}>{t('auth.login.submit')}</Primary>
+          {waiting.passkey && passkeys && passkeyButton}
           <button
             type="button"
             className="w-full text-center text-xs text-muted hover:text-ink"
@@ -193,19 +263,126 @@ export function LoginPage() {
         }}
       >
         <Problem code={problem} />
-        <Input label={t('auth.name')} value={name} onChange={setName} autoComplete="username" autoFocus />
+        <Input label={t('auth.name')} value={name} onChange={setName} autoComplete="username webauthn" autoFocus />
         <Input label={t('auth.password')} value={password} onChange={setPassword} type="password" autoComplete="current-password" />
+        <Remember on={remember} onChange={setRemember} />
         <Primary busy={busy}>{t('auth.login.submit')}</Primary>
         {methods && !methods.password && <p className="text-xs text-muted">{t('auth.login.passwordOff')}</p>}
       </form>
-      {methods?.oidc && (
-        <>
-          <Or />
+      {(passkeys || methods?.oidc) && <Or />}
+      <div className="space-y-2.5">
+        {passkeys && passkeyButton}
+        {methods?.oidc && (
           <a href={`/api/oidc/start?next=${encodeURIComponent(next)}`} className={OUTLINE}>
             {t('auth.login.oidc', { name: methods.oidc_name || 'OpenID Connect' })}
           </a>
-        </>
-      )}
+        )}
+      </div>
+    </AuthFrame>
+  )
+}
+
+type Enrolment = { secret: string; uri: string; qr_svg: string }
+
+/**
+ * Right after the password, an account without a second factor sets it up here before it gets anywhere (the mock):
+ * the QR code and the key for the app, a code to confirm, then the recovery codes, shown once, and "I have them".
+ * Only then does the server make the session a full one.
+ */
+function SecondFactorSetup({ me, next }: { me: Me; next: string }) {
+  const { t } = useTranslation()
+  const { setMe, signOut } = useAuth()
+  const navigate = useNavigate()
+  const [enrolment, setEnrolment] = useState<Enrolment | null>(null)
+  const [codes, setCodes] = useState<string[] | null>(null)
+  const [code, setCode] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [problem, setProblem] = useState<string | null>(null)
+  const started = useRef(false)
+
+  useEffect(() => {
+    // Once: a second start would draw a new key and the QR code on the page would no longer fit.
+    if (started.current) return
+    started.current = true
+    const work =
+      me.session_stage === 'codes'
+        ? authApi.setupCodes().then((answer) => setCodes(answer.recovery_codes))
+        : api<Enrolment>('/api/auth/totp/begin', { method: 'POST' }).then(setEnrolment)
+    work.catch((error) => setProblem(codeOf(error)))
+  }, [me.session_stage])
+
+  const run = async (work: () => Promise<void>) => {
+    setBusy(true)
+    setProblem(null)
+    try {
+      await work()
+    } catch (error) {
+      setProblem(codeOf(error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const leave = (
+    <button type="button" onClick={() => void signOut()} className="mt-3 w-full text-center text-xs text-muted hover:text-ink">
+      {t('auth.setup2fa.leave')}
+    </button>
+  )
+
+  if (codes)
+    return (
+      <AuthFrame wide title={t('auth.codes.title')} text={t('auth.codes.text')}>
+        <Problem code={problem} />
+        <RecoveryCodes codes={codes} />
+        <KeepCodes codes={codes} account={me.name} className="mt-4" />
+        <div className="mt-4">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() =>
+              void run(async () => {
+                setMe(await authApi.setupDone())
+                navigate(next, { replace: true })
+              })
+            }
+            className="h-11 w-full rounded-full bg-accent px-4 font-semibold text-accent-ink hover:brightness-105 disabled:opacity-50"
+          >
+            {t('auth.codes.done')}
+          </button>
+        </div>
+      </AuthFrame>
+    )
+
+  return (
+    <AuthFrame wide title={t('auth.setup2fa.title')} text={t('auth.setup2fa.text')}>
+      <Problem code={problem} />
+      <div className="grid gap-5 sm:grid-cols-[10rem_1fr]">
+        {enrolment ? (
+          <img src={'data:image/svg+xml;utf8,' + encodeURIComponent(enrolment.qr_svg)} alt={t('twofactor.qr')} className="h-40 w-40 rounded-xl bg-white p-1" />
+        ) : (
+          <span className="h-40 w-40 rounded-xl bg-sheet-2" aria-hidden />
+        )}
+        <form
+          className="space-y-3"
+          onSubmit={(event) => {
+            event.preventDefault()
+            if (!code.trim()) return
+            void run(async () => {
+              const answer = await api<{ recovery_codes: string[] | null }>('/api/auth/totp/confirm', { method: 'POST', body: { code: code.trim() } })
+              setCodes(answer.recovery_codes ?? [])
+            })
+          }}
+        >
+          <p className="text-sm text-ink-2">{t('auth.setup2fa.scan')}</p>
+          <p className="font-mono text-xs break-all text-muted" data-testid="totp-secret">
+            {enrolment ? enrolment.secret.replace(/(.{4})/g, '$1 ').trim() : '…'}
+          </p>
+          <Input label={t('auth.code.label')} value={code} onChange={setCode} autoFocus autoComplete="one-time-code" />
+          <Primary busy={busy}>{t('twofactor.confirm')}</Primary>
+        </form>
+      </div>
+      <p className="mt-5 border-t border-line pt-4 text-xs text-muted">{t('auth.setup2fa.passkeyLater')}</p>
+      {leave}
     </AuthFrame>
   )
 }

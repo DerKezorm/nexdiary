@@ -269,14 +269,17 @@
       "text": "Willkommen zurück bei nexdiary.",
       "submit": "Anmelden",
       "passwordOff": "Die Anmeldung mit Passwort ist hier abgeschaltet. Nur der Betreiber kann es noch.",
-      "oidc": "Mit {{name}} anmelden"
+      "oidc": "Mit {{name}} anmelden",
+      "passkey": "Mit Passkey anmelden"
     },
     "code": {
       "title": "Zweiter Faktor",
       "text": "Der Code aus deiner App oder ein Wiederherstellungscode.",
       "label": "Code aus der App",
       "hint": "Sechs Ziffern. Oder einer deiner Wiederherstellungscodes.",
-      "back": "Mit dem Passwort neu anfangen"
+      "back": "Mit dem Passwort neu anfangen",
+      "textPasskey": "Melde dich mit deinem Passkey an oder gib einen Wiederherstellungscode ein.",
+      "recoveryLabel": "Wiederherstellungscode"
     },
     "invite": {
       "title": "Einladung",
@@ -288,6 +291,22 @@
       "noWay": "Die Anmeldung mit Passwort ist abgeschaltet und kein Anmeldeanbieter eingerichtet. Frag den Betreiber.",
       "haveAccount": "Dieser Link ist für ein neues Konto. Du bist schon als {{name}} angemeldet und brauchst ihn nicht.",
       "toApp": "Zu nexdiary"
+    },
+    "remember": {
+      "label": "Auf diesem Gerät angemeldet bleiben",
+      "hint": "Bis du 30 Tage nicht hier warst. Gut fürs eigene Handy, nicht für fremde Geräte."
+    },
+    "setup2fa": {
+      "title": "Zweiten Faktor einrichten",
+      "text": "Der Betreiber verlangt einen zweiten Faktor für jedes Konto, das sich mit Passwort anmeldet. Richte ihn ein, um weiterzumachen.",
+      "scan": "Scanne den Code mit einer Authenticator-App oder tippe den Schlüssel ein. Dann den Code, den die App zeigt.",
+      "passkeyLater": "Lieber ohne App? Einen Passkey kannst du danach unter Mein Konto → Sicherheit anlegen.",
+      "leave": "Abmelden"
+    },
+    "codes": {
+      "title": "Deine Wiederherstellungscodes",
+      "text": "Jeder meldet dich einmal an, wenn das Handy nicht zur Hand ist. Sie werden nur jetzt gezeigt: Bewahre sie getrennt vom Handy auf.",
+      "done": "Ich habe sie, weiter"
     }
   },
   "whatsNew": {
@@ -438,7 +457,31 @@
       "title": "Angemeldete Geräte",
       "text": "Wo du gerade angemeldet bist. Eine Anmeldung läuft nach 30 Tagen ohne Nutzung von selbst ab.",
       "notify": "Bei einer neuen Anmeldung Bescheid geben",
-      "notifyHint": "Per Push auf deine Geräte und per Mail: welches Gerät, welcher Browser, ungefähr von wo. Warst du es nicht, meldest du es mit einem Tipp ab."
+      "notifyHint": "Per Push auf deine Geräte und per Mail: welches Gerät, welcher Browser, ungefähr von wo. Warst du es nicht, meldest du es mit einem Tipp ab.",
+      "here": "dieses Gerät",
+      "meta": "{{where}} · zuletzt {{when}}",
+      "signOut": "Abmelden",
+      "ended": "{{name}} ist abgemeldet.",
+      "endedAll": "Alle anderen Geräte sind abgemeldet.",
+      "everywhereElse": "Überall sonst abmelden"
+    },
+    "justNow": "gerade eben",
+    "passkeys": {
+      "title": "Passkeys",
+      "text": "Anmelden mit Fingerabdruck, Gesicht oder der PIN des Geräts, ohne Passwort und ohne Code. Ein Passkey zählt selbst als zwei Faktoren und lässt sich nicht abfischen.",
+      "add": "Passkey anlegen",
+      "create": "Anlegen",
+      "how": "Gleich fragt der Browser nach Fingerabdruck, Gesicht oder PIN. Der Passkey bleibt auf dem Gerät oder in deinem Schlüsselbund.",
+      "name": "Name",
+      "meta": "angelegt {{since}} · zuletzt {{used}}",
+      "never": "noch nie",
+      "remove": "Passkey {{name}} entfernen",
+      "removeTitle": "Passkey {{name}} entfernen?",
+      "removeText": "Mit diesem Passkey kommt danach niemand mehr herein. Lösche ihn auch auf dem Gerät, wenn du ihn nicht mehr brauchst.",
+      "removeButton": "Entfernen",
+      "removed": "Passkey entfernt.",
+      "added": "Passkey angelegt.",
+      "unavailable": "Passkeys gibt es nur über https (oder localhost) und in Browsern, die sie kennen."
     }
   },
   "twofactor": {
@@ -461,7 +504,11 @@
     "renewText": "Die alten Wiederherstellungscodes gelten dann nicht mehr. Gib dein Passwort ein, um neue zu erzeugen.",
     "disable": "Ausschalten",
     "disableText": "Danach meldet dich das Passwort allein an. Gib es ein, um den zweiten Faktor auszuschalten.",
-    "lowCodes": "Nur noch wenige Wiederherstellungscodes. Erzeuge neue, solange du dich noch anmelden kannst."
+    "lowCodes": "Nur noch wenige Wiederherstellungscodes. Erzeuge neue, solange du dich noch anmelden kannst.",
+    "scanNoPassword": "Scanne diesen Code mit der App oder tippe den Schlüssel darunter ein. Dann gib den Code ein, den die App zeigt.",
+    "required": "Ausschalten geht nicht: Der Betreiber verlangt ihn für alle.",
+    "codesLeft_one": "Noch {{count}} Wiederherstellungscode.",
+    "codesLeft_other": "Noch {{count}} Wiederherstellungscodes."
   },
   "invite": {
     "valid": "Gültig für",
@@ -568,7 +615,7 @@
       },
       "reset": {
         "title": "Zweiten Faktor von {{name}} entfernen?",
-        "text": "Für ein verlorenes Handy: Das Konto meldet sich nur mit Passwort an, bis es einen neuen einrichtet.",
+        "text": "Für ein verlorenes Handy: Code aus der App, Passkeys und Wiederherstellungscodes gehen weg, alle Geräte werden abgemeldet, und die Person bekommt Bescheid. Bei der nächsten Anmeldung richtet sie den zweiten Faktor neu ein.",
         "button": "Entfernen"
       },
       "signout": {
@@ -605,6 +652,16 @@
         "title": "Sicherung hochladen?",
         "text": "Die Datei kommt in die Liste der Sicherungen. Wiederhergestellt wird erst, wenn du es dort bestätigst.",
         "button": "Hochladen"
+      },
+      "two_factor_off": {
+        "title": "Zweiten Faktor nicht mehr verlangen?",
+        "text": "Dann reicht wieder ein Passwort, um ein Tagebuch zu lesen. Wer schon einen zweiten Faktor hat, behält ihn.",
+        "button": "Nicht mehr verlangen"
+      },
+      "provider_checks": {
+        "title": "Dem Anbieter den zweiten Faktor überlassen?",
+        "text": "Wer über {{name}} hereinkommt, wird hier nicht mehr nach einem zweiten Faktor gefragt. Das ist nur sicher, wenn {{name}} selbst einen verlangt.",
+        "button": "Überlassen"
       }
     },
     "signin": "Anmeldung",
@@ -612,7 +669,7 @@
     "passwordLogin": "Anmeldung mit Passwort",
     "passwordLoginHint": "Aus: Mitglieder kommen nur über den Anbieter herein. Du als Betreiber kannst dein Passwort immer nutzen.",
     "twoFactorRequired": "Zweiten Faktor verlangen",
-    "twoFactorRequiredHint": "Jedes Konto, das sich mit Passwort anmeldet, muss ihn einrichten, bevor es weiterkommt. Konten vom Anbieter bringen dessen eigenen mit.",
+    "twoFactorRequiredHint": "Jedes Konto muss ihn einrichten, bevor es weiterkommt: direkt nach dem Passwort.",
     "ownSecondFactorFirst": "Richte zuerst deinen eigenen zweiten Faktor ein (Mein Konto, Sicherheit), sonst wärst du der Erste, der nicht mehr weiterkommt.",
     "publicUrl": "Öffentliche Adresse",
     "publicUrlHint": "Die Adresse, unter der man nexdiary erreicht. Einladungen und der Anbieter nutzen sie.",
@@ -686,7 +743,7 @@
     "check": "Prüfen",
     "checkOk": "Vollständig: {{accounts}}, {{files}}. Wiederherstellen würde {{add}} hinzufügen und {{remove}} entfernen.",
     "checkBad": "Beschädigt: Diese Sicherung lässt sich nicht wiederherstellen.",
-    "checkOtherKey": "Diese Sicherung stammt von einem anderen Server. Ihre Tagebücher sind mit dessen Hauptschlüssel verschlüsselt, und der fehlt hier. Lege zuerst die Datei keys/master.key des alten Servers in den Datenordner und starte nexdiary neu, dann geht es.",
+    "checkOtherKey": "Diese Sicherung stammt von einem anderen Server. Ihre Tagebücher sind mit dessen Hauptschlüssel verschlüsselt, und der fehlt hier. Lege zuerst die Datei keys/master.key des alten Servers (oder die unter „Hauptschlüssel sichern“ gespeicherte, umbenannt in master.key) in den Datenordner und starte nexdiary neu, dann geht es.",
     "download": "Herunterladen",
     "restore": "Wiederherstellen",
     "deleteBackup": "Löschen",
@@ -751,7 +808,7 @@
       "allowed": "Immich erlauben",
       "allowedHint": "Ab Werk aus. Aus, und niemand erreicht über diesen Server ein Immich.",
       "hosts": "Erlaubte Immich-Adressen",
-      "hostsHint": "Ein Host je Zeile, etwa photos.example.com. Mit Port gilt nur dieser Port, etwa immich.example.com:2283. Metadaten-Adressen von Cloud-Servern gehen nie.",
+      "hostsHint": "Ein Host je Zeile, am besten mit Port, etwa immich.example.com:2283: Dann gilt nur dieser Port. Ohne Port ist jeder Port dieses Hosts erlaubt. Metadaten-Adressen von Cloud-Servern gehen nie.",
       "connected_one": "{{count}} Person hat Immich verbunden.",
       "connected_other": "{{count}} Personen haben Immich verbunden.",
       "save": "Speichern",
@@ -776,6 +833,27 @@
       "hostsHint": "Nachrichten gehen nur an die Dienste von Google, Mozilla, Apple und Microsoft. Braucht ein Browser einen anderen, trage seinen Host hier ein, einen je Zeile, etwa push.example.com.",
       "save": "Speichern",
       "out": "Was hinausgeht: eine verschlüsselte Nachricht an den Push-Dienst des jeweiligen Browsers (bei Chrome Google, bei Safari Apple, bei Firefox Mozilla). Lesen kann sie nur das Gerät. Darin steht nur die Erinnerung, nie ein Eintrag."
+    },
+    "providerChecks": "{{name}} prüft den zweiten Faktor",
+    "providerChecksHint": "An: Wer über {{name}} hereinkommt, braucht hier keinen eigenen. Nur einschalten, wenn {{name}} selbst einen verlangt.",
+    "withoutMasterKey": "⚠️ Ohne den Hauptschlüssel ist eine Sicherung nicht lesbar, auch nicht für dich.",
+    "encryption": {
+      "title": "Verschlüsselung",
+      "text": "Texte, Notizen, Werte und Fotos liegen verschlüsselt in der Datenbank, jede Person mit eigenem Schlüssel.",
+      "on": "An, seit der Einrichtung",
+      "how1": "Wer die Datenbank oder eine Sicherung öffnet, sieht nur Zeichensalat. Der Hauptschlüssel liegt auf dem Server unter",
+      "how2": ", damit nexdiary selbst lesen kann. Wer vollen Zugriff auf den Server hat, kommt also hinein; zufällig hineinschauen geht nicht.",
+      "honest": "Ohne den Hauptschlüssel ist eine Sicherung nicht lesbar, auch nicht für dich. Ältere Sicherungen enthalten auch die Schlüssel von Konten, die inzwischen gelöscht sind: Mit dem Hauptschlüssel sind deren Tagebücher darin weiter lesbar."
+    },
+    "masterKey": {
+      "save": "Hauptschlüssel sichern",
+      "confirmText": "Mit dieser Datei und einer Sicherung lässt sich jedes Tagebuch lesen. Bewahre sie getrennt von den Sicherungen auf. Bestätige mit deinem Passwort und deinem zweiten Faktor.",
+      "factorFirst": "Richte zuerst deinen eigenen zweiten Faktor ein (Mein Konto, Sicherheit). Ohne ihn gibt nexdiary den Hauptschlüssel nicht heraus.",
+      "withPasskey": "Mit Passkey bestätigen",
+      "download": "Herunterladen",
+      "savedAt": "Zuletzt gesichert am {{when}}.",
+      "never": "Noch nie gesichert.",
+      "saved": "Hauptschlüssel als Datei gespeichert. Bewahre ihn getrennt von den Sicherungen auf."
     }
   },
   "editor": {
@@ -1101,7 +1179,22 @@
     "push_host_invalid": "Das ist kein Hostname: {{entry}}",
     "push_too_many_hosts": "Höchstens {{max}} weitere Push-Dienste.",
     "push_too_often": "Zu viel auf einmal. Warte eine Minute.",
-    "bad_reminder": "Diesen Wert bietet nexdiary nicht an."
+    "bad_reminder": "Diesen Wert bietet nexdiary nicht an.",
+    "second_factor_required": "Der Betreiber verlangt einen zweiten Faktor. Den letzten kannst du nicht ausschalten.",
+    "second_factor_wrong": "Der zweite Faktor stimmt nicht.",
+    "sign_in_again": "Melde dich noch einmal über den Anbieter an und versuche es dann gleich.",
+    "this_session": "Hier meldest du dich mit „Abmelden“ ab.",
+    "not_in_setup": "Da ist nichts mehr zu bestätigen. Lade die Seite neu.",
+    "passkey_expired": "Das hat zu lange gedauert. Fang noch einmal an.",
+    "passkey_invalid": "Die Antwort des Browsers passt nicht. Versuche es noch einmal.",
+    "passkey_exists": "Diesen Passkey gibt es hier schon.",
+    "passkey_refused": "Der Passkey wurde nicht angenommen.",
+    "passkey_none": "Dieses Konto hat keinen Passkey.",
+    "passkeys_need_https": "Passkeys gehen nur, wenn nexdiary über https erreichbar ist (oder über localhost).",
+    "too_many_passkeys": "Mehr als zehn Passkeys je Konto gehen nicht.",
+    "passkey_cancelled": "Abgebrochen. Der Browser hat keinen Passkey bekommen.",
+    "passkey_unsupported": "Dieser Browser kann hier keine Passkeys.",
+    "immich_tls": "Das Zertifikat deines Immich ist nicht vertrauenswürdig (etwa selbst ausgestellt). Nimm im Heimnetz http, oder gib Immich ein gültiges Zertifikat."
   },
   "entry": {
     "back": "← Tagebuch",
@@ -1134,5 +1227,61 @@
     "done": "Geteilt mit {{names}}.",
     "stopped": "Nicht mehr geteilt.",
     "nobody": "Außer dir nutzt noch niemand nexdiary auf diesem Server. Lade jemanden ein, dann kannst du Tage teilen."
+  },
+  "ready": {
+    "title": "Bereit fürs Internet?",
+    "text": "Viele erreichen nexdiary auch von unterwegs. Das hier prüft nexdiary selbst, jedes Mal, wenn du die Seite öffnest.",
+    "open_one": "{{count}} Punkt offen",
+    "open_other": "{{count}} Punkte offen",
+    "allGood": "Alles erfüllt",
+    "state": {
+      "ok": "erfüllt",
+      "warn": "prüfen",
+      "bad": "offen"
+    },
+    "https": {
+      "title": "Öffentliche Adresse mit https",
+      "ok": "{{address}}",
+      "warn": "{{address}} hat https, aber diese Anfrage kam ohne. Öffne nexdiary über diese Adresse, oder lass den Proxy X-Forwarded-Proto mitschicken.",
+      "bad": "Ohne https gehen Passwörter offen durchs Netz, und Web Push und Passkeys funktionieren gar nicht. Trage unten die öffentliche Adresse mit https ein."
+    },
+    "two_factor": {
+      "title": "Zweiter Faktor für alle",
+      "ok": "Wer sich mit Passwort anmeldet, braucht dazu einen Code oder einen Passkey.",
+      "bad": "Aus: Ein erratenes oder gestohlenes Passwort reicht, um ein Tagebuch zu lesen. Schalte unten „Zweiten Faktor verlangen“ ein."
+    },
+    "own_account": {
+      "title": "Dein eigenes Konto",
+      "ok": "Hat einen zweiten Faktor.",
+      "bad": "Hat noch keinen zweiten Faktor, und es darf alles einstellen. Richte ihn unter Mein Konto, Sicherheit ein."
+    },
+    "brake": {
+      "title": "Schutz vor Raten",
+      "ok": "Nach 5 falschen Versuchen 15 Minuten Pause, je Konto und je Adresse. Jeder Versuch steht im Log.",
+      "warn": "Alle Besucher kommen über einen Proxy, den nexdiary nicht kennt: Die Pause greift je Konto, je Adresse aber nur grob. Siehe „Hinter dem Proxy“."
+    },
+    "encryption": {
+      "title": "Einträge verschlüsselt",
+      "ok": "Texte, Notizen, Werte und Fotos, jedes Konto mit eigenem Schlüssel.",
+      "bad": "Der Hauptschlüssel {{path}} ist auch für andere lesbar (Rechte {{mode}}). Setze sie auf 600, nur für den Besitzer.",
+      "missing": "Der Hauptschlüssel fehlt unter {{path}}."
+    },
+    "cookies": {
+      "title": "Sitzungen und Cookies",
+      "ok": "Cookies nur über https und nicht für Skripte lesbar; eine Anmeldung läuft nach 30 Tagen ohne Nutzung ab.",
+      "warn": "Ohne https gehen die Anmelde-Cookies offen mit. Über https schützt nexdiary sie von selbst.",
+      "bad": "NEXDIARY_COOKIE_SECURE steht auf off: Die Cookies gehen auch über https ungeschützt. Setze den Wert auf auto."
+    },
+    "proxy": {
+      "title": "Hinter dem Proxy",
+      "ok": "Die echte Adresse der Besucher kommt an (Proxy {{proxies}} als vertrauenswürdig eingetragen). Ohne das sähe der Schutz vor Raten alle als einen.",
+      "direct": "Die Besucher kommen direkt an, ohne Proxy dazwischen.",
+      "warn": "Die Anfragen kommen über einen Proxy ({{proxy}}), der nicht als vertrauenswürdig eingetragen ist: Der Schutz vor Raten sieht alle als einen. Setze NEXDIARY_TRUSTED_PROXIES auf seine Adresse."
+    },
+    "master_key_saved": {
+      "title": "Hauptschlüssel gesichert",
+      "ok": "Zuletzt am {{when}}. Bewahre ihn getrennt von den Sicherungen auf.",
+      "warn": "Noch nie gesichert. Ohne ihn ist eine Sicherung nicht lesbar: Server, Sicherung, Hauptschlüssel sichern."
+    }
   }
 }

@@ -670,3 +670,53 @@ def test_the_attempt_cookie_cannot_be_given_an_invitation(
     browser.cookies.set(oidc.COOKIE_NAME, forged, path="/api/oidc")
     provider.claims = {"nonce": values["nonce"]}
     assert come_back(browser, values["state"]).headers["location"] == "/login?error=oidc_state_mismatch"
+
+
+# --- The second factor after the provider (B7) ----------------------------------------------------------------------
+
+
+def test_through_the_provider_an_account_with_a_second_factor_still_gives_it(
+    client: TestClient, operator: Account, provider: FakeProvider
+) -> None:
+    """The provider vouches for the person, nexdiary's own second factor still comes: a password account linked to
+    the provider would otherwise pass its code by the back door."""
+    configure(client)
+    from app.services import totp as totp_service
+
+    seed = client.post("/api/auth/totp/begin").json()["secret"]
+    assert client.post("/api/auth/totp/confirm", json={"code": totp_service.code_at(seed, time.time()),
+                                                       "password": PASSWORD}).status_code == 200
+    with SessionLocal() as db:
+        db.query(Account).filter(Account.name == "tester").update({"oidc_subject": "person-1"})
+        db.commit()
+    browser = fresh_browser(client)
+    response = sign_in_via_oidc(browser, provider)
+    assert response.headers["location"] == "/login?step=code"
+    assert not browser.cookies.get("nexdiary_session")
+    assert browser.get("/api/auth/me").status_code == 401
+    code = totp_service.code_at(seed, time.time() + totp_service.STEP_SECONDS)
+    passed = browser.post("/api/auth/login/totp", json={"code": code})
+    assert passed.status_code == 200 and passed.json()["name"] == "tester"
+
+
+def test_through_the_provider_an_account_without_one_sets_it_up_first_unless_the_provider_checks(
+    client: TestClient, operator: Account, provider: FakeProvider
+) -> None:
+    from .conftest import require_second_factor
+
+    configure(client)
+    require_second_factor()
+    browser = fresh_browser(client)
+    response = sign_in_via_oidc(browser, provider)
+    assert response.headers["location"] == "/login"
+    me = browser.get("/api/auth/me").json()
+    assert me["session_stage"] == "setup" and me["sign_in"] == "oidc"
+    assert browser.get("/api/days").status_code == 403
+    # The operator declares that the provider checks a second factor: the next sign-in goes straight in.
+    from app.services import settings_service
+
+    with SessionLocal() as db:
+        settings_service.save(db, {"oidc_second_factor_by_provider": True})
+    again = fresh_browser(client)
+    assert sign_in_via_oidc(again, provider).headers["location"] == "/"
+    assert again.get("/api/days").status_code == 200

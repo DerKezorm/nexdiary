@@ -30,10 +30,10 @@ from sqlalchemy import func, select, update
 
 from ..deps import Account, DbSession, OperatorAccount, client_ip, reauth_failed, reauth_guard, reauth_succeeded
 from ..errors import error
-from ..models import SIGN_IN_OIDC, SIGN_IN_PASSWORD
+from ..models import SIGN_IN_OIDC, SIGN_IN_PASSWORD, STAGE_FULL, STAGE_SETUP
 from ..models import Account as AccountRow
-from ..security import SESSION_COOKIE, brake, decrypt_secret, encrypt_secret, session_account
-from ..services import accounts, authentik, logs, oidc, settings_service
+from ..security import SESSION_COOKIE, brake, current_session, decrypt_secret, encrypt_secret
+from ..services import accounts, authentik, logs, oidc, settings_service, totp
 from . import auth as auth_router
 from .auth import secure_cookie
 
@@ -280,11 +280,24 @@ async def callback(
         db.commit()
         logger.info("Invite used name=%s", account.name)
 
+    logs.set_actor(account.name)
+    if totp.has_second_factor(db, account) and not totp.provider_checks(db, account):
+        # The provider vouched for the person; nexdiary's own second factor still has to come, unless the operator
+        # declared that the provider checks one. The sign-in page asks for it, as after a password.
+        response = RedirectResponse(f"{LOGIN_PAGE}?step=code", status_code=303)
+        _delete_attempt_cookie(response)
+        auth_router.park(request, response, db, account, True)
+        logger.info("Provider passed, second factor waiting name=%s", account.name)
+        return response
     response = RedirectResponse(HOME, status_code=303)
     _delete_attempt_cookie(response)
-    auth_router.start(db, request, response, account)
-    logs.set_actor(account.name)
-    logger.info("Signed in via OIDC name=%s", account.name)
+    stage = auth_router.start(db, request, response, account)
+    if stage == STAGE_SETUP:
+        # Without a second factor where one is required: the sign-in page sets it up first.
+        response.headers["location"] = LOGIN_PAGE
+        logger.info("Signed in via OIDC, second factor to be set up first name=%s", account.name)
+    else:
+        logger.info("Signed in via OIDC name=%s", account.name)
     return response
 
 
@@ -365,7 +378,8 @@ def _finish_link(
     db: DbSession, request: Request, attempt: dict[str, Any], identity: oidc.Identity, refuse: Any
 ) -> RedirectResponse:
     """Stores the provider identity on the account that started the linking. Nobody is signed in here."""
-    current = session_account(db, request.cookies.get(SESSION_COOKIE))
+    found = current_session(db, request.cookies.get(SESSION_COOKIE))
+    current = found[1] if found and found[0].stage == STAGE_FULL else None
     if current is None or current.id != attempt.get("link"):
         return refuse("oidc_link_mismatch", "the linking attempt does not belong to the signed-in account")
     if not identity.subject.strip():

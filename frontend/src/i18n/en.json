@@ -269,14 +269,17 @@
       "text": "Welcome back to nexdiary.",
       "submit": "Sign in",
       "passwordOff": "Sign-in with a password is turned off here. Only the operator can still use it.",
-      "oidc": "Sign in with {{name}}"
+      "oidc": "Sign in with {{name}}",
+      "passkey": "Sign in with a passkey"
     },
     "code": {
       "title": "Second factor",
       "text": "The code from your app, or a recovery code.",
       "label": "Code from the app",
       "hint": "Six digits. Or one of your recovery codes.",
-      "back": "Start over with the password"
+      "back": "Start over with the password",
+      "textPasskey": "Sign in with your passkey, or give a recovery code.",
+      "recoveryLabel": "Recovery code"
     },
     "invite": {
       "title": "Invitation",
@@ -288,6 +291,22 @@
       "noWay": "Sign-in with a password is off and no sign-in provider is set up. Ask the operator.",
       "haveAccount": "This link is for a new account. You are signed in as {{name}} already and do not need it.",
       "toApp": "To nexdiary"
+    },
+    "remember": {
+      "label": "Stay signed in on this device",
+      "hint": "Until you have not been here for 30 days. Good for your own phone, not for other people's devices."
+    },
+    "setup2fa": {
+      "title": "Set up your second factor",
+      "text": "The operator requires a second factor for every account that signs in with a password. Set it up to go on.",
+      "scan": "Scan the code with an authenticator app, or type in the key. Then the code the app shows.",
+      "passkeyLater": "Rather without an app? You can add a passkey afterwards under My account → Security.",
+      "leave": "Sign out"
+    },
+    "codes": {
+      "title": "Your recovery codes",
+      "text": "Each one signs you in once, when the phone is not at hand. They are shown only now: keep them apart from the phone.",
+      "done": "I have them, go on"
     }
   },
   "whatsNew": {
@@ -438,7 +457,31 @@
       "title": "Signed-in devices",
       "text": "Where you are signed in. A sign-in ends by itself after 30 days without use.",
       "notify": "Tell me about a new sign-in",
-      "notifyHint": "By push to your devices and by mail: which device, which browser, roughly from where. If it was not you, one tap signs it off."
+      "notifyHint": "By push to your devices and by mail: which device, which browser, roughly from where. If it was not you, one tap signs it off.",
+      "here": "this device",
+      "meta": "{{where}} · last {{when}}",
+      "signOut": "Sign out",
+      "ended": "{{name}} is signed out.",
+      "endedAll": "Every other device is signed out.",
+      "everywhereElse": "Sign out everywhere else"
+    },
+    "justNow": "just now",
+    "passkeys": {
+      "title": "Passkeys",
+      "text": "Sign in with your fingerprint, face or the device's PIN, without password and without code. A passkey counts as two factors by itself and cannot be phished.",
+      "add": "Add a passkey",
+      "create": "Add",
+      "how": "The browser will ask for your fingerprint, face or PIN. The passkey stays on the device or in your keychain.",
+      "name": "Name",
+      "meta": "added {{since}} · last used {{used}}",
+      "never": "never",
+      "remove": "Remove passkey {{name}}",
+      "removeTitle": "Remove passkey {{name}}?",
+      "removeText": "Nobody gets in with this passkey afterwards. Delete it on the device too when you no longer need it.",
+      "removeButton": "Remove",
+      "removed": "Passkey removed.",
+      "added": "Passkey added.",
+      "unavailable": "Passkeys work only over https (or localhost) and in browsers that know them."
     }
   },
   "twofactor": {
@@ -461,7 +504,11 @@
     "renewText": "The old recovery codes stop working. Give your password to make new ones.",
     "disable": "Turn off",
     "disableText": "From then on the password alone signs you in. Give it to turn the second factor off.",
-    "lowCodes": "Few recovery codes left. Make new ones while you can still sign in."
+    "lowCodes": "Few recovery codes left. Make new ones while you can still sign in.",
+    "scanNoPassword": "Scan this code with the app, or type the key below into it. Then give the code the app shows.",
+    "required": "It cannot be turned off: the operator requires it for everybody.",
+    "codesLeft_one": "{{count}} recovery code left.",
+    "codesLeft_other": "{{count}} recovery codes left."
   },
   "invite": {
     "valid": "Valid for",
@@ -568,7 +615,7 @@
       },
       "reset": {
         "title": "Remove the second factor of {{name}}?",
-        "text": "For a lost phone: the account signs in with its password alone until it sets up a new one.",
+        "text": "For a lost phone: the code from the app, the passkeys and the recovery codes go, every device is signed out, and the person is told. At the next sign-in they set the second factor up again.",
         "button": "Remove"
       },
       "signout": {
@@ -605,6 +652,16 @@
         "title": "Upload a backup?",
         "text": "The file joins the list of backups. Nothing is restored until you confirm it there.",
         "button": "Upload"
+      },
+      "two_factor_off": {
+        "title": "Stop requiring a second factor?",
+        "text": "Then a password alone is enough again to read a diary. Whoever has a second factor already keeps it.",
+        "button": "Stop requiring it"
+      },
+      "provider_checks": {
+        "title": "Leave the second factor to the provider?",
+        "text": "Whoever comes in through {{name}} is no longer asked for a second factor here. That is safe only when {{name}} requires one itself.",
+        "button": "Leave it"
       }
     },
     "signin": "Sign-in",
@@ -612,7 +669,7 @@
     "passwordLogin": "Sign-in with a password",
     "passwordLoginHint": "Off: members get in through the provider only. As the operator you can always use your password.",
     "twoFactorRequired": "Require a second factor",
-    "twoFactorRequiredHint": "Every account that signs in with a password must set it up before it gets any further. Accounts from the provider bring the provider's own.",
+    "twoFactorRequiredHint": "Every account must set it up before it gets any further: right after the password.",
     "ownSecondFactorFirst": "Set up your own second factor first (My account, Security), or you would be the first one who cannot go on.",
     "publicUrl": "Public address",
     "publicUrlHint": "The address nexdiary is reached under. Invitations and the provider use it.",
@@ -686,7 +743,7 @@
     "check": "Check",
     "checkOk": "Complete: {{accounts}}, {{files}}. Restoring would add {{add}} and remove {{remove}}.",
     "checkBad": "Damaged: this backup cannot be restored.",
-    "checkOtherKey": "This backup comes from another server. Its diaries are sealed with that server's master key, which is missing here. Put the old server's keys/master.key into the data folder and restart nexdiary first, then it works.",
+    "checkOtherKey": "This backup comes from another server. Its diaries are sealed with that server's master key, which is missing here. Put the old server's keys/master.key (or the file saved with “Save master key”, renamed to master.key) into the data folder and restart nexdiary first, then it works.",
     "download": "Download",
     "restore": "Restore",
     "deleteBackup": "Delete",
@@ -751,7 +808,7 @@
       "allowed": "Allow Immich",
       "allowedHint": "Off from the start. Off, and nobody reaches an Immich through this server.",
       "hosts": "Allowed Immich addresses",
-      "hostsHint": "One host per line, such as photos.example.com. With a port only that port counts, such as immich.example.com:2283. Metadata addresses of cloud servers never work.",
+      "hostsHint": "One host per line, best with its port, such as immich.example.com:2283: then only that port holds. Without a port, every port of the host is allowed. Metadata addresses of cloud servers never.",
       "connected_one": "{{count}} person has connected Immich.",
       "connected_other": "{{count}} people have connected Immich.",
       "save": "Save",
@@ -776,6 +833,27 @@
       "hostsHint": "Messages go only to the services of Google, Mozilla, Apple and Microsoft. If a browser needs another one, enter its host here, one per line, such as push.example.com.",
       "save": "Save",
       "out": "What goes out: an encrypted message to the push service of each browser (Google for Chrome, Apple for Safari, Mozilla for Firefox). Only the device can read it. It holds the reminder only, never an entry."
+    },
+    "providerChecks": "{{name}} checks the second factor",
+    "providerChecksHint": "On: whoever comes in through {{name}} needs no second factor of their own here. Turn on only when {{name}} requires one itself.",
+    "withoutMasterKey": "⚠️ Without the master key a backup cannot be read, not even by you.",
+    "encryption": {
+      "title": "Encryption",
+      "text": "Texts, notes, values and photos are sealed in the database, each person with a key of their own.",
+      "on": "On, since the setup",
+      "how1": "Whoever opens the database or a backup sees only gibberish. The master key lies on the server under",
+      "how2": ", so that nexdiary itself can read. Whoever has full access to the server therefore gets in; looking in by chance does not work.",
+      "honest": "Without the master key a backup cannot be read, not even by you. Older backups also hold the keys of accounts deleted since: with the master key, their diaries in there can still be read."
+    },
+    "masterKey": {
+      "save": "Save master key",
+      "confirmText": "With this file and a backup every diary can be read. Keep it apart from the backups. Confirm with your password and your second factor.",
+      "factorFirst": "Set up your own second factor first (My account, Security). Without it nexdiary does not hand out the master key.",
+      "withPasskey": "Confirm with a passkey",
+      "download": "Download",
+      "savedAt": "Last saved on {{when}}.",
+      "never": "Never saved.",
+      "saved": "Master key saved as a file. Keep it apart from the backups."
     }
   },
   "editor": {
@@ -1101,7 +1179,22 @@
     "push_host_invalid": "This is not a host name: {{entry}}",
     "push_too_many_hosts": "At most {{max}} more push services.",
     "push_too_often": "Too much at once. Wait a minute.",
-    "bad_reminder": "nexdiary does not offer this value."
+    "bad_reminder": "nexdiary does not offer this value.",
+    "second_factor_required": "The operator requires a second factor. You cannot turn off the last one.",
+    "second_factor_wrong": "The second factor is not right.",
+    "sign_in_again": "Sign in again through the provider, then try once more right away.",
+    "this_session": "Here you sign out with “Sign out”.",
+    "not_in_setup": "There is nothing to confirm any more. Reload the page.",
+    "passkey_expired": "That took too long. Start again.",
+    "passkey_invalid": "The browser's answer does not fit. Try again.",
+    "passkey_exists": "This passkey is here already.",
+    "passkey_refused": "The passkey was not accepted.",
+    "passkey_none": "This account has no passkey.",
+    "passkeys_need_https": "Passkeys work only when nexdiary is reached over https (or on localhost).",
+    "too_many_passkeys": "No more than ten passkeys per account.",
+    "passkey_cancelled": "Cancelled. The browser did not hand over a passkey.",
+    "passkey_unsupported": "This browser cannot use passkeys here.",
+    "immich_tls": "The certificate of your Immich is not trusted (made by oneself, for example). Use http in the home network, or give Immich a valid certificate."
   },
   "entry": {
     "back": "← Journal",
@@ -1134,5 +1227,61 @@
     "done": "Shared with {{names}}.",
     "stopped": "No longer shared.",
     "nobody": "Nobody but you uses nexdiary on this server yet. Invite someone, then you can share days."
+  },
+  "ready": {
+    "title": "Ready for the internet?",
+    "text": "Many reach nexdiary from on the road too. nexdiary checks this itself, every time you open the page.",
+    "open_one": "{{count}} point open",
+    "open_other": "{{count}} points open",
+    "allGood": "All good",
+    "state": {
+      "ok": "fine",
+      "warn": "check",
+      "bad": "open"
+    },
+    "https": {
+      "title": "Public address with https",
+      "ok": "{{address}}",
+      "warn": "{{address}} has https, but this request came without. Open nexdiary under that address, or let the proxy send X-Forwarded-Proto.",
+      "bad": "Without https, passwords travel the network in the clear, and Web Push and passkeys do not work at all. Enter the public address with https below."
+    },
+    "two_factor": {
+      "title": "Second factor for everybody",
+      "ok": "Whoever signs in with a password needs a code or a passkey as well.",
+      "bad": "Off: a guessed or stolen password is enough to read a diary. Turn on “Require a second factor” below."
+    },
+    "own_account": {
+      "title": "Your own account",
+      "ok": "Has a second factor.",
+      "bad": "Has no second factor yet, and it may change everything. Set it up under My account, Security."
+    },
+    "brake": {
+      "title": "Protection against guessing",
+      "ok": "After 5 wrong tries a 15 minute pause, per account and per address. Every try is in the log.",
+      "warn": "All visitors come through a proxy nexdiary does not know: the pause holds per account, per address only roughly. See “Behind the proxy”."
+    },
+    "encryption": {
+      "title": "Entries encrypted",
+      "ok": "Texts, notes, values and photos, each account with a key of its own.",
+      "bad": "The master key {{path}} can be read by others too (mode {{mode}}). Set it to 600, the owner only.",
+      "missing": "The master key is missing at {{path}}."
+    },
+    "cookies": {
+      "title": "Sessions and cookies",
+      "ok": "Cookies only over https and not readable by scripts; a sign-in runs out after 30 days without use.",
+      "warn": "Without https the sign-in cookies travel in the clear. Over https nexdiary protects them by itself.",
+      "bad": "NEXDIARY_COOKIE_SECURE is off: the cookies go unprotected even over https. Set it to auto."
+    },
+    "proxy": {
+      "title": "Behind the proxy",
+      "ok": "The visitors' real address arrives (proxy {{proxies}} entered as trusted). Without that the protection against guessing would see everybody as one.",
+      "direct": "The visitors arrive directly, without a proxy in between.",
+      "warn": "The requests come through a proxy ({{proxy}}) that is not entered as trusted: the protection against guessing sees everybody as one. Set NEXDIARY_TRUSTED_PROXIES to its address."
+    },
+    "master_key_saved": {
+      "title": "Master key saved",
+      "ok": "Last on {{when}}. Keep it apart from the backups.",
+      "warn": "Never saved. Without it a backup cannot be read: Server, Backups, Save master key."
+    }
   }
 }

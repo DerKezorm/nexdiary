@@ -10,7 +10,8 @@ Immich of a person (``services/immich.py``). Taken over from nexlore, where it w
   only the hosts the operator allowed).
 * **No redirect is followed** (that led into the own network in nexlore), the answer is read up to a size, and the
   whole request, the answer read included, has one deadline: a service that sends a byte now and then holds nobody
-  longer than that.
+  longer than that. The deadline sits in the socket itself (``DeadlineBackend``): every read and write waits at most
+  for what is left of it, so a head that comes a line per second ends at the deadline as well, not only the body.
 """
 
 from __future__ import annotations
@@ -19,13 +20,15 @@ import ipaddress
 import itertools
 import socket
 import ssl
+import threading
 import zlib
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from functools import cache
 from typing import Any
 from urllib.parse import urlsplit
 
+import httpcore
 import httpx
 
 IP = ipaddress.IPv4Address | ipaddress.IPv6Address
@@ -174,9 +177,83 @@ def tls() -> ssl.SSLContext:
     return httpx.create_ssl_context(trust_env=False)
 
 
-def client(transport: httpx.BaseTransport | None) -> httpx.Client:
-    """A client that follows no redirect, reads no proxy or certificate from the environment."""
-    return httpx.Client(follow_redirects=False, transport=transport, trust_env=False, verify=tls())
+# --- The deadline in the socket --------------------------------------------------------------------------------------
+
+#: The deadline of the request running in this thread, and the clock it is measured on (``send`` sets both).
+_running = threading.local()
+
+
+def _left() -> float | None:
+    deadline = getattr(_running, "deadline", None)
+    if deadline is None:
+        return None
+    return deadline - _running.ticks()
+
+
+def _bounded(timeout: float | None) -> float | None:
+    """The time one read or write may wait: what the caller allows, never more than is left of the deadline."""
+    left = _left()
+    if left is None:
+        return timeout
+    if left <= 0:
+        raise httpcore.ReadTimeout("the deadline passed")
+    return left if timeout is None else min(timeout, left)
+
+
+class _DeadlineStream(httpcore.NetworkStream):
+    def __init__(self, inner: httpcore.NetworkStream) -> None:
+        self._inner = inner
+
+    def read(self, max_bytes: int, timeout: float | None = None) -> bytes:
+        return self._inner.read(max_bytes, _bounded(timeout))
+
+    def write(self, buffer: bytes, timeout: float | None = None) -> None:
+        self._inner.write(buffer, _bounded(timeout))
+
+    def close(self) -> None:
+        self._inner.close()
+
+    def start_tls(self, ssl_context: ssl.SSLContext, server_hostname: str | None = None,
+                  timeout: float | None = None) -> httpcore.NetworkStream:
+        return _DeadlineStream(self._inner.start_tls(ssl_context, server_hostname, _bounded(timeout)))
+
+    def get_extra_info(self, info: str) -> Any:
+        return self._inner.get_extra_info(info)
+
+
+class DeadlineBackend(httpcore.NetworkBackend):
+    """The sockets of ``client``: each read, write and TLS handshake waits at most for what is left of the deadline of
+    the request in this thread."""
+
+    def __init__(self, inner: httpcore.NetworkBackend | None = None) -> None:
+        self._inner = inner or httpcore.SyncBackend()
+
+    def connect_tcp(self, host: str, port: int, timeout: float | None = None, local_address: str | None = None,
+                    socket_options: Iterable[Any] | None = None) -> httpcore.NetworkStream:
+        return _DeadlineStream(self._inner.connect_tcp(host, port, _bounded(timeout), local_address, socket_options))
+
+    def connect_unix_socket(self, path: str, timeout: float | None = None,
+                            socket_options: Iterable[Any] | None = None) -> httpcore.NetworkStream:
+        raise httpcore.ConnectError("no unix sockets here")
+
+    def sleep(self, seconds: float) -> None:
+        self._inner.sleep(seconds)
+
+
+def transport() -> httpx.HTTPTransport:
+    """httpx's own transport, with sockets that keep the deadline (``DeadlineBackend``)."""
+    made = httpx.HTTPTransport(verify=tls(), trust_env=False)
+    pool = made._pool
+    if not hasattr(pool, "_network_backend"):
+        raise RuntimeError("httpcore changed: the deadline cannot be set in the socket")
+    pool._network_backend = DeadlineBackend(pool._network_backend)
+    return made
+
+
+def client(chosen: httpx.BaseTransport | None) -> httpx.Client:
+    """A client that follows no redirect, reads no proxy or certificate from the environment, and keeps the deadline
+    in its sockets (a stand-in transport of the tests is taken as it is)."""
+    return httpx.Client(follow_redirects=False, transport=chosen or transport(), trust_env=False, verify=tls())
 
 
 def send(
@@ -196,6 +273,22 @@ def send(
     followed, the answer read up to ``limit`` bytes (``TooLarge``) and only until the deadline (``Late``).
     ``accept`` sees the head of the answer before its body is read and may refuse it (a wrong type of content)."""
     extensions = {"sni_hostname": place.host} if place.scheme == "https" else {}
+    _running.deadline, _running.ticks = deadline, ticks
+    try:
+        return _send(session, method, place, headers, extensions, deadline, ticks, limit, connect_seconds, accept,
+                     **sent)
+    except httpx.TimeoutException as exc:
+        # A socket that waited out the rest of the deadline: late, whatever part of the answer it was.
+        if ticks() >= deadline:
+            raise Late from exc
+        raise
+    finally:
+        _running.deadline = None
+
+
+def _send(session: httpx.Client, method: str, place: Target, headers: dict[str, str], extensions: dict[str, Any],
+          deadline: float, ticks: Callable[[], float], limit: int, connect_seconds: float,
+          accept: Callable[[httpx.Response], None] | None, **sent: Any) -> httpx.Response:
     last: Exception | None = None
     for url in place.urls:
         left = deadline - ticks()

@@ -204,8 +204,10 @@ def master() -> bytes:
             if _wrapped_count():
                 raise MasterKeyError(
                     f"The master key {path} is missing, but the database holds sealed diaries. nexdiary does not make "
-                    "a new one, that would lose them all. Put back keys/master.key from a copy of the data folder, or "
-                    "set NEXDIARY_MASTER_KEY_FILE to where the file is."
+                    "a new one, that would lose them all. Put back keys/master.key: from a copy of the data folder, or "
+                    "the file the operator saved under Settings, Server, Backups, Save master key "
+                    "(nexdiary-master.key, renamed to master.key). Or set NEXDIARY_MASTER_KEY_FILE to where the "
+                    "file is."
                 )
             key = _create(path)
         private.tighten(path)
@@ -229,6 +231,12 @@ def startup() -> None:
     except MasterKeyError as exc:
         logger.critical("%s", exc)
         raise
+
+
+def export() -> bytes:
+    """The master key file as this server uses it, for the operator to keep apart from the backups ("Save master
+    key"): put back as ``keys/master.key``, it opens the backups of this server, here or on a new one."""
+    return _encode(master())
 
 
 def forget() -> None:

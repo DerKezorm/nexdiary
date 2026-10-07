@@ -82,7 +82,7 @@ def enrol(client: TestClient) -> tuple[str, list[str]]:
 def password_step(client: TestClient, name: str = "tester") -> None:
     response = client.post("/api/auth/login", json={"name": name, "password": PASSWORD})
     assert response.status_code == 200, response.text
-    assert response.json() == {"second_factor": True}
+    assert response.json() ["second_factor"] is True
     cookie = response.headers.get("set-cookie", "")
     assert "nexdiary_2fa=" in cookie and "HttpOnly" in cookie and "Path=/api/auth" in cookie
     assert f"{SESSION_COOKIE}=" not in cookie
@@ -232,8 +232,14 @@ def test_five_wrong_codes_end_the_pending_sign_in(client: TestClient, operator: 
     code = fresh_code(secret, clock)
     again = code_step(client, code)
     assert again.status_code == 401 and again.json()["detail"]["code"] == "second_factor_expired"
-    # The sender's brake is a guard of its own; lifted here to see the rest.
+    # Five wrong codes are five failures: the address rests and the account is locked for a quarter of an hour.
+    # Both lifted here to see the rest.
     brake.forget()
+    with SessionLocal() as db:
+        row = db.get(Account, operator.id)
+        assert row is not None and row.locked_until is not None
+        row.locked_until = None
+        db.commit()
     password_step(client)
     assert code_step(client, code).status_code == 200
 
@@ -242,12 +248,13 @@ def test_the_brake_slows_a_guessing_sender(client: TestClient, operator: Account
     enrol(client)
     sign_out(client)
     password_step(client)
-    for _ in range(totp.MAX_ATTEMPTS):
+    for _ in range(totp.MAX_ATTEMPTS - 1):
         code_step(client, "000000")
-    password_step(client)
-    braked = code_step(client, "000000")
+    # Five failures from one address, of any kind: the fifth wrong code, then even the password waits.
+    code_step(client, "000000")
+    braked = client.post("/api/auth/login", json={"name": "tester", "password": PASSWORD})
     assert braked.status_code == 429 and braked.json()["detail"]["code"] == "too_many_attempts"
-    assert "retry-after" in braked.headers
+    assert braked.headers["retry-after"] == "900"
 
 
 def test_knowing_the_password_is_no_way_around_the_lockout(client: TestClient, operator: Account, clock: Clock) -> None:
@@ -376,7 +383,9 @@ def test_required_mode_lets_an_account_without_a_second_factor_only_enrol(
     assert anna.get("/api/api-tokens").status_code == 200
 
 
-def test_accounts_from_a_provider_bring_their_own_second_factor(client: TestClient, operator: Account) -> None:
+def test_accounts_from_a_provider_set_one_up_unless_the_operator_says_the_provider_checks(
+    client: TestClient, operator: Account, clock: Clock
+) -> None:
     with SessionLocal() as db:
         row = Account(name="idp-user", role="member", sign_in=SIGN_IN_OIDC, oidc_subject="sub-1", email="u@example.com")
         db.add(row)
@@ -384,11 +393,42 @@ def test_accounts_from_a_provider_bring_their_own_second_factor(client: TestClie
         token = start_session(db, row, "127.0.0.1", "tests")
     other = TestClient(app, base_url="http://testserver", headers={"X-Nexdiary-Client": "tab-idpuser0"})
     other.cookies.set(SESSION_COOKIE, token)
-    refused = other.post("/api/auth/totp/begin")
-    assert refused.status_code == 409 and refused.json()["detail"]["code"] == "oidc_account"
-    # Required mode does not lock such an account out either.
     enrol(client)
     assert client.put("/api/settings", json={"two_factor_required": True}).status_code == 200
+    # Required: an account from the provider needs nexdiary's own second factor as well.
+    blocked = other.get("/api/api-tokens")
+    assert blocked.status_code == 403 and blocked.json()["detail"]["code"] == "second_factor_setup_required"
+    # Unless the operator declares that the provider checks one: that weakens sign-in and needs the password.
+    without = client.put("/api/settings", json={"oidc_second_factor_by_provider": True})
+    assert without.status_code == 401 and without.json()["detail"]["code"] == "wrong_password"
+    declared = client.put("/api/settings", json={"oidc_second_factor_by_provider": True, "current_password": PASSWORD})
+    assert declared.status_code == 200 and declared.json()["oidc_second_factor_by_provider"] is True
     assert other.get("/api/api-tokens").status_code == 200
+    # Such an account may still enrol one of its own, without a password: right after signing in through the provider.
+    begun = other.post("/api/auth/totp/begin")
+    assert begun.status_code == 200
+    confirmed = other.post("/api/auth/totp/confirm", json={"code": current_code(begun.json()["secret"])})
+    assert confirmed.status_code == 200 and len(confirmed.json()["recovery_codes"]) == totp.RECOVERY_CODES
     with SessionLocal() as db:
-        assert db.scalar(select(Account.totp_secret_enc).where(Account.name == "idp-user")) == ""
+        assert db.scalar(select(Account.totp_secret_enc).where(Account.name == "idp-user")) != ""
+
+
+def test_an_account_from_a_provider_changes_its_factor_only_soon_after_signing_in(
+    client: TestClient, operator: Account, clock: Clock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from datetime import timedelta
+
+    from app import clock as app_clock
+
+    with SessionLocal() as db:
+        row = Account(name="idp-user", role="member", sign_in=SIGN_IN_OIDC, oidc_subject="sub-1", email="u@example.com")
+        db.add(row)
+        db.commit()
+        token = start_session(db, row, "127.0.0.1", "tests")
+    other = TestClient(app, base_url="http://testserver", headers={"X-Nexdiary-Client": "tab-idpuser0"})
+    other.cookies.set(SESSION_COOKIE, token)
+    later = app_clock.now() + timedelta(minutes=11)
+    monkeypatch.setattr(app_clock, "now", lambda: later)
+    begun = other.post("/api/auth/totp/begin")
+    stale = other.post("/api/auth/totp/confirm", json={"code": current_code(begun.json()["secret"])})
+    assert stale.status_code == 403 and stale.json()["detail"]["code"] == "sign_in_again"

@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     #: Signs the sign-in attempt cookie of OIDC and encrypts what the server must read on its own (the OIDC client
     #: secret, the mail password). Empty: a random key in ``<data_dir>/secret.key``, made at the first start.
     secret_key: str = ""
-    #: A browser session ends after this many days, whatever happens.
+    #: A session with "stay signed in on this device" ends after this many days without use (each use moves the end).
     session_days: int = 30
     #: Argon2id for passwords. The tests lower the cost.
     argon2_time: int = 3

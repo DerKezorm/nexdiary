@@ -17,6 +17,7 @@ import { AiCard } from './settings/AiCard'
 import { ImmichCard, ImmichServerCard } from './settings/ImmichCards'
 import { PromptsCard } from './settings/PromptsCard'
 import { PushServerCard } from './settings/PushCards'
+import { EncryptionCard, ReadinessCard } from './settings/ReadinessCards'
 import { AccountsCard, ApiTokensCard, BackupsCard, LanguagesCard, LogCard, MailCard, SignInCard, StorageCard, useServerSettings } from './settings/ServerCards'
 import { Card, Feedback, Segment, TabRow, Toggle, useAction, type Tab } from './settings/ui'
 import { ValuesCard } from './settings/ValuesCard'
@@ -82,7 +83,12 @@ function ServerPart({ part }: { part: Part }) {
         </div>
       )
     case 'signin':
-      return <SignInCard server={server} />
+      return (
+        <div className="space-y-6">
+          <ReadinessCard />
+          <SignInCard server={server} />
+        </div>
+      )
     case 'ai':
       return <AiCard />
     case 'push':
@@ -94,7 +100,15 @@ function ServerPart({ part }: { part: Part }) {
     case 'api':
       return <ApiTokensCard server={server} />
     case 'backups':
-      return <BackupsCard server={server} />
+      return (
+        <div className="space-y-6">
+          <EncryptionCard
+            savedAt={server.settings?.master_key_saved_at ?? null}
+            onSaved={() => server.settings && server.setSettings({ ...server.settings, master_key_saved_at: new Date().toISOString() })}
+          />
+          <BackupsCard server={server} />
+        </div>
+      )
     case 'languages':
       return <LanguagesCard />
     case 'log':

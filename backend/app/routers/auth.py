@@ -1,45 +1,51 @@
-"""Setting up the first account, signing in and out, the own account, and the operator's list of accounts.
+"""Setting up the first account, signing in and out, the own account and its signed-in devices, and the operator's
+list of accounts.
 
-Invitations are in ``routers/invites.py``.
+Every way in ends in ``start``: an account that needs a second factor and has none gets a session that may only set
+it up (``STAGE_SETUP``); after the code and the recovery codes, ``/api/auth/setup/done`` swaps it for a full one.
+Invitations are in ``routers/invites.py``, the second factor in ``routers/totp.py``, passkeys in
+``routers/passkeys.py``.
 """
 
 from __future__ import annotations
 
 import logging
 import unicodedata
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, HTTPException, Path, Request, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from .. import __version__, clock
 from ..config import get_settings
+from ..db import SessionLocal
 from ..deps import (
     Account,
     DbSession,
     OperatorAccount,
-    behind_unknown_proxy,
+    address_failed,
+    address_guard,
     client_ip,
     confirm_operator,
     reauth_failed,
     reauth_guard,
     reauth_succeeded,
+    session_of,
 )
-from ..errors import detail, error
-from ..models import OPERATOR, ROLES, SIGN_IN_PASSWORD, utcnow
+from ..errors import error
+from ..models import OPERATOR, ROLES, SIGN_IN_PASSWORD, STAGE_CODES, STAGE_FULL, STAGE_SETUP, AuthSession, utcnow
 from ..models import Account as AccountRow
 from ..security import (
     DEVICE_COOKIE,
     DEVICE_DAYS,
     MIN_PASSWORD,
     SESSION_COOKIE,
-    Brake,
-    brake,
     device_token,
     devices_of,
     end_all_sessions,
     end_session,
+    hash_token,
     session_account,
     start_session,
 )
@@ -67,6 +73,9 @@ class SetupIn(BaseModel):
 class LoginIn(BaseModel):
     name: str = Field(max_length=64)
     password: str = Field(max_length=200)
+    #: "Stay signed in on this device": the session lasts until it was not used for 30 days. Without, it ends with
+    #: the browser, and after twelve hours at the latest.
+    remember: bool = True
 
 
 class PasswordChangeIn(BaseModel):
@@ -111,11 +120,17 @@ def secure_cookie(request: Request) -> bool:
     return request.url.scheme == "https" or forwarded.split(",")[0].strip() == "https"
 
 
-def _set_cookie(response: Response, request: Request, token: str) -> None:
+#: How long the browser keeps the cookie of a session that stays: as long as browsers allow (400 days). The server
+#: decides when it ends: 30 days without use.
+LONG_COOKIE_DAYS = 400
+
+
+def _set_cookie(response: Response, request: Request, token: str, remember: bool) -> None:
+    # Without "stay signed in" a cookie for the browser's session only: it goes when the browser closes.
     response.set_cookie(
         SESSION_COOKIE,
         token,
-        max_age=get_settings().session_days * 86400,
+        max_age=LONG_COOKIE_DAYS * 86400 if remember else None,
         httponly=True,
         samesite="lax",
         secure=secure_cookie(request),
@@ -162,6 +177,9 @@ def check_language(language: str) -> str:
 
 
 def account_view(account: AccountRow) -> dict[str, Any]:
+    with SessionLocal() as db:
+        keys = totp.passkey_count(db, account.id)
+    on = bool(account.totp_secret_enc) or keys > 0
     return {
         "id": account.id,
         "name": account.name,
@@ -174,8 +192,11 @@ def account_view(account: AccountRow) -> dict[str, Any]:
         "email": account.email,
         "language": account.language,
         "oidc_linked": bool(account.oidc_subject),
-        "two_factor": bool(account.totp_secret_enc),
-        "two_factor_recovery_left": len(totp.load_recovery(account.totp_recovery)) if account.totp_secret_enc else 0,
+        # A second factor of any kind: a code from an app (``totp``) or a passkey.
+        "two_factor": on,
+        "totp": bool(account.totp_secret_enc),
+        "passkeys": keys,
+        "two_factor_recovery_left": len(totp.load_recovery(account.totp_recovery)) if on else 0,
         "created_at": account.created_at.isoformat(),
         "last_seen_at": account.last_seen_at.isoformat() if account.last_seen_at else None,
         "avatar": account.avatar_at.isoformat() if account.avatar_at else None,
@@ -199,22 +220,36 @@ def remember_device(request: Request, response: Response, account: AccountRow) -
     return known
 
 
-def start(db: DbSession, request: Request, response: Response, account: AccountRow) -> None:
-    """The session of a sign-in that went through, by any way: the cookies, and the notice to the other devices
-    when this browser is new for the account (``services/notices.py``)."""
+def start(db: DbSession, request: Request, response: Response, account: AccountRow, *, remember: bool = True) -> str:
+    """The session of a sign-in that went through, by any way; gives its stage.
+
+    An account that must set up a second factor first gets a session that may do only that, for a quarter of an hour,
+    and nothing else happens yet. A full session brings the cookies and, when this browser is new for the account, the
+    notice to the other devices (``services/notices.py``)."""
+    agent = request.headers.get("user-agent", "")
+    if totp.setup_required(db, account):
+        token = start_session(db, account, client_ip(request), agent, remember=remember, stage=STAGE_SETUP)
+        _set_cookie(response, request, token, False)
+        return STAGE_SETUP
     first = not account.signed_in_before
     account.signed_in_before = True
     known = remember_device(request, response, account)
-    agent = request.headers.get("user-agent", "")
-    token = start_session(db, account, client_ip(request), agent)
-    _set_cookie(response, request, token)
+    token = start_session(db, account, client_ip(request), agent, remember=remember)
+    _set_cookie(response, request, token, remember)
     notices.new_sign_in(account, client_ip(request), agent, first=first, known=known)
+    return STAGE_FULL
 
 
-def sign_in(db: DbSession, request: Request, response: Response, account: AccountRow) -> dict[str, Any]:
-    start(db, request, response, account)
-    logger.info("Signed in name=%s", account.name)
-    return account_view(account)
+def sign_in(
+    db: DbSession, request: Request, response: Response, account: AccountRow, *, remember: bool = True
+) -> dict[str, Any]:
+    stage = start(db, request, response, account, remember=remember)
+    if stage == STAGE_SETUP:
+        logger.info("Signed in, second factor to be set up first name=%s", account.name)
+    else:
+        logger.info("Signed in name=%s", account.name)
+    return {**account_view(account), "session_stage": stage,
+            "second_factor_setup_required": stage == STAGE_SETUP}
 
 
 @router.get("/setup", summary="Does nexdiary still need its first account, and is this browser signed in?")
@@ -234,20 +269,14 @@ def setup_state(request: Request, db: DbSession) -> dict[str, Any]:
 @router.post("/setup", summary="Create the operator account")
 def setup(payload: SetupIn, request: Request, response: Response, db: DbSession) -> dict[str, Any]:
     key = "setup:" + client_ip(request)
-    wait = brake.wait_seconds(key)
-    if wait:
-        raise HTTPException(
-            status_code=429,
-            detail=detail("too_many_attempts", "Too many attempts. Try again later.", retry_after=wait),
-            headers={"Retry-After": str(wait)},
-        )
+    address_guard(request, key)
     check_password(payload.password)
     language = check_language(payload.language)
     try:
         account = accounts.create_operator(db, payload.name, payload.password, payload.code)
     except AccountError as exc:
         if exc.code == "setup_code_wrong":
-            brake.failed(key)
+            address_failed(request, key)
             logger.warning("Setup refused: wrong setup code")
         raise fail(exc) from exc
     account.language = language
@@ -257,17 +286,34 @@ def setup(payload: SetupIn, request: Request, response: Response, db: DbSession)
 
 @router.get("/auth/methods", summary="How one can sign in here (no sign-in needed)")
 def methods(db: DbSession) -> dict[str, Any]:
+    from ..services import passkeys
+
     values = settings_service.get_all(db)
     oidc = bool(values["oidc_issuer"] and values["oidc_client_id"])
     return {
         "password": bool(values["password_login"]),
         "oidc": oidc,
         "oidc_name": values["oidc_provider_name"] if oidc else "",
+        # Passkeys work under the public https address, or on localhost.
+        "passkeys": passkeys.available(db),
     }
 
 
-#: Wrong passwords one sender may give across all names before it waits: room for a household behind one address.
-LOGIN_FREE_PER_SENDER = 30
+def park(request: Request, response: Response, db: DbSession, account: AccountRow, remember: bool) -> dict[str, Any]:
+    """The first step went through and the account has a second factor: nothing opens yet. The browser gets a
+    short-lived cookie that names the waiting sign-in and nothing else, and learns which factors it may give."""
+    response.set_cookie(
+        PENDING_COOKIE,
+        totp.start_pending(account.id, remember),
+        max_age=totp.PENDING_SECONDS,
+        httponly=True,
+        samesite="lax",
+        secure=secure_cookie(request),
+        path="/api/auth",
+    )
+    logger.info("First step passed, second factor waiting name=%s", account.name)
+    return {"second_factor": True, "totp": bool(account.totp_secret_enc),
+            "passkey": totp.passkey_count(db, account.id) > 0}
 
 
 @router.post("/auth/login", summary="Sign in with name and password")
@@ -275,45 +321,56 @@ def login(payload: LoginIn, request: Request, response: Response, db: DbSession)
     # The brake first, then the password, then the rules: an unknown name costs the time of a wrong password, so
     # neither the answer nor its timing tells which names exist.
     #
-    # Two counts: per sender and name, and per sender alone with more room. The second is not reset by a sign-in that
-    # works (whoever has an account would otherwise reset it between guesses at other names), and it is left out
-    # when every sender looks like one proxy: then it would keep everybody out after a stranger's guesses.
-    ip = client_ip(request)
-    keys = [("login:" + ip + "|" + payload.name.strip().lower()[:64], Brake.FREE)]
-    if not behind_unknown_proxy(request):
-        keys.append(("login-ip:" + ip, LOGIN_FREE_PER_SENDER))
-    wait = max(brake.wait_seconds(key, free) for key, free in keys)
-    if wait:
-        raise HTTPException(
-            status_code=429,
-            detail=detail("too_many_attempts", "Too many attempts. Try again later.", retry_after=wait),
-            headers={"Retry-After": str(wait)},
-        )
+    # Five failures per address, whatever the name (``deps.address_guard``); a sign-in that works does not reset that.
+    address_guard(request)
     try:
         account = accounts.authenticate(db, payload.name, payload.password,
                                         devices_of(request.cookies.get(DEVICE_COOKIE)))
     except AccountError as exc:
-        for key, _free in keys:
-            brake.failed(key)
+        address_failed(request)
         raise fail(exc) from exc
-    brake.succeeded(keys[0][0])
     if not settings_service.get(db, "password_login") and account.role != OPERATOR:
         # The operator keeps the password as the way in when the provider is down.
         raise error("password_login_off", "Sign-in with a password is turned off.", 403)
-    if account.totp_secret_enc:
-        # Nothing opens yet: the browser gets a short-lived cookie that names the waiting sign-in and nothing else.
-        response.set_cookie(
-            PENDING_COOKIE,
-            totp.start_pending(account.id),
-            max_age=totp.PENDING_SECONDS,
-            httponly=True,
-            samesite="lax",
-            secure=secure_cookie(request),
-            path="/api/auth",
-        )
-        logger.info("Password accepted, second factor waiting name=%s", account.name)
-        return {"second_factor": True}
-    return sign_in(db, request, response, account)
+    if totp.has_second_factor(db, account):
+        return park(request, response, db, account, payload.remember)
+    return sign_in(db, request, response, account, remember=payload.remember)
+
+
+@router.post("/auth/setup/done", summary="The recovery codes are kept: the session that set up the second factor "
+             "becomes a full one")
+def setup_done(request: Request, response: Response, account: Account, db: DbSession) -> dict[str, Any]:
+    info = session_of(request)
+    if info.stage != STAGE_CODES:
+        raise error("not_in_setup", "There is nothing to confirm.", 409)
+    row = db.get(AccountRow, account.id)
+    assert row is not None
+    # A new token for the full session: what was known of the one before (it lived through the setup) opens nothing.
+    gone = db.execute(delete(AuthSession).where(
+        AuthSession.token_hash == hash_token(request.cookies.get(SESSION_COOKIE) or ""),
+        AuthSession.stage == STAGE_CODES))
+    db.commit()
+    if int(getattr(gone, "rowcount", 0) or 0) != 1:
+        # A second click at the same moment: the first one made the session.
+        raise error("not_in_setup", "There is nothing to confirm.", 409)
+    stage = start(db, request, response, row, remember=info.remember)
+    logger.info("Second factor set up, signed in name=%s", row.name)
+    return {**account_view(row), "session_stage": stage, "second_factor_setup_required": False}
+
+
+@router.post("/auth/setup/codes", summary="New recovery codes while they wait to be confirmed (a reload lost them)")
+def setup_codes(request: Request, account: Account, db: DbSession) -> dict[str, Any]:
+    """Shown once, the codes are gone with a reload of the page. Until the person confirms they are kept, this session
+    (which set up the second factor a moment ago) may make new ones; the old ones stop working."""
+    if session_of(request).stage != STAGE_CODES:
+        raise error("not_in_setup", "There is nothing to confirm.", 409)
+    row = db.get(AccountRow, account.id)
+    assert row is not None
+    codes = totp.generate_recovery_codes()
+    row.totp_recovery = totp.recovery_hashes(codes)
+    db.commit()
+    logger.info("Recovery codes made again during the setup name=%s", row.name)
+    return {"recovery_codes": codes}
 
 
 @router.post("/auth/logout", status_code=204, summary="Sign out in this browser")
@@ -333,12 +390,62 @@ def logout_everywhere(request: Request, account: Account, db: DbSession) -> None
 
 
 @router.get("/auth/me", summary="The signed-in account, and what this server offers it")
-def me(account: Account, db: DbSession) -> dict[str, Any]:
+def me(request: Request, account: Account, db: DbSession) -> dict[str, Any]:
+    stage = session_of(request).stage
     return {
         **account_view(account),
         "mail": mailer.configured(db),
-        "second_factor_setup_required": totp.setup_required(db, account),
+        "session_stage": stage,
+        "second_factor_setup_required": stage != STAGE_FULL or totp.setup_required(db, account),
+        "second_factor_required": bool(settings_service.get(db, "two_factor_required"))
+        and not totp.provider_checks(db, account),
     }
+
+
+# --- The own signed-in devices ----------------------------------------------------------------------------------------
+
+
+def _session_view(row: AuthSession, here: str, language: str) -> dict[str, Any]:
+    return {
+        "id": row.uid,
+        "device": notices.device_name(row.user_agent, language),
+        "phone": notices.system_of(row.user_agent or "") in ("iPhone", "Android"),
+        "network": notices.network_of(row.ip, language),
+        "created_at": row.created_at.isoformat(),
+        "last_seen_at": row.last_seen_at.isoformat(),
+        "remember": row.remember,
+        "here": row.uid == here,
+    }
+
+
+@router.get("/auth/sessions", summary="Where the own account is signed in: device, network, last use")
+def sessions(request: Request, account: Account, db: DbSession) -> list[dict[str, Any]]:
+    here = session_of(request).uid
+    language = interface_language(request) or account.language
+    rows = db.scalars(
+        select(AuthSession)
+        .where(AuthSession.account_id == account.id, AuthSession.stage == STAGE_FULL,
+               AuthSession.expires_at > clock.now())
+        .order_by(AuthSession.last_seen_at.desc())
+    )
+    found = [_session_view(row, here, language) for row in rows]
+    # This device first, then the others by their last use.
+    return sorted(found, key=lambda item: not item["here"])
+
+
+SessionUid = Annotated[str, Path(min_length=32, max_length=32, pattern=r"^[0-9a-f]{32}$")]
+
+
+@router.delete("/auth/sessions/{uid}", status_code=204, summary="Sign out one of the own devices")
+def end_one(uid: SessionUid, request: Request, account: Account, db: DbSession) -> None:
+    if uid == session_of(request).uid:
+        raise error("this_session", "To sign out here, use Sign out.", 409)
+    # Only a session of the own account: another account's looks exactly like one that does not exist.
+    gone = db.execute(delete(AuthSession).where(AuthSession.uid == uid, AuthSession.account_id == account.id))
+    db.commit()
+    if not int(getattr(gone, "rowcount", 0) or 0):
+        raise error("not_found", "No such session.", 404)
+    logger.info("A device signed out by its owner name=%s", account.name)
 
 
 @router.put("/auth/password", status_code=204, summary="Change the own password")
@@ -358,6 +465,7 @@ def change_password(payload: PasswordChangeIn, request: Request, account: Accoun
     reauth_succeeded(request, db, row)
     # Other browsers must sign in again; this one stays.
     end_all_sessions(db, row.id, except_token=request.cookies.get(SESSION_COOKIE))
+    logger.info("Password changed, every other session ended name=%s", row.name)
 
 
 @router.put("/me/profile", summary="The own display name; empty shows the name")

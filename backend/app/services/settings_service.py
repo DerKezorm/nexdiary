@@ -22,9 +22,14 @@ DEFAULTS: dict[str, Any] = {
     "public_url": "",
     #: Members may sign in with a password. The operator always may: the emergency exit when OIDC fails.
     "password_login": True,
-    #: Every account that signs in with a password needs a second factor; until it has one, it reaches only its
-    #: account page. Accounts from OIDC bring their provider's.
-    "two_factor_required": False,
+    #: Every account needs a second factor (a code from an app or a passkey), on from the start: right after the
+    #: password, an account without one sets it up before it gets anywhere. Turning it off asks for the password.
+    "two_factor_required": True,
+    #: The operator declares that the OIDC provider checks a second factor itself: then an account that comes through
+    #: the provider is not asked for nexdiary's. Off from the start.
+    "oidc_second_factor_by_provider": False,
+    #: When the operator last saved the master key (ISO time), for "Ready for the internet?"; None: never.
+    "master_key_saved_at": None,
     #: OIDC: issuer, client id and the encrypted client secret; empty means not set up.
     "oidc_issuer": "",
     "oidc_client_id": "",

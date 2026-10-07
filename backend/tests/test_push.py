@@ -196,13 +196,15 @@ def test_a_redirect_is_not_followed_and_a_large_answer_not_read(client: TestClie
         seen.append(str(request.url))
         if len(seen) == 1:
             return httpx.Response(301, headers={"Location": "http://127.0.0.1:8550/api/auth/me"})
-        return httpx.Response(201, content=b"x" * (push.ANSWER_MAX + 1))
+        # Past the limit: the body is thrown away unread, its status still counts (finding of the review of B6).
+        return httpx.Response(410, content=b"x" * (push.ANSWER_MAX + 1))
 
     monkeypatch.setattr(push, "transport", httpx.MockTransport(answer))
     assert client.post("/api/push/test").json() == {"sent": 0, "gone": 0, "failed": 1}
-    assert client.post("/api/push/test").json() == {"sent": 0, "gone": 0, "failed": 1}
-    assert len(seen) == 2 and all(ADDRESS in url for url in seen)
     assert len(client.get("/api/push").json()["devices"]) == 1
+    assert client.post("/api/push/test").json() == {"sent": 0, "gone": 1, "failed": 0}
+    assert len(seen) == 2 and all(ADDRESS in url for url in seen)
+    assert client.get("/api/push").json()["devices"] == []
 
 
 def test_a_service_that_does_not_answer_holds_nobody_past_the_deadline(client: TestClient, account: Account,
@@ -420,3 +422,75 @@ def test_a_message_never_carries_what_a_person_wrote(client: TestClient, account
     assert len(push_service.received) == 3
     for came in push_service.received:
         assert word not in str(came.message)
+
+
+# --- Findings of the review of B6 -----------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("endpoint", ["https://[::1", "https://[push.example.com]/x", "https://[fcm.googleapis.com]/x",
+                                      "https://a℀b.example.com/x"])
+def test_an_address_python_cannot_split_is_a_wrong_address_not_a_server_fault(
+    client: TestClient, account: Account, push_service: FakePushService, endpoint: str
+) -> None:
+    keys = push_service.device()
+    answer = client.post("/api/push/devices", json={"endpoint": endpoint, "p256dh": keys.p256dh, "auth": keys.auth})
+    assert answer.status_code == 422 and answer.json()["detail"]["code"] == "push_endpoint_invalid", endpoint
+
+
+def test_a_name_in_full_width_letters_is_kept_as_the_name_it_reads_as(
+    client: TestClient, account: Account, push_service: FakePushService
+) -> None:
+    device = push_service.device()
+    wide = device.endpoint.replace("https://push", "https://ｐush")
+    answer = client.post("/api/push/devices", json={"endpoint": wide, "p256dh": device.p256dh, "auth": device.auth})
+    assert answer.status_code == 201, answer.text
+    assert client.post("/api/push/test").json() == {"sent": 1, "gone": 0, "failed": 0}
+    assert push_service.received and push_service.received[0].url == device.endpoint.replace(HOST, ADDRESS)
+
+
+def test_one_broken_device_never_holds_up_the_others(client: TestClient, account: Account,
+                                                     push_service: FakePushService,
+                                                     monkeypatch: pytest.MonkeyPatch) -> None:
+    sign_up(client, push_service)
+    sign_up(client, push_service)
+    original = push._deliver_one
+    calls: list[int] = []
+
+    def breaks_once(*args: object) -> str:
+        calls.append(1)
+        if len(calls) == 1:
+            raise UnicodeEncodeError("ascii", "ｐ", 0, 1, "made to fail")
+        return original(*args)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(push, "_deliver_one", breaks_once)
+    assert client.post("/api/push/test").json() == {"sent": 1, "gone": 0, "failed": 1}
+
+
+def test_ten_devices_at_most_also_when_they_sign_up_at_the_same_moment(
+    client: TestClient, account: Account, push_service: FakePushService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for _ in range(push.DEVICES_MAX - 2):
+        sign_up(client, push_service)
+    # Between counting and writing every one of them waits a moment: all have counted before any has written.
+    sealing = push._seal
+
+    def slow_seal(*args: object) -> bytes:
+        time.sleep(0.3)
+        return sealing(*args)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(push, "_seal", slow_seal)
+    devices = [push_service.device() for _ in range(6)]
+    answers: list[int] = []
+    start = threading.Barrier(len(devices))
+
+    def one(device: object) -> None:
+        start.wait()
+        answers.append(client.post("/api/push/devices", json=device.subscription()).status_code)  # type: ignore[attr-defined]
+
+    threads = [threading.Thread(target=one, args=(device,)) for device in devices]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert answers.count(201) == 2 and answers.count(409) == 4
+    assert len(client.get("/api/push").json()["devices"]) == push.DEVICES_MAX

@@ -606,7 +606,7 @@ def test_the_small_pictures_have_a_brake(client: TestClient, ready: tuple[str, l
 @pytest.mark.parametrize(("typed", "kept"), [
     ("https://Photos.Example.com/", "https://photos.example.com"),
     ("http://photos.example.com:2283/api", "http://photos.example.com:2283"),
-    ("https://photos.example.com/immich/api/", "https://photos.example.com/immich"),
+    ("https://photos.example.com/api/", "https://photos.example.com"),
     ("http://[::1]:2283", "http://[::1]:2283"),
 ])
 def test_an_address_is_cleaned(typed: str, kept: str) -> None:
@@ -617,6 +617,10 @@ def test_an_address_is_cleaned(typed: str, kept: str) -> None:
     "", "ftp://photos.example.com", "https://user:pw@photos.example.com", "https://photos.example.com/?a=1",
     "https://photos.example.com/#x", "https://photos.example.com:99999", "javascript:alert(1)", "photos.example.com",
     "https://photos.example.com/a b", "https://photos.example.com/%2e%2e",
+    # No path of one's choosing: Immich answers at the root (review of B5).
+    "https://photos.example.com/immich", "https://photos.example.com/other/api",
+    # Python refuses these with ValueError; they are a wrong address, never a fault of the server (review of B5).
+    "http://[::1", "http://[photos.example.com]:2283", "http://a℀b.example.com/", "https://[fcm.googleapis.com]/x",
 ])
 def test_an_address_that_is_none_is_refused(typed: str) -> None:
     with pytest.raises(Exception) as caught:
@@ -708,3 +712,18 @@ def test_a_packed_bomb_is_unpacked_in_steps(client: TestClient, ready: tuple[str
         tracemalloc.stop()
     assert code(answer) == (502, "immich_too_large")
     assert peak < 40 * 1024 * 1024, peak
+
+
+def test_a_certificate_the_server_does_not_trust_is_said_as_such(client: TestClient, ready: tuple[str, list[Asset]],
+                                                                 monkeypatch: pytest.MonkeyPatch) -> None:
+    """Review of B5: a self-made certificate of the own Immich gets a sentence of its own; the check stays on."""
+    import ssl
+
+    import httpx
+
+    def refuse(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("certificate verify failed") from ssl.SSLCertVerificationError(
+            1, "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate")
+
+    monkeypatch.setattr(immich, "transport", httpx.MockTransport(refuse))
+    assert code(client.get("/api/immich/photos")) == (502, "immich_tls")

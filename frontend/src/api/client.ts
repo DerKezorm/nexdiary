@@ -154,18 +154,35 @@ export type Me = {
   email: string
   language: string
   oidc_linked: boolean
+  /** A second factor of any kind: a code from an app or a passkey. */
   two_factor: boolean
+  /** A code from an app. */
+  totp: boolean
+  /** How many passkeys. */
+  passkeys: number
   two_factor_recovery_left: number
   avatar: string | null
   version: string
   whats_new_seen: string
   profile: Profile
   mail?: boolean
+  /** Whether this session may only set up the second factor, or (until set up) reaches only its own account page. */
   second_factor_setup_required?: boolean
+  /** `setup`: right after the password, only the setup; `codes`: the recovery codes to confirm; `full`. */
+  session_stage?: SessionStage
+  /** The operator asks this account for a second factor: the last one cannot be turned off. */
+  second_factor_required?: boolean
 }
 
+export type SessionStage = 'full' | 'setup' | 'codes'
+/** The first step went through and the account has a second factor: which kinds it may give. */
+export type SecondFactorWaiting = { second_factor: true; totp: boolean; passkey: boolean }
+
 export type SetupState = { needs_setup: boolean; code_required: boolean; signed_in: boolean; version: string; min_password: number }
-export type Methods = { password: boolean; oidc: boolean; oidc_name: string }
+export type Methods = { password: boolean; oidc: boolean; oidc_name: string; passkeys?: boolean }
+export type SignedSession = { id: string; device: string; phone: boolean; network: string; created_at: string; last_seen_at: string; remember: boolean; here: boolean }
+export type Passkey = { id: string; name: string; created_at: string; last_used_at: string | null; credential: string }
+export type Readiness = { points: { key: string; state: 'ok' | 'warn' | 'bad'; values: Record<string, unknown> }[]; open: number }
 
 // ---- Calls ----------------------------------------------------------------------------------------------------------
 
@@ -174,8 +191,15 @@ export const authApi = {
   setup: (name: string, password: string, code: string, language: string) =>
     api<Me>('/api/setup', { method: 'POST', body: { name, password, code, language } }),
   methods: () => api<Methods>('/api/auth/methods'),
-  login: (name: string, password: string) => api<Me | { second_factor: true }>('/api/auth/login', { method: 'POST', body: { name, password } }),
-  code: (code: string) => api<Me>('/api/auth/login/totp', { method: 'POST', body: { code } }),
+  login: (name: string, password: string, remember = true) => api<Me | SecondFactorWaiting>('/api/auth/login', { method: 'POST', body: { name, password, remember } }),
+  code: (code: string, remember?: boolean) => api<Me>('/api/auth/login/totp', { method: 'POST', body: { code, remember } }),
+  /** The recovery codes are kept: the session that set up the second factor becomes a full one. */
+  setupDone: () => api<Me>('/api/auth/setup/done', { method: 'POST' }),
+  /** New recovery codes while they are being confirmed (a reload lost the ones shown). */
+  setupCodes: () => api<{ recovery_codes: string[] }>('/api/auth/setup/codes', { method: 'POST' }),
+  sessions: () => api<SignedSession[]>('/api/auth/sessions'),
+  endSession: (id: string) => api<void>(`/api/auth/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  logoutOthers: () => api<void>('/api/auth/logout-all', { method: 'POST' }),
   cancelCode: () => api<void>('/api/auth/login/totp/cancel', { method: 'POST' }),
   logout: () => api<void>('/api/auth/logout', { method: 'POST' }),
   me: () => api<Me>('/api/auth/me'),
@@ -184,6 +208,17 @@ export const authApi = {
   profile: (display_name: string) => api<Me>('/api/me/profile', { method: 'PUT', body: { display_name } }),
   password: (current: string, next: string) => api<void>('/api/auth/password', { method: 'PUT', body: { current, new: next } }),
   whatsNewSeen: () => api<Me>('/api/me/whats-new/seen', { method: 'POST' }),
+}
+
+export const passkeyApi = {
+  list: () => api<Passkey[]>('/api/auth/passkeys'),
+  begin: () => api<{ options: string }>('/api/auth/passkeys/begin', { method: 'POST' }),
+  add: (credential: unknown, name: string, password: string) =>
+    api<{ passkey: Passkey; recovery_codes: string[] | null; account: Me }>('/api/auth/passkeys', { method: 'POST', body: { credential, name, password } }),
+  remove: (id: string, password: string) => api<Me>(`/api/auth/passkeys/${encodeURIComponent(id)}/remove`, { method: 'POST', body: { password } }),
+  signInBegin: () => api<{ options: string }>('/api/auth/passkey/begin', { method: 'POST' }),
+  signIn: (credential: unknown, remember: boolean) => api<Me>('/api/auth/passkey', { method: 'POST', body: { credential, remember } }),
+  confirmBegin: () => api<{ options: string }>('/api/auth/passkeys/confirm/begin', { method: 'POST' }),
 }
 
 export type ApiToken = {

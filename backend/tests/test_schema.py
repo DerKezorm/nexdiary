@@ -48,6 +48,16 @@ def fresh_schema_sql() -> str:
     return "".join(" ".join(row[0].split()) + ";\n" for row in rows)
 
 
+def drop_v8(connection: sqlite3.Connection) -> None:
+    """Takes away what version 8 added (sessions with a name, a length and a stage; passkeys): the migration tests of
+    older versions go back to the state before them."""
+    connection.execute("DROP TABLE passkeys")
+    connection.execute("DROP INDEX uq_auth_sessions_uid")
+    for column in ("uid", "remember", "stage"):
+        connection.execute(f"ALTER TABLE auth_sessions DROP COLUMN {column}")
+    connection.execute("ALTER TABLE users DROP COLUMN passkey_handle")
+
+
 #: The notes of the backups ``init_db`` made in a test (``scratch`` catches them).
 made: list[str] = []
 

@@ -31,9 +31,10 @@ from dataclasses import dataclass, field
 from urllib.parse import quote
 
 import segno
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from ..models import SIGN_IN_PASSWORD, Account
+from ..models import SIGN_IN_OIDC, Account, Passkey
 from ..security import decrypt_secret, encrypt_secret
 from . import settings_service
 
@@ -156,14 +157,50 @@ def use_recovery(stored: str, code: str) -> str | None:
     return json.dumps(remaining)
 
 
+def passkey_count(db: Session, account_id: int) -> int:
+    return int(db.scalar(select(func.count()).select_from(Passkey).where(Passkey.user_id == account_id)) or 0)
+
+
+def has_second_factor(db: Session, account: Account) -> bool:
+    """A code from an app, or a passkey."""
+    return bool(account.totp_secret_enc) or passkey_count(db, account.id) > 0
+
+
+def provider_checks(db: Session, account: Account) -> bool:
+    """The account signs in through the provider only, and the operator declared that the provider checks a second
+    factor: nexdiary does not ask for its own."""
+    return account.sign_in == SIGN_IN_OIDC and bool(settings_service.get(db, "oidc_second_factor_by_provider"))
+
+
 def setup_required(db: Session, account: Account) -> bool:
-    """The operator requires a second factor, and this password account has none yet. Such an account reaches its
-    own account page and nothing else until it enrols. Accounts from OIDC bring their provider's."""
+    """The operator requires a second factor (the default), and this account has none yet. Such an account sets it up
+    before it reaches anything else. An account from OIDC is asked as well, unless the operator declared that the
+    provider checks one."""
     return (
         bool(settings_service.get(db, "two_factor_required"))
-        and account.sign_in == SIGN_IN_PASSWORD
-        and not account.totp_secret_enc
+        and not provider_checks(db, account)
+        and not has_second_factor(db, account)
     )
+
+
+def claim_step(db: Session, account_id: int, step: int) -> bool:
+    """Takes the time step of an accepted code, only if it is later than the last one taken: of two requests with the
+    same code at the same moment exactly one wins (checked and written in one statement)."""
+    result = db.execute(
+        update(Account).where(Account.id == account_id, Account.totp_last_step < step).values(totp_last_step=step)
+    )
+    db.commit()
+    return int(getattr(result, "rowcount", 0) or 0) == 1
+
+
+def claim_recovery(db: Session, account_id: int, before: str, after: str) -> bool:
+    """Writes the list without the used code, only if nobody changed the list since it was read: a recovery code
+    counts once, also for two requests at the same moment."""
+    result = db.execute(
+        update(Account).where(Account.id == account_id, Account.totp_recovery == before).values(totp_recovery=after)
+    )
+    db.commit()
+    return int(getattr(result, "rowcount", 0) or 0) == 1
 
 
 # --- Seeds at rest ----------------------------------------------------------------------------------------------------
@@ -190,6 +227,8 @@ class PendingSignIn:
     account_id: int
     expires: float
     attempts: int = 0
+    #: "Stay signed in on this device", as ticked at the password; the code step may change it.
+    remember: bool = True
 
 
 @dataclass
@@ -235,7 +274,7 @@ def _hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-def start_pending(account_id: int) -> str:
+def start_pending(account_id: int, remember: bool = True) -> str:
     """Parks the password step and returns the token for the cookie."""
     token = secrets.token_urlsafe(32)
     with _store.lock:
@@ -243,7 +282,9 @@ def start_pending(account_id: int) -> str:
         for key, entry in list(_store.pending.items()):
             if entry.account_id == account_id:
                 del _store.pending[key]
-        _store.pending[_hash(token)] = PendingSignIn(account_id=account_id, expires=time.monotonic() + PENDING_SECONDS)
+        _store.pending[_hash(token)] = PendingSignIn(
+            account_id=account_id, expires=time.monotonic() + PENDING_SECONDS, remember=remember
+        )
     return token
 
 

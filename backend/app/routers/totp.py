@@ -2,6 +2,11 @@
 
 The password step of a sign-in lives in ``routers/auth.py``; when the account has a second factor it answers
 ``{"second_factor": true}`` and leaves a short-lived cookie. The code step here turns that into the session.
+
+Right after signing in, a session that may only set up the second factor (``STAGE_SETUP``) enrols without giving the
+password again: it was given a moment ago. Confirming the code moves that session on to ``STAGE_CODES``, where it shows
+the recovery codes and waits for "I have kept them" (``/api/auth/setup/done``). From the account page a full session
+enrols with the password (``deps.confirm_self``).
 """
 
 from __future__ import annotations
@@ -9,24 +14,25 @@ from __future__ import annotations
 import logging
 from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, Path, Request, Response
+from fastapi import APIRouter, Path, Request, Response
 from pydantic import BaseModel, Field
+from sqlalchemy import update
 
 from ..deps import (
     Account,
     DbSession,
     OperatorAccount,
-    client_ip,
+    address_failed,
+    address_guard,
     confirm_operator,
-    reauth_failed,
-    reauth_guard,
-    reauth_succeeded,
+    confirm_self,
+    session_of,
 )
-from ..errors import detail, error
-from ..models import SIGN_IN_PASSWORD
+from ..errors import error
+from ..models import STAGE_CODES, STAGE_SETUP, AuthSession
 from ..models import Account as AccountRow
-from ..security import brake, end_all_sessions
-from ..services import accounts, totp
+from ..security import SESSION_COOKIE, end_all_sessions, hash_token
+from ..services import accounts, notices, passkeys, settings_service, totp
 from .auth import PENDING_COOKIE, OperatorConfirmIn, account_view, sign_in
 
 logger = logging.getLogger("nexdiary.auth")
@@ -35,16 +41,19 @@ router = APIRouter(prefix="/api", tags=["second factor"])
 
 
 class PasswordIn(BaseModel):
-    password: str = Field(max_length=200)
+    password: str = Field(default="", max_length=200)
 
 
 class ConfirmIn(BaseModel):
     code: str = Field(max_length=32)
-    password: str = Field(max_length=200)
+    #: The password, from the account page; not asked right after signing in.
+    password: str = Field(default="", max_length=200)
 
 
 class CodeIn(BaseModel):
     code: str = Field(max_length=32)
+    #: "Stay signed in on this device", as ticked at this step; left out keeps what the first step said.
+    remember: bool | None = None
 
 
 def _row(db: DbSession, account: AccountRow) -> AccountRow:
@@ -54,19 +63,33 @@ def _row(db: DbSession, account: AccountRow) -> AccountRow:
     return row
 
 
-def _check_password(request: Request, db: DbSession, row: AccountRow, password: str) -> None:
-    """The password once more, counted like a sign-in: a stolen cookie must not be a place to guess it."""
-    if row.sign_in != SIGN_IN_PASSWORD:
-        raise error("oidc_account", "This account signs in through OIDC.", 409)
-    reauth_guard(request, row)
-    if not accounts.check_password(row, password):
-        reauth_failed(request, db, row)
-        raise error("wrong_password", "The current password is wrong.", 401)
-    reauth_succeeded(request, db, row)
-
-
 def _clear_pending_cookie(response: Response) -> None:
     response.delete_cookie(PENDING_COOKIE, path="/api/auth")
+
+
+def last_factor_guard(db: DbSession, row: AccountRow) -> None:
+    """The operator asks for a second factor: the last one cannot go."""
+    if settings_service.get(db, "two_factor_required") and not totp.provider_checks(db, row):
+        raise error("second_factor_required", "The operator requires a second factor; it cannot be turned off.", 409)
+
+
+def enrolled(request: Request, db: DbSession, row: AccountRow) -> list[str] | None:
+    """After a new second factor: the recovery codes when this was the account's first (or it had none left), and a
+    session that was setting up moves on to showing them. Gives the codes, or None when the old ones stay."""
+    codes = None
+    if not totp.load_recovery(row.totp_recovery) or session_of(request).stage == STAGE_SETUP:
+        codes = totp.generate_recovery_codes()
+        row.totp_recovery = totp.recovery_hashes(codes)
+    db.commit()
+    if session_of(request).stage == STAGE_SETUP:
+        db.execute(
+            update(AuthSession)
+            .where(AuthSession.token_hash == hash_token(request.cookies.get(SESSION_COOKIE) or ""),
+                   AuthSession.stage == STAGE_SETUP)
+            .values(stage=STAGE_CODES)
+        )
+        db.commit()
+    return codes
 
 
 # --- Enrolment --------------------------------------------------------------------------------------------------------
@@ -74,8 +97,6 @@ def _clear_pending_cookie(response: Response) -> None:
 
 @router.post("/auth/totp/begin", summary="Start enrolling an authenticator app; the seed is shown once")
 def begin(account: Account) -> dict[str, Any]:
-    if account.sign_in != SIGN_IN_PASSWORD:
-        raise error("oidc_account", "This account signs in through OIDC.", 409)
     if account.totp_secret_enc:
         raise error("totp_enabled", "The second factor is on already. Turn it off first.", 409)
     seed = totp.begin_enrolment(account.id)
@@ -83,7 +104,7 @@ def begin(account: Account) -> dict[str, Any]:
     return {"secret": seed, "uri": uri, "qr_svg": totp.qr_svg(uri)}
 
 
-@router.post("/auth/totp/confirm", summary="Finish enrolling: a code from the app and the password")
+@router.post("/auth/totp/confirm", summary="Finish enrolling: a code from the app (and the password, later on)")
 def confirm(payload: ConfirmIn, request: Request, account: Account, db: DbSession) -> dict[str, Any]:
     row = _row(db, account)
     if row.totp_secret_enc:
@@ -91,27 +112,34 @@ def confirm(payload: ConfirmIn, request: Request, account: Account, db: DbSessio
     seed = totp.pending_seed(row.id)
     if seed is None:
         raise error("totp_enrolment_expired", "The enrolment timed out. Start again.", 410)
-    _check_password(request, db, row, payload.password)
+    if session_of(request).stage != STAGE_SETUP:
+        confirm_self(request, db, row, payload.password)
     step = totp.verify_code(seed, payload.code)
     if step is None:
         raise error("totp_code_wrong", "The code is not right. Check the time on your phone and try again.", 422)
-    codes = totp.generate_recovery_codes()
     row.totp_secret_enc = totp.seal_seed(seed)
-    row.totp_recovery = totp.recovery_hashes(codes)
     row.totp_last_step = step
-    db.commit()
+    codes = enrolled(request, db, row)
     totp.drop_enrolment(row.id)
     logger.info("Second factor turned on name=%s", row.name)
     return {"recovery_codes": codes, "account": account_view(row)}
 
 
-@router.post("/auth/totp/disable", summary="Turn the second factor off; needs the password")
+@router.post("/auth/totp/disable", summary="Turn the code from the app off; needs the password")
 def disable(payload: PasswordIn, request: Request, account: Account, db: DbSession) -> dict[str, Any]:
     row = _row(db, account)
     if not row.totp_secret_enc:
         raise error("totp_not_enabled", "The second factor is not on.", 409)
-    _check_password(request, db, row, payload.password)
-    _reset(db, row)
+    confirm_self(request, db, row, payload.password)
+    if totp.passkey_count(db, row.id) == 0:
+        last_factor_guard(db, row)
+    row.totp_secret_enc = ""
+    row.totp_last_step = 0
+    if totp.passkey_count(db, row.id) == 0:
+        # The last factor went; recovery codes for nothing would only be a way around it.
+        row.totp_recovery = ""
+    db.commit()
+    totp.forget_account(row.id)
     logger.info("Second factor turned off name=%s", row.name)
     return account_view(row)
 
@@ -119,22 +147,14 @@ def disable(payload: PasswordIn, request: Request, account: Account, db: DbSessi
 @router.post("/auth/totp/recovery", summary="New recovery codes; the old ones stop working")
 def new_recovery_codes(payload: PasswordIn, request: Request, account: Account, db: DbSession) -> dict[str, Any]:
     row = _row(db, account)
-    if not row.totp_secret_enc:
+    if not totp.has_second_factor(db, row):
         raise error("totp_not_enabled", "The second factor is not on.", 409)
-    _check_password(request, db, row, payload.password)
+    confirm_self(request, db, row, payload.password)
     codes = totp.generate_recovery_codes()
     row.totp_recovery = totp.recovery_hashes(codes)
     db.commit()
     logger.info("Recovery codes renewed name=%s", row.name)
     return {"recovery_codes": codes, "account": account_view(row)}
-
-
-def _reset(db: DbSession, row: AccountRow) -> None:
-    row.totp_secret_enc = ""
-    row.totp_recovery = ""
-    row.totp_last_step = 0
-    db.commit()
-    totp.forget_account(row.id)
 
 
 @router.post("/accounts/{account_id}/totp/reset", summary="Operator: take the second factor of a locked-out account")
@@ -151,12 +171,18 @@ def operator_reset(
     row = db.get(AccountRow, account_id)
     if row is None:
         raise error("not_found", "No such account.", 404)
-    if not row.totp_secret_enc:
+    if not totp.has_second_factor(db, row):
         raise error("totp_not_enabled", "The second factor is not on.", 409)
-    _reset(db, row)
+    row.totp_secret_enc = ""
+    row.totp_recovery = ""
+    row.totp_last_step = 0
+    db.commit()
+    passkeys.remove_all(db, row.id)
+    totp.forget_account(row.id)
     # A reset is what happens after a lost phone or a suspected intruder: whoever holds a session of that account
-    # is thrown out, and signs in afresh with the password alone.
+    # is thrown out, and signs in afresh, setting the second factor up again where the operator asks for one.
     end_all_sessions(db, row.id)
+    notices.factor_reset(row, operator.name)
     logger.warning("Second factor reset by the operator name=%s by=%s, all sessions ended", row.name, operator.name)
     return account_view(row)
 
@@ -164,26 +190,26 @@ def operator_reset(
 # --- The code step of a sign-in ---------------------------------------------------------------------------------------
 
 
+def _expired(
+    response: Response, token: str | None, text: str = "Start again with your password.",
+    code: str = "second_factor_expired",
+) -> Exception:
+    if token:
+        totp.finish_pending(token)
+    _clear_pending_cookie(response)
+    return error(code, text, 401)
+
+
 @router.post("/auth/login/totp", summary="Second step of the sign-in: the code from the app or a recovery code")
 def login_code(payload: CodeIn, request: Request, response: Response, db: DbSession) -> dict[str, Any]:
     token = request.cookies.get(PENDING_COOKIE)
     pending = totp.get_pending(token)
     if token is None or pending is None:
-        _clear_pending_cookie(response)
-        raise error("second_factor_expired", "Start again with your password.", 401)
-    key = "totp:" + client_ip(request)
-    wait = brake.wait_seconds(key)
-    if wait:
-        raise HTTPException(
-            status_code=429,
-            detail=detail("too_many_attempts", "Too many attempts. Try again later.", retry_after=wait),
-            headers={"Retry-After": str(wait)},
-        )
+        raise _expired(response, None)
+    address_guard(request)
     row = db.get(AccountRow, pending.account_id)
-    if row is None or not row.totp_secret_enc:
-        totp.finish_pending(token)
-        _clear_pending_cookie(response)
-        raise error("second_factor_expired", "Start again with your password.", 401)
+    if row is None or not totp.has_second_factor(db, row) or row.blocked_at is not None:
+        raise _expired(response, token)
     if accounts.is_locked(row):
         # Wrong codes count against the account like wrong passwords, whatever address they come from.
         totp.finish_pending(token)
@@ -192,51 +218,47 @@ def login_code(payload: CodeIn, request: Request, response: Response, db: DbSess
 
     typed = totp.normalize_code(payload.code)
     used_recovery = False
+    accepted = False
     if len(typed) == totp.DIGITS and typed.isdigit():
-        try:
-            seed = totp.open_seed(row.totp_secret_enc)
-        except totp.SeedUnreadable:
-            # A different secret.key than the one that sealed the seed. Failing closed is the only safe answer; the
-            # operator resets the second factor and the person enrols again.
-            logger.error("Second factor seed unreadable name=%s (secret.key changed?)", row.name)
-            totp.finish_pending(token)
-            _clear_pending_cookie(response)
-            raise error(
-                "second_factor_unavailable",
-                "The second factor cannot be checked on this installation. Ask the operator to reset it.",
-                401,
-            ) from None
-        step = totp.verify_code(seed, typed, after_step=row.totp_last_step)
-        accepted = step is not None
-        if step is not None:
-            row.totp_last_step = step
+        if row.totp_secret_enc:
+            try:
+                seed = totp.open_seed(row.totp_secret_enc)
+            except totp.SeedUnreadable:
+                # A different secret.key than the one that sealed the seed. Failing closed is the only safe answer;
+                # the operator resets the second factor and the person enrols again.
+                logger.error("Second factor seed unreadable name=%s (secret.key changed?)", row.name)
+                raise _expired(response, token, "The second factor cannot be checked on this installation. Ask the "
+                               "operator to reset it.", "second_factor_unavailable") from None
+            step = totp.verify_code(seed, typed, after_step=row.totp_last_step)
+            # Checked and written in one: the same code twice, even at the same moment, lets in once.
+            accepted = step is not None and totp.claim_step(db, row.id, step)
     else:
-        remaining = totp.use_recovery(row.totp_recovery, typed)
-        accepted = remaining is not None
-        if remaining is not None:
-            row.totp_recovery = remaining
-            used_recovery = True
+        before = row.totp_recovery
+        remaining = totp.use_recovery(before, typed)
+        accepted = remaining is not None and totp.claim_recovery(db, row.id, before, remaining)
+        used_recovery = accepted
     if not accepted:
-        brake.failed(key)
+        address_failed(request)
+        db.refresh(row)
         accounts.note_failure(db, row)
         still_pending = totp.fail_pending(token) and not accounts.is_locked(row)
         logger.warning("Second factor failed name=%s", row.name)
         if not still_pending:
-            totp.finish_pending(token)
-            _clear_pending_cookie(response)
-            raise error("second_factor_expired", "Too many wrong codes. Start again with your password.", 401)
+            raise _expired(response, token, "Too many wrong codes. Start again with your password.")
         raise error("totp_code_wrong", "The code is not right.", 401)
 
-    brake.succeeded(key)
-    db.commit()
-    accounts.note_success(db, row)
-    totp.finish_pending(token)
+    if totp.finish_pending(token) is None:
+        # Another request with this sign-in finished it a moment ago.
+        raise _expired(response, None)
     _clear_pending_cookie(response)
+    db.refresh(row)
+    accounts.note_success(db, row)
     if used_recovery:
         logger.warning("Recovery code used name=%s left=%s", row.name, len(totp.load_recovery(row.totp_recovery)))
     else:
         logger.info("Second factor passed name=%s", row.name)
-    return sign_in(db, request, response, row)
+    remember = pending.remember if payload.remember is None else payload.remember
+    return sign_in(db, request, response, row, remember=remember)
 
 
 @router.post("/auth/login/totp/cancel", status_code=204, summary="Give up the second step and start over")

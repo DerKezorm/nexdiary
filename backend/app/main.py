@@ -21,7 +21,22 @@ from .config import get_settings
 from .db import SessionLocal, init_db
 from .errors import detail
 from .middleware import GuardMiddleware, RequestContextMiddleware, unhandled_error
-from .routers import about, ai, apitokens, auth, diary, health, immich, invites, oidc, photos, prompts, push, sharing
+from .routers import (
+    about,
+    ai,
+    apitokens,
+    auth,
+    diary,
+    health,
+    immich,
+    invites,
+    oidc,
+    passkeys,
+    photos,
+    prompts,
+    push,
+    sharing,
+)
 from .routers import avatars as avatars_router
 from .routers import backups as backups_router
 from .routers import locales as locales_router
@@ -31,12 +46,13 @@ from .routers import totp as totp_router
 from .routers import v1 as v1_router
 from .security import HashingBusy, purge_sessions
 from .services import accounts, backups, locales, logs, notices, pictures, reminders, settings_service, totp, vault
+from .services import passkeys as passkeys_service
 
 logger = logging.getLogger("nexdiary")
 
 ROUTERS = [
     health, about, locales_router, logs_router, auth, totp_router, oidc, invites, settings_router, backups_router,
-    avatars_router, apitokens, v1_router, diary, photos, sharing, ai, prompts, immich, push,
+    avatars_router, apitokens, v1_router, diary, photos, sharing, ai, prompts, immich, push, passkeys,
 ]
 
 
@@ -59,6 +75,7 @@ async def _sweep_forever(stop: asyncio.Event) -> None:
     rounds = 0
     while not stop.is_set():
         totp.sweep()
+        passkeys_service.sweep()
         if rounds % 60 == 0:
             with SessionLocal() as db:
                 purge_sessions(db)

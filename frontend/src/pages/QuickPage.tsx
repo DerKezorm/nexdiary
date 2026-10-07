@@ -9,7 +9,7 @@
 import { ArrowUp, Camera, Check, Flame, LayoutGrid, MessageCircleQuestion, PenLine, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 
 import { photoUrl, type Question } from '../api/client'
 import { LogoMark } from '../components/Logo'
@@ -28,6 +28,13 @@ export function QuickPage() {
   const today = useToday()
   // Text shared into nexdiary from another app arrives in the address; it is only put into the field.
   const [text, setText] = useState(() => sharedText(window.location.search))
+  const location = useLocation()
+  const navigate = useNavigate()
+  // Read once, then gone from the address: a reload must not bring the shared text back into the field, and it does not
+  // stay in the browser's history either.
+  useEffect(() => {
+    if (location.search) navigate(location.pathname, { replace: true })
+  }, [location.search, location.pathname, navigate])
   const [sent, setSent] = useState(false)
   /** The question the next note answers, while the person chose to answer it. */
   const [asking, setAsking] = useState<Question | null>(null)

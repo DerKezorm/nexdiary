@@ -19,7 +19,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
-from .. import __version__
+from .. import __version__, clock
 from ..config import get_settings
 from ..models import MEMBER, OPERATOR, ROLES, SIGN_IN_OIDC, SIGN_IN_PASSWORD, Account, Invite, utcnow
 from ..security import LOCK_MINUTES, MAX_FAILURES, hash_password, hash_token, verify_password
@@ -139,14 +139,14 @@ def _dummy_hash() -> str:
 
 
 def is_locked(account: Account) -> bool:
-    return account.locked_until is not None and account.locked_until > utcnow()
+    return account.locked_until is not None and account.locked_until > clock.now()
 
 
 def note_failure(db: Session, account: Account) -> None:
     """A wrong password: counted per account, locked after too many, whoever the sender is."""
     account.failed_logins += 1
     if account.failed_logins >= MAX_FAILURES:
-        account.locked_until = utcnow() + timedelta(minutes=LOCK_MINUTES)
+        account.locked_until = clock.now() + timedelta(minutes=LOCK_MINUTES)
         account.failed_logins = 0
         logger.warning("Account locked after %s failures name=%s minutes=%s", MAX_FAILURES, account.name, LOCK_MINUTES)
     else:
@@ -198,7 +198,9 @@ def authenticate(db: Session, name: str, password: str, devices: frozenset[int] 
             if not known_device:
                 note_failure(db, account)
             raise AccountError("wrong_credentials", "Name or password is wrong.", 401)
-        if not account.totp_secret_enc:
+        from . import totp
+
+        if not totp.has_second_factor(db, account):
             # With a second factor, only the code resets the count of failures: otherwise whoever knows the password
             # could guess codes forever, a new password step before each lockout.
             note_success(db, account)

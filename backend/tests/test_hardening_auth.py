@@ -1,20 +1,32 @@
-"""Security review before 1.0.0, nexdiary on the internet: the first setup, the sign-in brake, the operator's network."""
+"""Security review before 1.0.0, nexdiary on the internet: the first setup, the sign-in brake, the operator's network;
+the second factor required from the start and set up right after the password, every route closed to a session that
+must set it up first, five failures and a quarter of an hour per account and per address, sessions and devices."""
 
 from __future__ import annotations
 
 import logging
+import re
 import threading
+import time
+from collections.abc import Callable, Iterator
+from datetime import timedelta
 
 import pytest
+from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
+from app import clock as app_clock
 from app import security
 from app.config import get_settings
-from app.main import app
-from app.security import DEVICE_COOKIE, brake
-from app.services import accounts
+from app.db import SessionLocal
+from app.deps import CODES_ONLY_PATHS, SETUP_ONLY_PATHS, UNKNOWN_PROXY_FREE
+from app.main import ROUTERS, app
+from app.models import Account
+from app.routers.auth import PENDING_COOKIE
+from app.security import DEVICE_COOKIE, SESSION_COOKIE, brake
+from app.services import accounts, settings_service, totp
 
-from .conftest import PASSWORD, SETUP_CODE, make_account
+from .conftest import PASSWORD, SETUP_CODE, make_account, require_second_factor, sign_in
 
 GOOD = "a long enough password"
 
@@ -83,8 +95,8 @@ def test_ten_setups_at_once_make_exactly_one_operator(client: TestClient) -> Non
 
 
 def lock(name: str) -> None:
-    """A stranger's ten wrong passwords, each from a new address."""
-    for number in range(10):
+    """A stranger's five wrong passwords, each from a new address."""
+    for number in range(security.MAX_FAILURES):
         brake.forget()
         fresh(f"198.51.100.{number + 1}").post("/api/auth/login", json={"name": name, "password": "wrong guess"})
     brake.forget()
@@ -140,7 +152,7 @@ def test_sixty_wrong_passwords_at_once_count_no_more_than_the_lock_allows(
     for thread in threads:
         thread.join()
     brake.forget()
-    assert len(counted) == 10
+    assert len(counted) == security.MAX_FAILURES == 5
 
 
 def test_behind_a_proxy_nexdiary_was_not_told_about_a_stranger_does_not_freeze_everybody(client: TestClient) -> None:
@@ -201,7 +213,7 @@ def test_checking_passwords_has_a_limit_and_answers_busy_beyond_it(
 
 def test_the_brake_forgets_after_an_hour_and_keeps_its_table_small(monkeypatch: pytest.MonkeyPatch) -> None:
     clock = [1000.0]
-    monkeypatch.setattr(security.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(app_clock, "monotonic", lambda: clock[0])
     own = security.Brake()
     for _ in range(8):
         own.failed("x")
@@ -240,3 +252,410 @@ def test_operator_settings_only_from_the_operator_networks(client: TestClient, m
     assert refused.status_code == 403 and refused.json()["detail"]["code"] == "operator_network"
     # Everything else stays open from anywhere.
     assert away.get("/api/api-tokens").status_code == 200
+
+
+# --- The second factor, required from the start (B7) -----------------------------------------------------------------
+
+
+@pytest.fixture
+def later(monkeypatch: pytest.MonkeyPatch) -> Callable[[float], None]:
+    """Moves the server's clock (the wall clock and the brake's) ahead by the seconds given."""
+    offset = [0.0]
+    real_now, real_monotonic = app_clock.now, app_clock.monotonic
+    monkeypatch.setattr(app_clock, "now", lambda: real_now() + timedelta(seconds=offset[0]))
+    monkeypatch.setattr(app_clock, "monotonic", lambda: real_monotonic() + offset[0])
+
+    def advance(seconds: float) -> None:
+        offset[0] += seconds
+
+    return advance
+
+
+def test_the_second_factor_is_required_from_the_start() -> None:
+    assert settings_service.DEFAULTS["two_factor_required"] is True
+    assert settings_service.DEFAULTS["oidc_second_factor_by_provider"] is False
+
+
+def password_only(name: str = "anna", host: str = "203.0.113.20", remember: bool = True) -> TestClient:
+    """A browser that gave the password of an account without a second factor, where one is required."""
+    browser = fresh(host)
+    answer = browser.post("/api/auth/login", json={"name": name, "password": PASSWORD, "remember": remember})
+    assert answer.status_code == 200, answer.text
+    assert answer.json()["session_stage"] == "setup" and answer.json()["second_factor_setup_required"] is True
+    return browser
+
+
+def set_up_totp(browser: TestClient) -> tuple[str, list[str]]:
+    begun = browser.post("/api/auth/totp/begin")
+    assert begun.status_code == 200, begun.text
+    seed = begun.json()["secret"]
+    done = browser.post("/api/auth/totp/confirm", json={"code": totp.code_at(seed, time.time())})
+    assert done.status_code == 200, done.text
+    return seed, done.json()["recovery_codes"]
+
+
+def test_without_a_second_factor_it_is_set_up_right_after_the_password_and_only_then_the_session_is_full() -> None:
+    require_second_factor()
+    make_account("anna")
+    browser = password_only()
+    # Nothing but the setup: no device cookie yet, and no diary.
+    assert not browser.cookies.get(DEVICE_COOKIE, path="/api/auth")
+    me = browser.get("/api/auth/me").json()
+    assert me["session_stage"] == "setup" and me["second_factor_setup_required"] is True
+    assert browser.get("/api/days").status_code == 403
+    # Right after the password the code is enough; the password is not asked again.
+    _seed, codes = set_up_totp(browser)
+    assert len(codes) == totp.RECOVERY_CODES
+    assert browser.get("/api/auth/me").json()["session_stage"] == "codes"
+    # Still nothing but saying the codes are kept.
+    refused = browser.get("/api/days")
+    assert refused.status_code == 403 and refused.json()["detail"]["code"] == "second_factor_setup_required"
+    assert browser.post("/api/auth/totp/begin").status_code == 403
+    old = browser.cookies.get(SESSION_COOKIE)
+    done = browser.post("/api/auth/setup/done")
+    assert done.status_code == 200 and done.json()["session_stage"] == "full"
+    # A new token for the full session; the one that lived through the setup opens nothing any more.
+    assert browser.cookies.get(SESSION_COOKIE) != old
+    assert browser.get("/api/days").status_code == 200
+    assert browser.cookies.get(DEVICE_COOKIE, path="/api/auth")
+    stale = fresh()
+    stale.cookies.set(SESSION_COOKIE, old)
+    assert stale.get("/api/auth/me").status_code == 401
+    # Twice is once: the second click finds nothing to confirm.
+    assert browser.post("/api/auth/setup/done").status_code == 409
+
+
+def test_the_first_operator_sets_up_the_second_factor_right_after_the_setup(client: TestClient) -> None:
+    require_second_factor()
+    made = client.post("/api/setup", json={"name": "boss", "password": GOOD, "code": SETUP_CODE})
+    assert made.status_code == 200 and made.json()["session_stage"] == "setup"
+    assert client.get("/api/settings").status_code == 403
+    set_up_totp(client)
+    assert client.post("/api/auth/setup/done").status_code == 200
+    assert client.get("/api/settings").status_code == 200
+
+
+def test_a_session_for_the_setup_lasts_a_quarter_of_an_hour(later: Callable[[float], None]) -> None:
+    require_second_factor()
+    make_account("anna")
+    browser = password_only()
+    later(security.SETUP_MINUTES * 60 + 1)
+    assert browser.get("/api/auth/me").status_code == 401
+
+
+def test_a_setup_session_is_over_when_the_factor_was_set_up_elsewhere() -> None:
+    require_second_factor()
+    make_account("anna")
+    first, second = password_only(host="203.0.113.21"), password_only(host="203.0.113.22")
+    set_up_totp(first)
+    # Whoever holds the other setup session knows the password at most: it cannot become anything now.
+    assert second.get("/api/auth/me").status_code == 401
+    assert second.post("/api/auth/setup/done").status_code == 401
+
+
+def every_route() -> Iterator[tuple[str, str]]:
+    """Every route of the API, as the app has them (not a list kept by hand)."""
+    for module in ROUTERS:
+        for route in module.router.routes:
+            if isinstance(route, APIRoute) and route.path.startswith("/api/"):
+                for method in sorted(route.methods):
+                    yield method, route.path
+
+
+def concrete(path: str) -> str:
+    values = {"uid": "0" * 32, "token": "a" * 30, "date": "2026-10-07"}
+    return re.sub(r"\{(\w+)(:[^}]*)?\}", lambda match: values.get(match.group(1), "1"), path)
+
+
+def restricted_browsers() -> dict[str, TestClient]:
+    """The three kinds of session that may only set up the second factor: right after the password, between the code
+    and the recovery codes, and a full one of an account the operator now asks for a factor."""
+    require_second_factor()
+    make_account("anna")
+    make_account("bert")
+    carl = make_account("carl")
+    setup = password_only("anna", "203.0.113.30")
+    codes = password_only("bert", "203.0.113.31")
+    set_up_totp(codes)
+    full = fresh("203.0.113.32")
+    sign_in(full, carl)
+    return {"setup": setup, "codes": codes, "full": full}
+
+
+def test_a_session_that_must_set_up_the_second_factor_reaches_no_other_route() -> None:
+    browsers = restricted_browsers()
+    allowed = {"setup": SETUP_ONLY_PATHS, "codes": CODES_ONLY_PATHS, "full": SETUP_ONLY_PATHS}
+    nobody = fresh("203.0.113.33")
+    checked = 0
+    for method, path in every_route():
+        if path == "/api/auth/logout":
+            continue
+        url = concrete(path)
+        brake.forget()
+        without = nobody.request(method, url, json={})
+        if without.status_code not in (401, 403):
+            continue  # a route anyone may call, signed in or not
+        for stage, browser in browsers.items():
+            if path in allowed[stage]:
+                continue
+            brake.forget()
+            answer = browser.request(method, url, json={})
+            assert answer.status_code in (401, 403), (stage, method, path, answer.status_code)
+            checked += 1
+    # Floor: the routes were found at all.
+    assert checked > 150
+    # And each kind still reaches its own setup.
+    assert browsers["setup"].get("/api/auth/me").status_code == 200
+    assert browsers["codes"].get("/api/auth/me").json()["session_stage"] == "codes"
+    assert browsers["full"].post("/api/auth/totp/begin").status_code == 200
+
+
+def test_a_full_session_reaches_the_same_routes() -> None:
+    """The counterpart: the routes refused above are not refused for everybody."""
+    make_account("anna")
+    browser = fresh()
+    sign_in(browser, make_account("dora"))
+    assert browser.get("/api/days").status_code == 200
+    assert browser.get("/api/auth/sessions").status_code == 200
+
+
+# --- Five failures, a quarter of an hour, per account and per address --------------------------------------------------
+
+
+def test_five_wrong_passwords_lock_the_account_for_a_quarter_of_an_hour(later: Callable[[float], None]) -> None:
+    make_account("anna")
+    # Five, as decided (06.10.2026); written out, not taken from the code it checks.
+    for number in range(5):
+        answer = fresh(f"198.51.100.{number + 1}").post("/api/auth/login", json={"name": "anna", "password": "no"})
+        assert answer.status_code == 401
+    # From a sixth address, with the right password: still locked, and saying no more than a wrong password.
+    locked = fresh("198.51.100.50").post("/api/auth/login", json={"name": "anna", "password": PASSWORD})
+    assert locked.status_code == 401 and locked.json()["detail"]["code"] == "wrong_credentials"
+    later(security.LOCK_MINUTES * 60 - 30)
+    assert fresh("198.51.100.51").post("/api/auth/login", json={"name": "anna", "password": PASSWORD}).status_code == 401
+    later(31)
+    assert fresh("198.51.100.52").post("/api/auth/login", json={"name": "anna", "password": PASSWORD}).status_code == 200
+
+
+def test_five_failures_from_one_address_make_it_rest_a_quarter_of_an_hour(later: Callable[[float], None]) -> None:
+    make_account("anna")
+    for name in ("x1", "x2", "x3", "x4", "x5"):
+        assert fresh("203.0.113.60").post("/api/auth/login", json={"name": name, "password": "no"}).status_code == 401
+    resting = fresh("203.0.113.60").post("/api/auth/login", json={"name": "anna", "password": PASSWORD})
+    assert resting.status_code == 429 and resting.headers["retry-after"] == str(security.LOCK_MINUTES * 60)
+    # Another address is not touched.
+    assert fresh("203.0.113.61").post("/api/auth/login", json={"name": "anna", "password": PASSWORD}).status_code == 200
+    later(security.LOCK_MINUTES * 60 - 30)
+    assert fresh("203.0.113.60").post("/api/auth/login", json={"name": "anna", "password": PASSWORD}).status_code == 429
+    later(31)
+    assert fresh("203.0.113.60").post("/api/auth/login", json={"name": "anna", "password": PASSWORD}).status_code == 200
+
+
+def test_every_kind_of_failure_counts_for_the_address(client: TestClient, operator: object) -> None:
+    """Wrong invitation links and wrong passwords: five together, and the address rests."""
+    link = client.post("/api/invites", json={"days": 7}).json()["link"].rsplit("/", 1)[-1]
+    guest = fresh("203.0.113.70")
+    assert guest.post("/api/invite/" + "c" * 30, json={"name": "newbie", "password": GOOD}).status_code == 404
+    for _ in range(2):
+        assert guest.get("/api/invite/" + "b" * 30).status_code == 404
+    assert guest.post("/api/auth/login", json={"name": "nobody", "password": "no"}).status_code == 401
+    assert guest.post("/api/auth/login", json={"name": "nobody", "password": "no"}).status_code == 401
+    # Now even a valid invitation waits.
+    assert guest.get(f"/api/invite/{link}").status_code == 429
+
+
+def test_a_forwarded_header_from_a_sender_nexdiary_does_not_trust_buys_nothing_much(client: TestClient) -> None:
+    """Without a trusted proxy the header is not the sender's address; made-up hops get at most the proxy's room."""
+    make_account("anna")
+    sender = fresh("203.0.113.80")
+    answers = [sender.post("/api/auth/login", json={"name": f"n{n}", "password": "no"},
+                           headers={"X-Forwarded-For": f"6.6.{n}.1"}).status_code for n in range(40)]
+    assert answers.count(401) == UNKNOWN_PROXY_FREE and answers[-1] == 429
+
+
+def test_an_unknown_name_and_a_wrong_password_answer_alike(monkeypatch: pytest.MonkeyPatch) -> None:
+    make_account("anna")
+    checks: list[int] = []
+    original = security.verify_password
+
+    def counting(password: str, password_hash: str) -> bool:
+        checks.append(1)
+        return original(password, password_hash)
+
+    monkeypatch.setattr(accounts, "verify_password", counting)
+    unknown = fresh("203.0.113.90").post("/api/auth/login", json={"name": "nobody", "password": "no"})
+    wrong = fresh("203.0.113.91").post("/api/auth/login", json={"name": "anna", "password": "no"})
+    assert unknown.status_code == wrong.status_code == 401
+    assert unknown.json() == wrong.json()
+    # Each costs exactly one password check: the time does not tell either.
+    assert checks == [1, 1]
+
+
+def test_the_same_code_at_the_same_moment_lets_in_once(client: TestClient, operator: object) -> None:
+    begun = client.post("/api/auth/totp/begin").json()
+    client.post("/api/auth/totp/confirm", json={"code": totp.code_at(begun["secret"], time.time()), "password": PASSWORD})
+    browser = fresh("203.0.113.95")
+    assert browser.post("/api/auth/login", json={"name": "tester", "password": PASSWORD}).json()["second_factor"]
+    twin = fresh("203.0.113.95")
+    twin.cookies.set(PENDING_COOKIE, browser.cookies.get(PENDING_COOKIE, path="/api/auth") or "")
+    # A code of the next step, given twice at once with the same waiting sign-in, from two tabs.
+    code = totp.code_at(begun["secret"], time.time() + totp.STEP_SECONDS)
+    answers: list[int] = []
+    start = threading.Barrier(2)
+
+    def one(tab: TestClient) -> None:
+        start.wait()
+        answers.append(tab.post("/api/auth/login/totp", json={"code": code}).status_code)
+
+    threads = [threading.Thread(target=one, args=(tab,)) for tab in (browser, twin)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert answers.count(200) == 1 and len(answers) == 2
+
+
+def test_a_recovery_code_is_taken_once_also_at_the_same_moment() -> None:
+    account = make_account("anna")
+    codes = totp.generate_recovery_codes()
+    stored = totp.recovery_hashes(codes)
+    with SessionLocal() as db:
+        row = db.get(Account, account.id)
+        assert row is not None
+        row.totp_recovery = stored
+        db.commit()
+        remaining = totp.use_recovery(stored, codes[0])
+        assert remaining is not None
+        assert totp.claim_recovery(db, account.id, stored, remaining) is True
+        # A second request that read the same list before: it must not take the code once more.
+        assert totp.claim_recovery(db, account.id, stored, remaining) is False
+
+
+# --- Sessions and devices ------------------------------------------------------------------------------------------
+
+
+def test_staying_signed_in_slides_thirty_days_and_ends_after_thirty_unused(later: Callable[[float], None]) -> None:
+    make_account("anna")
+    browser = fresh()
+    answer = browser.post("/api/auth/login", json={"name": "anna", "password": PASSWORD, "remember": True})
+    line = next(line for line in answer.headers.get_list("set-cookie") if line.startswith(SESSION_COOKIE + "="))
+    assert "max-age=" in line.lower()
+    days = get_settings().session_days
+    for _ in range(3):
+        later((days - 1) * 86400)
+        assert browser.get("/api/days").status_code == 200, "used within 30 days: it goes on"
+    later(days * 86400 + 1)
+    assert browser.get("/api/days").status_code == 401
+
+
+def test_without_staying_the_session_ends_with_the_browser_and_after_twelve_hours(
+    later: Callable[[float], None],
+) -> None:
+    make_account("anna")
+    browser = fresh()
+    answer = browser.post("/api/auth/login", json={"name": "anna", "password": PASSWORD, "remember": False})
+    line = next(line for line in answer.headers.get_list("set-cookie") if line.startswith(SESSION_COOKIE + "="))
+    assert "max-age" not in line.lower() and "expires" not in line.lower()
+    later(6 * 3600)
+    assert browser.get("/api/days").status_code == 200
+    later(security.SHORT_HOURS * 3600 - 6 * 3600 + 1)
+    assert browser.get("/api/days").status_code == 401
+
+
+def test_the_code_step_decides_whether_to_stay(client: TestClient, operator: object) -> None:
+    begun = client.post("/api/auth/totp/begin").json()
+    client.post("/api/auth/totp/confirm", json={"code": totp.code_at(begun["secret"], time.time()), "password": PASSWORD})
+    browser = fresh("203.0.113.96")
+    browser.post("/api/auth/login", json={"name": "tester", "password": PASSWORD, "remember": True})
+    code = totp.code_at(begun["secret"], time.time() + totp.STEP_SECONDS)
+    answer = browser.post("/api/auth/login/totp", json={"code": code, "remember": False})
+    line = next(line for line in answer.headers.get_list("set-cookie") if line.startswith(SESSION_COOKIE + "="))
+    assert "max-age" not in line.lower()
+
+
+def test_the_devices_list_ends_one_or_all_others_and_never_another_accounts(client: TestClient) -> None:
+    anna, bert = make_account("anna"), make_account("bert")
+    phone = fresh("192.168.1.20")
+    phone.headers["User-Agent"] = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Safari/604.1"
+    assert phone.post("/api/auth/login", json={"name": "anna", "password": PASSWORD}).status_code == 200
+    laptop = fresh("203.0.113.40")
+    laptop.headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0) Gecko/20100101 Firefox/131.0"
+    assert laptop.post("/api/auth/login", json={"name": "anna", "password": PASSWORD}).status_code == 200
+    third = fresh("203.0.113.41")
+    sign_in(third, anna)
+    stranger = fresh("203.0.113.42")
+    sign_in(stranger, bert)
+    listed = laptop.get("/api/auth/sessions", headers={"X-Nexdiary-Language": "de"}).json()
+    assert len(listed) == 3 and listed[0]["here"] is True and listed[0]["device"] == "Firefox unter Windows"
+    by_device = {row["device"]: row for row in listed}
+    assert by_device["Safari unter iPhone"]["phone"] is True
+    assert by_device["Safari unter iPhone"]["network"] == "eigenes Netz 192.168.1.0/24"
+    assert "token" not in str(listed) and "hash" not in str(listed)
+    phone_id = by_device["Safari unter iPhone"]["id"]
+    # Somebody else's session cannot be ended, nor even found.
+    bert_id = stranger.get("/api/auth/sessions").json()[0]["id"]
+    assert laptop.delete(f"/api/auth/sessions/{bert_id}").status_code == 404
+    assert stranger.get("/api/days").status_code == 200
+    # The own one here goes by "sign out", not from the list.
+    assert laptop.delete(f"/api/auth/sessions/{listed[0]['id']}").status_code == 409
+    assert laptop.delete(f"/api/auth/sessions/{phone_id}").status_code == 204
+    assert phone.get("/api/days").status_code == 401
+    assert laptop.post("/api/auth/logout-all").status_code == 204
+    assert third.get("/api/days").status_code == 401
+    assert laptop.get("/api/days").status_code == 200
+    assert [row["here"] for row in laptop.get("/api/auth/sessions").json()] == [True]
+    assert stranger.get("/api/days").status_code == 200
+
+
+def test_session_tokens_are_kept_only_as_hashes(client: TestClient) -> None:
+    make_account("anna")
+    browser = fresh()
+    browser.post("/api/auth/login", json={"name": "anna", "password": PASSWORD})
+    token = browser.cookies.get(SESSION_COOKIE)
+    assert token
+    path = get_settings().database_path
+    raw = b"".join(candidate.read_bytes() for candidate in (path, path.with_name(path.name + "-wal"))
+                   if candidate.exists())
+    assert token.encode() not in raw and len(raw) > 0
+
+
+def test_new_recovery_codes_only_while_they_wait_to_be_confirmed() -> None:
+    """A reload loses the codes shown once: until they are confirmed, the session that set up the factor makes new
+    ones; the old ones stop working. After that, new codes need the password (Account, Security)."""
+    require_second_factor()
+    account = make_account("anna")
+    browser = password_only()
+    _seed, first = set_up_totp(browser)
+    again = browser.post("/api/auth/setup/codes")
+    assert again.status_code == 200 and len(again.json()["recovery_codes"]) == totp.RECOVERY_CODES
+    with SessionLocal() as db:
+        row = db.get(Account, account.id)
+        assert row is not None
+        assert totp.use_recovery(row.totp_recovery, first[0]) is None
+        assert totp.use_recovery(row.totp_recovery, again.json()["recovery_codes"][0]) is not None
+    assert browser.post("/api/auth/setup/done").status_code == 200
+    assert browser.post("/api/auth/setup/codes").status_code == 409
+
+
+def test_a_time_step_is_taken_once_also_by_two_at_the_same_moment() -> None:
+    """The code of a time step counts once wherever it is given (sign-in, saving the master key): checked and written
+    in one statement, so of two at the same moment exactly one takes it."""
+    account = make_account("anna")
+    step = int(time.time()) // totp.STEP_SECONDS
+    won: list[bool] = []
+    start = threading.Barrier(4)
+
+    def one() -> None:
+        with SessionLocal() as db:
+            start.wait()
+            won.append(totp.claim_step(db, account.id, step))
+
+    threads = [threading.Thread(target=one) for _ in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert sorted(won) == [False, False, False, True]
+    with SessionLocal() as db:
+        assert totp.claim_step(db, account.id, step) is False
+        assert totp.claim_step(db, account.id, step + 1) is True

@@ -29,7 +29,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 from fastapi import HTTPException
@@ -138,16 +138,17 @@ def check_endpoint(db: Session, endpoint: Any) -> tuple[str, str]:
         raise fail("push_endpoint_invalid")
     if any(ord(char) <= 32 or ord(char) == 127 for char in endpoint):
         raise fail("push_endpoint_invalid")
-    parts = urlsplit(endpoint)
-    if parts.scheme.lower() != "https" or parts.username is not None or parts.password is not None or parts.fragment:
-        raise fail("push_endpoint_invalid")
     try:
+        # A broken bracket ("https://[::1"), a name that changes under NFKC: Python refuses them with ValueError.
+        parts = urlsplit(endpoint)
         port = parts.port
+        hostname = parts.hostname or ""
     except ValueError as exc:
         raise fail("push_endpoint_invalid") from exc
+    if parts.scheme.lower() != "https" or parts.username is not None or parts.password is not None or parts.fragment:
+        raise fail("push_endpoint_invalid")
     if port not in (None, 443):
         raise fail("push_endpoint_invalid")
-    hostname = parts.hostname or ""
     try:
         outbound.ip_of(hostname.strip("[]"))
     except ValueError:
@@ -161,7 +162,12 @@ def check_endpoint(db: Session, endpoint: Any) -> tuple[str, str]:
     service = service_of(host, hosts_of(settings_service.get_all(db)))
     if service is None:
         raise fail("push_service_unknown")
-    return endpoint, service
+    # Kept and used as checked: with the name in the ASCII form it was compared in. A name written in full-width
+    # letters was taken for the push service it reads as, and sending to it then broke for every device.
+    checked = urlunsplit(("https", host, parts.path, parts.query, ""))
+    if not checked.isascii():
+        raise fail("push_endpoint_invalid")
+    return checked, service
 
 
 def _public_only(ip: outbound.IP) -> None:
@@ -308,6 +314,15 @@ def add_device(db: Session, account_id: int, dek: bytes, *, endpoint: Any, p256d
     db.commit()
     row = db.scalar(select(PushDevice).where(PushDevice.user_id == account_id, PushDevice.endpoint_key == key))
     assert row is not None
+    if made.rowcount:  # type: ignore[attr-defined]
+        # Counted before and checked again after: of devices signed up at the same moment, the ones that came first
+        # stay; one past the limit takes itself back out.
+        first = list(db.scalars(select(PushDevice.id).where(PushDevice.user_id == account_id)
+                                .order_by(PushDevice.id).limit(DEVICES_MAX)))
+        if row.id not in first:
+            db.execute(delete(PushDevice).where(PushDevice.id == row.id))
+            db.commit()
+            raise fail("push_too_many_devices", 409, max=DEVICES_MAX)
     device = _open(account_id, dek, row)
     assert device is not None
     if made.rowcount:  # type: ignore[attr-defined]
@@ -379,7 +394,16 @@ _slots = threading.BoundedSemaphore(AT_ONCE)
 
 
 def _deliver(db_factory: Callable[[], Session], key: Any, subject: str, device: Device, message: Message) -> str:
-    """One message to one device: ``sent``, ``gone`` (the push service no longer knows it) or ``failed``."""
+    """One message to one device: ``sent``, ``gone`` (the push service no longer knows it) or ``failed``. Whatever
+    goes wrong with one device stays with it: the others get their message all the same."""
+    try:
+        return _deliver_one(db_factory, key, subject, device, message)
+    except Exception:  # one device must never hold up the others
+        logger.exception("Push not sent: an unexpected failure with one device")
+        return "failed"
+
+
+def _deliver_one(db_factory: Callable[[], Session], key: Any, subject: str, device: Device, message: Message) -> str:
     with db_factory() as db:
         try:
             place, service = _target(db, device.endpoint)
@@ -399,20 +423,25 @@ def _deliver(db_factory: Callable[[], Session], key: Any, subject: str, device: 
     if not _slots.acquire(timeout=SECONDS):
         logger.warning("Push not sent service=%s reason=busy", service)
         return "failed"
+    # The status is what counts; a body past the limit is thrown away, its status still read (a 410 removes the device).
+    heads: list[int] = []
     try:
         started = ticks()
         with outbound.client(transport) as session:
             answer = outbound.send(session, "POST", place, headers, deadline=started + SECONDS, ticks=ticks,
-                                   limit=ANSWER_MAX, connect_seconds=CONNECT_SECONDS, content=body)
+                                   limit=ANSWER_MAX, connect_seconds=CONNECT_SECONDS, content=body,
+                                   accept=lambda head: heads.append(head.status_code))
+        status = answer.status_code
+    except outbound.TooLarge:
+        status = heads[0] if heads else 0
     except (outbound.Late, httpx.TimeoutException):
         logger.warning("Push not sent service=%s reason=timeout", service)
         return "failed"
-    except (outbound.TooLarge, outbound.Refused, httpx.HTTPError) as exc:
+    except (outbound.Refused, httpx.HTTPError) as exc:
         logger.warning("Push not sent service=%s reason=%s", service, type(exc).__name__)
         return "failed"
     finally:
         _slots.release()
-    status = answer.status_code
     if 200 <= status < 300:
         logger.info("Push sent service=%s", service)
         return "sent"

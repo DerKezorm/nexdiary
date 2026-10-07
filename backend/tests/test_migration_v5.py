@@ -20,7 +20,7 @@ from app.models import Account
 from app.services import backups
 
 from .conftest import make_account, new_client
-from .test_schema import fresh_schema_sql, schema_of
+from .test_schema import drop_v8, fresh_schema_sql, schema_of
 
 TABLES = ("users", "user_keys", "days", "notes", "value_defs", "photos", "drafts", "shares", "hearts")
 
@@ -62,6 +62,7 @@ def test_a_v4_database_with_a_diary_comes_to_v5_whole(client: TestClient, accoun
             connection.execute("ALTER TABLE notes DROP COLUMN prompt_ref_enc")
             # And what version 7 brought: the push devices, the reminder marks, the mark of a first sign-in.
             connection.execute("DROP TABLE push_devices")
+            drop_v8(connection)
             connection.execute("DROP TABLE reminder_marks")
             connection.execute("ALTER TABLE users DROP COLUMN signed_in_before")
             connection.execute("PRAGMA user_version = 4")

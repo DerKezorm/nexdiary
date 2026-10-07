@@ -20,7 +20,15 @@ export function useImmichDay(date: string | undefined, enabled = true) {
   useEffect(() => {
     if (!date || !enabled) return
     let alive = true
-    immichApi.photos(date).then(
+    // First whether there is an Immich to ask at all (always answered): no refused request for nothing, no red line
+    // in the browser's console on every visit while the operator keeps Immich closed.
+    immichApi
+      .state()
+      .then((state) => {
+        if (!state.allowed || !state.connected || state.suggest === false) throw new ApiError(409, 'immich_not_connected')
+        return immichApi.photos(date)
+      })
+      .then(
       (day) => {
         if (!alive) return
         setPhotos(day.photos)

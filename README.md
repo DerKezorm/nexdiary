@@ -29,8 +29,11 @@ A change to the database makes a backup first; the way back is under Settings, S
 - Put it behind a reverse proxy with https, and set `NEXDIARY_TRUSTED_PROXIES` to the proxy's address so the brake
   against password guessing sees the real sender.
 - Set the public address (Settings, Server, Sign-in, or `NEXDIARY_PUBLIC_URL`).
-- Turn on "Require a second factor" once your own account has one.
-- Keep the backups somewhere else as well; a backup holds every account.
+- A second factor is required from the start: right after the password, every account sets one up (a code from an
+  app, or a passkey). Settings, Server, Sign-in shows "Ready for the internet?", which checks the rest itself.
+- Keep the backups somewhere else as well; a backup holds every account. Save the master key (Settings, Server,
+  Backups) and keep it apart from them: without it a backup cannot be read.
+- Passkeys work under the public https address, or on localhost.
 
 ## Programs
 

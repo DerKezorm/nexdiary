@@ -18,7 +18,7 @@ import { PromptsCard } from './PromptsCard'
 
 const me = {
   id: 1, name: 'jule', display_name: 'Jule', role: 'operator', sign_in: 'password', email: '', language: 'de', oidc_linked: false, two_factor: true,
-  two_factor_recovery_left: 8, avatar: null, version: '0.1.0', whats_new_seen: '',
+  totp: true, passkeys: 0, two_factor_recovery_left: 8, avatar: null, version: '0.1.0', whats_new_seen: '',
   profile: { mode: 'system', layout: 'page', quick_start: true, journal: 'blog', timezone: 'Europe/Berlin', timezone_source: 'browser', ai: true },
 } as Me
 const setMe = vi.fn()

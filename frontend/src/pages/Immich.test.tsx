@@ -160,6 +160,24 @@ describe('the operator card', () => {
 })
 
 describe('the photos of today from Immich', () => {
+  beforeEach(() => {
+    state = { allowed: true, connected: true, url: 'https://photos.example.com', key_set: true, suggest: true, email: '', version: '' }
+  })
+
+  it('does not ask for the photos while Immich is closed, not connected or switched off', async () => {
+    for (const closed of [{ allowed: false, connected: false }, { ...state, connected: false }, { ...state, suggest: false }]) {
+      state = closed
+      calls = []
+      await show(<TodayPage now={new Date(2026, 9, 6, 19, 30)} />)
+      expect(calls.some((call) => call.url.startsWith('/api/immich/photos'))).toBe(false)
+      expect(calls.some((call) => call.url === '/api/immich')).toBe(true)
+      expect(box.textContent).not.toContain('Immich')
+      act(() => root.unmount())
+      box.remove()
+    }
+    state = { allowed: true, connected: true, suggest: true }
+  })
+
   it('copies a photo only when it is chosen, and puts it back with another tap', async () => {
     await show(<TodayPage now={new Date(2026, 9, 6, 19, 30)} />)
     expect(tiles()).toHaveLength(2)

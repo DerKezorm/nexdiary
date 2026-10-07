@@ -9,18 +9,21 @@ from __future__ import annotations
 
 import ipaddress
 import logging
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 from functools import lru_cache
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
+from . import clock
 from .config import get_settings
 from .db import SessionLocal, get_db
 from .errors import detail, error
-from .models import OPERATOR, SIGN_IN_PASSWORD
+from .models import OPERATOR, SIGN_IN_PASSWORD, STAGE_CODES, STAGE_FULL, STAGE_SETUP
 from .models import Account as AccountRow
-from .security import SESSION_COOKIE, brake, session_account
+from .security import SESSION_COOKIE, brake, current_session
 from .services import accounts, logs, totp
 
 DbSession = Annotated[Session, Depends(get_db)]
@@ -107,21 +110,62 @@ def client_ip(request: Request) -> str:
     return normal_address(hops[0] if hops else peer)
 
 
-#: What an account that must set up its second factor may still reach: itself, the way out, and the setup.
-SETUP_ONLY_PATHS = {"/api/auth/me", "/api/auth/logout", "/api/auth/totp/begin", "/api/auth/totp/confirm"}
+#: What a session that must still set up the second factor may reach: itself, the way out, and the setup (a code
+#: from an app or a passkey). Nothing else, checked here for every route there is and every route still to come.
+SETUP_ONLY_PATHS = frozenset({
+    "/api/auth/me", "/api/auth/logout", "/api/auth/totp/begin", "/api/auth/totp/confirm", "/api/auth/passkeys",
+    "/api/auth/passkeys/begin",
+})
+#: What a session may reach between setting up the second factor and confirming the recovery codes are kept.
+CODES_ONLY_PATHS = frozenset({"/api/auth/me", "/api/auth/logout", "/api/auth/setup/done", "/api/auth/setup/codes"})
+#: How long after a sign-in through the provider an account without a password may change its own second factor.
+FRESH_MINUTES = 10
+
+
+@dataclass(frozen=True)
+class SessionInfo:
+    """What a route may want to know about the session that asks (``request.state.session``)."""
+
+    uid: str
+    stage: str
+    remember: bool
+    created_at: datetime
 
 
 def require_account(request: Request) -> AccountRow:
-    """The signed-in account, detached from the database session (routes open their own)."""
+    """The signed-in account, detached from the database session (routes open their own).
+
+    A session right after the password of an account without a second factor (stage ``setup``), one that has just set
+    it up and not yet confirmed its recovery codes (``codes``), and a full one of an account that must set one up
+    since the operator asks for it, reach only their few paths. A ``setup`` session whose account got a second factor
+    elsewhere meanwhile is over: whoever holds it knows the password at most."""
     with SessionLocal() as db:
-        account = session_account(db, request.cookies.get(SESSION_COOKIE))
-        if account is None:
+        found = current_session(db, request.cookies.get(SESSION_COOKIE), client_ip(request))
+        if found is None:
             raise error("sign_in_required", "Sign in first.", 401)
-        if request.url.path not in SETUP_ONLY_PATHS and totp.setup_required(db, account):
+        session, account = found
+        path = request.url.path
+        if session.stage == STAGE_SETUP:
+            if totp.has_second_factor(db, account):
+                raise error("sign_in_required", "Sign in first.", 401)
+            if path not in SETUP_ONLY_PATHS:
+                raise error("second_factor_setup_required", "Set up your second factor first.", 403)
+        elif session.stage == STAGE_CODES:
+            if path not in CODES_ONLY_PATHS:
+                raise error("second_factor_setup_required", "Set up your second factor first.", 403)
+        elif session.stage != STAGE_FULL:
+            raise error("sign_in_required", "Sign in first.", 401)
+        elif path not in SETUP_ONLY_PATHS and totp.setup_required(db, account):
             raise error("second_factor_setup_required", "Set up your second factor first.", 403)
+        request.state.session = SessionInfo(session.uid, session.stage, session.remember, session.created_at)
         db.expunge(account)
     logs.set_actor(account.name)
     return account
+
+
+def session_of(request: Request) -> SessionInfo:
+    """The session of a route behind ``Account`` (``require_account`` put it there)."""
+    return request.state.session  # type: ignore[no-any-return]
 
 
 def require_operator(request: Request, account: Annotated[AccountRow, Depends(require_account)]) -> AccountRow:
@@ -174,6 +218,68 @@ def reauth_failed(request: Request, db: Session, account: AccountRow) -> None:
 def reauth_succeeded(request: Request, db: Session, account: AccountRow) -> None:
     brake.succeeded(_reauth_key(request))
     accounts.note_success(db, account)
+
+
+def confirm_self(request: Request, db: Session, row: AccountRow, password: str) -> None:
+    """The person once more, before a change to their own way in: the password, counted like a sign-in. An account
+    without a password (it comes through the provider) shows itself by a sign-in of the last few minutes instead; a
+    session right after the sign-in, still setting up its second factor, is that."""
+    if row.sign_in == SIGN_IN_PASSWORD:
+        reauth_guard(request, row)
+        if not accounts.check_password(row, password):
+            reauth_failed(request, db, row)
+            raise error("wrong_password", "The current password is wrong.", 401)
+        reauth_succeeded(request, db, row)
+        return
+    session = session_of(request)
+    if session.stage == STAGE_FULL and clock.now() - session.created_at > timedelta(minutes=FRESH_MINUTES):
+        raise error("sign_in_again", "Sign in again through the provider, then try once more.", 403)
+
+
+# --- The brake per address --------------------------------------------------------------------------------------------
+#
+# Five failures from one address, of any kind that lets somebody in (a password, a code, a recovery code, a passkey, a
+# setup code, an invitation), and the address rests a quarter of an hour. A sign-in that works does not reset it:
+# whoever has an account would otherwise reset it between guesses at others.
+#
+# Behind a proxy nexdiary was not told about, every sender looks like the proxy: five failures of a stranger would keep
+# the whole family out. There the count goes by the proxy and the last address it names (most likely the sender),
+# and the proxy as a whole gets more room (``UNKNOWN_PROXY_FREE``): made-up headers from a sender without a proxy
+# buy no more than that. "Ready for the internet?" warns while it is so.
+
+#: Failures the whole of a proxy nexdiary does not know may cause before it rests.
+UNKNOWN_PROXY_FREE = 30
+
+
+def address_keys(request: Request) -> list[tuple[str, int]]:
+    """The counts a failure of this request goes to, with the failures each lets pass."""
+    if not behind_unknown_proxy(request):
+        return [("addr:" + client_ip(request), brake.FREE)]
+    peer = normal_address(request.client.host if request.client else "-")
+    hops = [hop.strip() for hop in request.headers.get("x-forwarded-for", "").split(",") if hop.strip()]
+    last = normal_address(hops[-1])[:64] if hops else "-"
+    return [("addr:" + peer + "|" + last, brake.FREE), ("proxy:" + peer, UNKNOWN_PROXY_FREE)]
+
+
+def too_many(wait: int) -> HTTPException:
+    return HTTPException(
+        status_code=429,
+        detail=detail("too_many_attempts", "Too many attempts. Try again later.", retry_after=wait),
+        headers={"Retry-After": str(wait)},
+    )
+
+
+def address_guard(request: Request, *extra: str) -> None:
+    """429 while the address (or one of ``extra`` keys) rests."""
+    keys = [*address_keys(request), *((key, brake.FREE) for key in extra if key)]
+    wait = max((brake.wait_seconds(key, free) for key, free in keys), default=0)
+    if wait:
+        raise too_many(wait)
+
+
+def address_failed(request: Request, *extra: str) -> None:
+    for key, free in [*address_keys(request), *((key, brake.FREE) for key in extra if key)]:
+        brake.failed(key, free)
 
 
 def confirm_operator(request: Request, db: Session, operator: AccountRow, password: str) -> None:

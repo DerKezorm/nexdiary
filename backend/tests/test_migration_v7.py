@@ -20,7 +20,7 @@ from app.services import backups, reminders
 
 from .conftest import make_account
 from .fake_push import FakePushService
-from .test_schema import fresh_schema_sql, schema_of
+from .test_schema import drop_v8, fresh_schema_sql, schema_of
 
 TABLES = ("users", "user_keys", "days", "notes", "value_defs", "photos", "drafts", "shares", "hearts",
           "writing_prompts", "immich_links")
@@ -43,6 +43,7 @@ def test_a_v6_database_comes_to_v7_whole(client: TestClient, account: Account, p
     # Back to what B5 made: the tables and the column of version 7 gone, the version 6.
     with closing(sqlite3.connect(path)) as connection:
         connection.execute("DROP TABLE push_devices")
+        drop_v8(connection)
         connection.execute("DROP TABLE reminder_marks")
         connection.execute("ALTER TABLE users DROP COLUMN signed_in_before")
         connection.execute("PRAGMA user_version = 6")
@@ -54,7 +55,7 @@ def test_a_v6_database_comes_to_v7_whole(client: TestClient, account: Account, p
     assert made == [f"before schema {database.SCHEMA_VERSION}"]
     assert counts(path) == before, "no row lost"
     with closing(sqlite3.connect(path)) as connection:
-        assert int(connection.execute("PRAGMA user_version").fetchone()[0]) == database.SCHEMA_VERSION == 7
+        assert int(connection.execute("PRAGMA user_version").fetchone()[0]) == database.SCHEMA_VERSION
         migrated = schema_of(connection)
         marks = dict(connection.execute("SELECT name, signed_in_before FROM users").fetchall())
         foreign = {table: connection.execute(f"PRAGMA foreign_key_list({table})").fetchall()

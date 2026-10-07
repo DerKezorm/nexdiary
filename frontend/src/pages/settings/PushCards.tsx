@@ -7,7 +7,7 @@
  * push services beyond the known ones.
  */
 import { Bell, BellRing, Check, Laptop, MonitorSmartphone, Pencil, Smartphone, Trash2 } from 'lucide-react'
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { ApiError, authApi, pushApi, type Me, type PushDevice, type PushSettings, type Reminder, type ReminderMode } from '../../api/client'
@@ -277,13 +277,14 @@ function WhenCard({ me }: { me: Me }) {
 
 /** Under Security: the switch for the notice of a new sign-in, on from the start. The list of the browsers signed in
  * comes into this card with the block of the devices. */
-export function SignInNoticeCard({ me }: { me: Me }) {
+export function SignInNoticeCard({ me, children }: { me: Me; children?: ReactNode }) {
   const { t } = useTranslation()
   const { setMe } = useAuth()
   const action = useAction()
   const on = me.profile.notify_login !== false
   return (
     <Card icon={MonitorSmartphone} title={t('me.devices.title')} text={t('me.devices.text')}>
+      {children}
       <Toggle
         label={t('me.devices.notify')}
         hint={t('me.devices.notifyHint')}

@@ -43,6 +43,7 @@ from app.services import (  # noqa: E402
     diary,
     immich,
     notices,
+    passkeys,
     push,
     settings_service,
     totp,
@@ -65,6 +66,9 @@ def clean_db(schema: None) -> Iterator[None]:
         for table in reversed(Base.metadata.sorted_tables):
             db.execute(delete(table))
         db.execute(delete(Setting))
+        # nexdiary asks every account for a second factor from the start. Most tests are about something else and
+        # sign in with a password alone; the tests of the second factor turn it on (``require_second_factor``).
+        db.add(Setting(key="two_factor_required", value=False))
         db.commit()
     assert MEDIA.resolve().is_relative_to(Path(_DATA).resolve())
     shutil.rmtree(MEDIA, ignore_errors=True)
@@ -80,12 +84,19 @@ def clean_db(schema: None) -> Iterator[None]:
     immich.forget()
     notices.forget()
     push.forget()
+    passkeys.forget()
     yield
     notices.settle()
     app.dependency_overrides.clear()
 
 
 PASSWORD = "correct horse battery"
+
+
+def require_second_factor(on: bool = True) -> None:
+    """The operator's switch "require a second factor", as it stands from the start (on)."""
+    with SessionLocal() as db:
+        settings_service.save(db, {"two_factor_required": on})
 
 
 def make_account(name: str, role: str = MEMBER, password: str = PASSWORD) -> Account:

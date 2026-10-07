@@ -25,6 +25,8 @@ function SignedIn({ children }: { children: ReactNode }) {
   if (status === 'loading') return null
   if (status === 'setup') return <Navigate to="/setup" replace />
   if (status === 'signedOut') return <Navigate to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`} replace />
+  // Right after the password, the sign-in page sets the second factor up before anything else opens.
+  if (me?.session_stage && me.session_stage !== 'full') return <Navigate to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`} replace />
   if (me?.second_factor_setup_required && location.pathname !== '/konto') return <Navigate to="/konto?tab=security" replace />
   return children
 }

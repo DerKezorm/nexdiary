@@ -11,7 +11,7 @@ from fastapi import Path as PathParam
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
-from ..deps import DbSession, OperatorAccount, client_ip
+from ..deps import DbSession, OperatorAccount, address_failed, address_guard, client_ip
 from ..errors import detail, error
 from ..models import Account as AccountRow
 from ..models import Invite
@@ -80,7 +80,7 @@ def invite(payload: InviteIn, request: Request, operator: OperatorAccount, db: D
         key = f"invite-mail:{operator.id}"
         if brake.wait_seconds(key, MAILS_PER_HOUR):
             raise error("too_many_attempts", "Too many invitation mails. Try again later.", 429)
-        brake.failed(key)
+        brake.failed(key, MAILS_PER_HOUR)
     if email:
         # One open invitation per address: a second one replaces the first, so no old link stays valid beside it.
         for old in db.scalars(select(Invite).where(func.lower(Invite.email) == email.lower())):
@@ -113,16 +113,20 @@ def withdraw(invite_id: Annotated[int, PathParam(ge=1)], _operator: OperatorAcco
     db.commit()
 
 
-def _valid(db: DbSession, token: str) -> Invite:
+def _valid(db: DbSession, request: Request, token: str) -> Invite:
+    """The invitation, or 404. A link that does not hold counts as a failure of the address: invitation links are
+    no way to guess at."""
+    address_guard(request)
     row = accounts.find_invite(db, token)
     if row is None:
+        address_failed(request)
         raise error("invite_invalid", "This invitation is not valid any more.", 404)
     return row
 
 
 @router.get("/invite/{token}", summary="Whether an invitation holds (no sign-in needed)")
 def invite_state(token: Token, request: Request, db: DbSession) -> dict[str, Any]:
-    _valid(db, token)
+    _valid(db, request, token)
     signed_in = session_account(db, request.cookies.get(SESSION_COOKIE))
     return {"min_password": MIN_PASSWORD, "signed_in_as": signed_in.name if signed_in else None}
 
@@ -142,11 +146,12 @@ def accept(token: Token, payload: AcceptIn, request: Request, response: Response
     check_password(payload.password)
     if not settings_service.get(db, "password_login"):
         raise error("password_login_off", "Sign-in with a password is turned off.", 403)
+    _valid(db, request, token)
     try:
         account = accounts.accept_invite(db, token, payload.name, payload.password)
     except AccountError as exc:
         if exc.code == "name_taken":
-            brake.failed(key)
+            brake.failed(key, NAME_TRIES)
         raise fail(exc) from exc
     # The account speaks the language its person chose the page in, from the first day (the values it starts with).
     if not account.language:

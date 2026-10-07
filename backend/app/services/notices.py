@@ -233,6 +233,65 @@ def _mail(account: Account, to: str, base: str, agent: str, address: str, moment
     logger.info("Sign-in notice mailed name=%s", account.name)
 
 
+# --- The operator took the second factor --------------------------------------------------------------------------
+
+RESET_TEXTS = {
+    "de": ("Zweiter Faktor zurückgesetzt", (
+        "Der Betreiber hat deinen zweiten Faktor zurückgesetzt. Richte ihn bei der nächsten Anmeldung neu ein. "
+        "Warst du das nicht? Sag dem Betreiber Bescheid.")),
+    "en": ("Second factor reset", (
+        "The operator reset your second factor. Set it up again at your next sign-in. "
+        "Not asked for by you? Tell the operator.")),
+}
+
+
+def factor_reset(account: Account, by: str) -> None:
+    """Tells the person that the operator took their second factor: by push to their devices and by mail. In the
+    background, like the notice of a sign-in; a failure touches nothing."""
+    future = _pool.submit(_send_reset, account.id, by)
+    with _lock:
+        _pending.add(future)
+    future.add_done_callback(_done)
+
+
+def _send_reset(account_id: int, by: str) -> None:
+    from ..db import SessionLocal
+
+    try:
+        with SessionLocal() as db:
+            account = db.get(Account, account_id)
+            if account is None:
+                return
+            db.expunge(account)
+            mail_to = account.email if mailer.configured(db) else ""
+
+        def for_lang(lang: str) -> push.Message:
+            title, body = RESET_TEXTS[language_of(lang or account.language)]
+            return push.Message(title=title, body=body, url=SECURITY_PATH, desk=SECURITY_PATH, tag="factor-reset",
+                                urgency="high")
+
+        result = push.send_to_person(account_id, for_lang)
+        logger.info("Second factor reset notice pushed name=%s devices=%s", account.name, result.sent)
+        if mail_to:
+            message = EmailMessage()
+            message["To"] = mail_to
+            message["Subject"] = "Your second factor in nexdiary was reset"
+            message.set_content(
+                f"The operator ({by}) reset the second factor of your nexdiary account {account.name}.\n\n"
+                "At your next sign-in you set it up again.\n"
+                "If you did not ask for this, tell the operator and change your password.\n"
+            )
+            with SessionLocal() as db:
+                try:
+                    mailer.send_message(db, message)
+                except mailer.MailError:
+                    logger.warning("Second factor reset notice not mailed name=%s", account.name)
+                    return
+            logger.info("Second factor reset notice mailed name=%s", account.name)
+    except Exception:
+        logger.exception("A notice of a second factor reset failed")
+
+
 def forget() -> None:
     """For the tests."""
     settle()

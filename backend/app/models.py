@@ -6,6 +6,7 @@ comes with a migration step in ``db.MIGRATIONS`` and a new recorded schema in ``
 
 from __future__ import annotations
 
+import secrets
 from datetime import UTC, datetime
 from typing import Any
 
@@ -109,12 +110,31 @@ class Account(Base):
     values_seeded: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
     #: Whether the account ever signed in: its very first sign-in is no "new device" (``services/notices.py``).
     signed_in_before: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
+    #: The user handle its passkeys carry (``services/passkeys.py``): random, the same for all of its passkeys, so a
+    #: passkey names its account without its name or id. Hex; empty until the first passkey.
+    passkey_handle: Mapped[str] = mapped_column(String(64), default="", server_default=text("''"))
+
+
+#: What a session may do (``deps.require_account``): everything; only set up the second factor right after signing in;
+#: only confirm that the recovery codes are kept. The last two never become ``full`` themselves: a new session does.
+STAGE_FULL = "full"
+STAGE_SETUP = "setup"
+STAGE_CODES = "codes"
+
+
+def _session_uid() -> str:
+    return secrets.token_hex(16)
 
 
 class AuthSession(Base):
-    """A browser session. Only the hash of the token is stored; the token itself lives in the cookie."""
+    """A browser session. Only the hash of the token is stored; the token itself lives in the cookie.
+
+    ``uid`` names the session in the list of signed-in devices (never the token or its hash). ``remember``: the
+    person ticked "stay signed in on this device", the session lasts until it was not used for ``session_days``;
+    without, it ends with the browser and after twelve hours at the latest."""
 
     __tablename__ = "auth_sessions"
+    __table_args__ = (Index("uq_auth_sessions_uid", "uid", unique=True),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
@@ -124,6 +144,30 @@ class AuthSession(Base):
     last_seen_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
     ip: Mapped[str] = mapped_column(String(64), default="")
     user_agent: Mapped[str] = mapped_column(String(255), default="")
+    uid: Mapped[str] = mapped_column(String(32), default=_session_uid, server_default=text("''"))
+    remember: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("1"))
+    stage: Mapped[str] = mapped_column(String(8), default=STAGE_FULL, server_default=text("'full'"))
+
+
+class Passkey(Base):
+    """A passkey of an account (WebAuthn, ``services/passkeys.py``): signs in without password and code, and counts
+    as a second factor. Only the public key is kept; ``sign_count`` is the authenticator's counter as last seen."""
+
+    __tablename__ = "passkeys"
+    __table_args__ = (
+        Index("uq_passkeys_uid", "uid", unique=True),
+        Index("uq_passkeys_credential", "credential_id", unique=True),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    uid: Mapped[str] = mapped_column(String(32))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    credential_id: Mapped[bytes] = mapped_column(LargeBinary)
+    public_key: Mapped[bytes] = mapped_column(LargeBinary)
+    sign_count: Mapped[int] = mapped_column(Integer, default=0)
+    name: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    last_used_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
 
 
 class Invite(Base):
@@ -393,6 +437,9 @@ __all__ = [
     "ROLES",
     "SIGN_IN_OIDC",
     "SIGN_IN_PASSWORD",
+    "STAGE_CODES",
+    "STAGE_FULL",
+    "STAGE_SETUP",
     "Account",
     "ApiToken",
     "AuthSession",
@@ -403,6 +450,7 @@ __all__ = [
     "ImmichLink",
     "Invite",
     "Note",
+    "Passkey",
     "Photo",
     "PushDevice",
     "ReminderMark",

@@ -1,17 +1,23 @@
 """Passwords, browser sessions, the brake against guessing, and the secrets the server keeps for itself.
 
 Built after nextrmnl's: Argon2id for passwords, sessions as random tokens of which the database knows only the
-hash, a brake per sender in memory and a lock per account in the database (ten failures, a quarter of an hour).
+hash, a brake per sender in memory and a lock per account in the database: five failures, then a quarter of an hour
+of rest, per account and per address (decided 06.10.2026).
+
+Sessions come in two lengths: with "stay signed in on this device" one lasts until it was not used for
+``session_days`` (sliding, checked here, not left to the cookie); without, it ends with the browser and after
+``SHORT_HOURS`` at the latest. A session right after the password of an account that still has to set up its second
+factor is a stage of its own (``STAGE_SETUP``) and lives ``SETUP_MINUTES``.
 """
 
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import secrets
 import threading
-import time
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
@@ -20,14 +26,23 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from . import clock
 from .config import get_settings
-from .models import Account, AuthSession, utcnow
+from .models import STAGE_FULL, Account, AuthSession
+
+logger = logging.getLogger("nexdiary.auth")
 
 SESSION_COOKIE = "nexdiary_session" + get_settings().cookie_name_suffix()
 MIN_PASSWORD = 12
-#: After this many failures in a row an account waits a quarter of an hour. Not configurable on purpose.
-MAX_FAILURES = 10
+#: After this many failures an account, and an address, waits a quarter of an hour. Not configurable on purpose.
+MAX_FAILURES = 5
 LOCK_MINUTES = 15
+#: A session without "stay signed in" ends after this many hours, whatever happens.
+SHORT_HOURS = 12
+#: A session that may only set up the second factor ends after this many minutes.
+SETUP_MINUTES = 15
+#: How often a session's last use is written down: the interface asks often.
+TOUCH_SECONDS = 300
 
 
 def _hasher() -> PasswordHasher:
@@ -82,30 +97,51 @@ def new_token() -> str:
     return secrets.token_urlsafe(32)
 
 
-def start_session(db: Session, account: Account, ip: str, user_agent: str) -> str:
+def session_expiry(remember: bool, stage: str, now: datetime) -> datetime:
+    """When a session started or used at ``now`` runs out."""
+    if stage != STAGE_FULL:
+        return now + timedelta(minutes=SETUP_MINUTES)
+    if remember:
+        return now + timedelta(days=get_settings().session_days)
+    return now + timedelta(hours=SHORT_HOURS)
+
+
+def start_session(
+    db: Session, account: Account, ip: str, user_agent: str, *, remember: bool = True, stage: str = STAGE_FULL
+) -> str:
     """Creates a browser session and returns the token for the cookie."""
     token = new_token()
+    now = clock.now()
     db.add(
         AuthSession(
             token_hash=hash_token(token),
             account_id=account.id,
-            expires_at=utcnow() + timedelta(days=get_settings().session_days),
+            created_at=now,
+            last_seen_at=now,
+            expires_at=session_expiry(remember, stage, now),
             ip=ip[:64],
             user_agent=user_agent[:255],
+            remember=remember,
+            stage=stage,
         )
     )
-    account.last_seen_at = utcnow()
+    if stage == STAGE_FULL:
+        account.last_seen_at = now
     db.commit()
     return token
 
 
-def session_account(db: Session, token: str | None) -> Account | None:
+def current_session(db: Session, token: str | None, ip: str | None = None) -> tuple[AuthSession, Account] | None:
+    """The session a cookie names and its account, or None when it ran out, its account is gone or blocked.
+
+    A long session slides: every use moves its end ``session_days`` ahead (written down every few minutes only). A
+    short one and one that may only set up the second factor never move."""
     if not token:
         return None
     session = db.scalar(select(AuthSession).where(AuthSession.token_hash == hash_token(token)))
     if session is None:
         return None
-    now = utcnow()
+    now = clock.now()
     if session.expires_at <= now:
         db.delete(session)
         db.commit()
@@ -113,12 +149,21 @@ def session_account(db: Session, token: str | None) -> Account | None:
     account = db.get(Account, session.account_id)
     if account is None or account.blocked_at is not None:
         return None
-    # Only every few minutes: the interface asks often.
-    if (now - session.last_seen_at).total_seconds() > 300:
+    if session.stage == STAGE_FULL and (now - session.last_seen_at).total_seconds() > TOUCH_SECONDS:
         session.last_seen_at = now
         account.last_seen_at = now
+        if ip:
+            session.ip = ip[:64]
+        if session.remember:
+            session.expires_at = session_expiry(True, STAGE_FULL, now)
         db.commit()
-    return account
+    return session, account
+
+
+def session_account(db: Session, token: str | None) -> Account | None:
+    """The account of a session of any stage (``current_session``)."""
+    found = current_session(db, token)
+    return found[1] if found else None
 
 
 def end_session(db: Session, token: str | None) -> None:
@@ -138,20 +183,21 @@ def end_all_sessions(db: Session, account_id: int, except_token: str | None = No
 
 
 def purge_sessions(db: Session) -> int:
-    result = db.execute(delete(AuthSession).where(AuthSession.expires_at <= utcnow()))
+    result = db.execute(delete(AuthSession).where(AuthSession.expires_at <= clock.now()))
     db.commit()
     return int(getattr(result, "rowcount", 0) or 0)
 
 
 class Brake:
-    """Waiting time after wrong passwords, per sender. In memory only; the per-account lock is in the database.
+    """Waiting time after failures, per sender. In memory only; the per-account lock is in the database.
 
-    A count is forgotten an hour after its last failure, and the table is thinned out when it grows: every new address
-    (cheap with IPv6) would otherwise stay in memory for as long as the server runs.
+    ``FREE`` failures pass; after that every further try waits ``PAUSE`` seconds from the last failure (five, then a
+    quarter of an hour). A count is forgotten an hour after its last failure, and the table is thinned out when it
+    grows: every new address (cheap with IPv6) would otherwise stay in memory for as long as the server runs.
     """
 
-    FREE = 5
-    MAX_WAIT = LOCK_MINUTES * 60
+    FREE = MAX_FAILURES
+    PAUSE = LOCK_MINUTES * 60
     FORGET_AFTER = 3600
     MAX_KEYS = 50_000
 
@@ -164,22 +210,25 @@ class Brake:
         return (0, 0.0) if count and now - last > self.FORGET_AFTER else (count, last)
 
     def wait_seconds(self, key: str, free: int | None = None) -> int:
-        """Seconds to wait; ``free`` wrong tries pass without (``FREE`` when not given)."""
+        """Seconds to wait; ``free`` failures pass without (``FREE`` when not given)."""
         free = self.FREE if free is None else free
-        now = time.monotonic()
+        now = clock.monotonic()
         with self._lock:
             count, last = self._current(key, now)
         if count < free:
             return 0
-        wait = min(self.MAX_WAIT, 2 ** min(count - free, 20) * 5)
-        remaining = last + wait - now
+        remaining = last + self.PAUSE - now
         return max(0, int(remaining + 0.999))
 
-    def failed(self, key: str) -> None:
-        now = time.monotonic()
+    def failed(self, key: str, free: int | None = None) -> None:
+        free = self.FREE if free is None else free
+        now = clock.monotonic()
         with self._lock:
             count, _ = self._current(key, now)
             self._fails[key] = (count + 1, now)
+            if count + 1 == free:
+                # The key names the kind and the sender (an address, never a password).
+                logger.warning("Brake engaged after %s failures, %s minutes of rest key=%s", free, LOCK_MINUTES, key)
             if len(self._fails) > self.MAX_KEYS:
                 self._fails = {k: v for k, v in self._fails.items() if now - v[1] <= self.FORGET_AFTER}
                 while len(self._fails) > self.MAX_KEYS * 0.9:

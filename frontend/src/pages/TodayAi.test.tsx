@@ -212,3 +212,25 @@ describe('the question of the day', () => {
     expect(box.textContent).toContain('In Ruhe, mit Werten, Fotos und auf Wunsch der KI')
   })
 })
+
+describe('text shared into the quick note', () => {
+  it('lands in the field once and leaves the address, so a reload does not bring it back', async () => {
+    const { BrowserRouter } = await import('react-router-dom')
+    window.history.replaceState(null, '', '/?text=Kastanien%20im%20Park')
+    ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+    box = document.createElement('div')
+    document.body.appendChild(box)
+    root = createRoot(box)
+    await act(async () =>
+      root.render(
+        <BrowserRouter>
+          <QuickPage />
+        </BrowserRouter>,
+      ),
+    )
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 10)))
+    expect(box.querySelector('textarea')!.value).toBe('Kastanien im Park')
+    expect(window.location.search).toBe('')
+    window.history.replaceState(null, '', '/')
+  })
+})

@@ -60,3 +60,27 @@ def test_the_built_app_serves_the_worker_and_the_manifest_fresh(tmp_path: Path) 
         assert worker.headers["cache-control"] == "no-cache"
         assert browser.get("/manifest.webmanifest").headers["cache-control"] == "no-cache"
         assert "cache-control" not in browser.get("/logo.svg").headers
+
+
+def test_phones_get_png_symbols_and_notifications_a_png_icon_and_a_badge() -> None:
+    """Review of B6: iPhone and Android want PNG for the home screen, a maskable one, and notifications draw no SVG."""
+    import struct
+
+    def size_of(name: str) -> tuple[int, int]:
+        data = (PUBLIC / name).read_bytes()
+        assert data[:8] == b"\x89PNG\r\n\x1a\n", name
+        return struct.unpack(">II", data[16:24])
+
+    manifest = json.loads((PUBLIC / "manifest.webmanifest").read_text(encoding="utf-8"))
+    pngs = {icon["src"]: icon for icon in manifest["icons"] if icon["type"] == "image/png"}
+    assert {(src, icon["sizes"], icon["purpose"]) for src, icon in pngs.items()} == {
+        ("/icon-192.png", "192x192", "any"), ("/icon-512.png", "512x512", "any"),
+        ("/icon-maskable-512.png", "512x512", "maskable")}
+    for src, icon in pngs.items():
+        width, height = size_of(src.lstrip("/"))
+        assert f"{width}x{height}" == icon["sizes"], src
+    assert size_of("apple-touch-icon.png") == (180, 180) and size_of("badge-96.png") == (96, 96)
+    index = (PUBLIC.parent / "index.html").read_text(encoding="utf-8")
+    assert '<link rel="apple-touch-icon" href="/apple-touch-icon.png" />' in index
+    worker = (PUBLIC / "sw.js").read_text(encoding="utf-8")
+    assert "icon: '/icon-192.png'" in worker and "badge: '/badge-96.png'" in worker

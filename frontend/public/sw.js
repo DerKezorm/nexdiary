@@ -13,9 +13,19 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim())
 })
 
-/** Only a path of nexdiary itself, never another site. */
+/**
+ * Only a path of nexdiary itself, never another site. A browser drops tabs and line breaks from an address before it
+ * reads it ("/" tab "//evil.example.org" becomes "//evil.example.org"), so control characters and backslashes are
+ * refused outright, and what is left must still be of this origin once the browser has read it.
+ */
 function ownPath(value, fallback) {
-  return typeof value === 'string' && value.startsWith('/') && !value.startsWith('//') && !value.includes('\\') ? value : fallback
+  if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//') || /[\u0000-\u001f\u007f\\]/.test(value)) return fallback
+  try {
+    const target = new URL(value, self.location.origin)
+    return target.origin === self.location.origin ? target.pathname + target.search + target.hash : fallback
+  } catch {
+    return fallback
+  }
 }
 
 function onPhone() {
@@ -36,8 +46,9 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     self.registration.showNotification(title, {
       body,
-      icon: '/logo.svg',
-      badge: '/logo.svg',
+      // PNG, not SVG: Android and Windows draw no SVG in a notification. The badge is read as a mask, white on clear.
+      icon: '/icon-192.png',
+      badge: '/badge-96.png',
       tag: typeof data.tag === 'string' ? data.tag.slice(0, 40) : undefined,
       data: { url: onPhone() ? phone : desk },
     }),
