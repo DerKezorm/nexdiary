@@ -281,9 +281,11 @@ async def callback(
         logger.info("Invite used name=%s", account.name)
 
     logs.set_actor(account.name)
-    if totp.has_second_factor(db, account) and not totp.provider_checks(db, account):
+    if totp.has_second_factor(db, account) and not settings_service.get(db, "oidc_second_factor_by_provider"):
         # The provider vouched for the person; nexdiary's own second factor still has to come, unless the operator
-        # declared that the provider checks one. The sign-in page asks for it, as after a password.
+        # declared that the provider checks one. That declaration is about this way in, so it holds for an account
+        # that also has a password: its sign-in with the password still asks for the code. The sign-in page asks for
+        # it, as after a password.
         response = RedirectResponse(f"{LOGIN_PAGE}?step=code", status_code=303)
         _delete_attempt_cookie(response)
         auth_router.park(request, response, db, account, True)

@@ -699,6 +699,30 @@ def test_through_the_provider_an_account_with_a_second_factor_still_gives_it(
     assert passed.status_code == 200 and passed.json()["name"] == "tester"
 
 
+def test_when_the_provider_checks_a_linked_password_account_goes_in_without_nexdiary_s_code(
+    client: TestClient, operator: Account, provider: FakeProvider
+) -> None:
+    """The declaration is about the way in: through the provider no second code, also for an account that has a
+    password and a code of its own. Its sign-in with the password still asks for the code (found on the first live install,
+    where authentik asked for its factor and then nexdiary for its own)."""
+    configure(client)
+    from app.services import settings_service
+    from app.services import totp as totp_service
+
+    seed = client.post("/api/auth/totp/begin").json()["secret"]
+    assert client.post("/api/auth/totp/confirm", json={"code": totp_service.code_at(seed, time.time()),
+                                                       "password": PASSWORD}).status_code == 200
+    with SessionLocal() as db:
+        db.query(Account).filter(Account.name == "tester").update({"oidc_subject": "person-1"})
+        db.commit()
+        settings_service.save(db, {"oidc_second_factor_by_provider": True})
+    browser = fresh_browser(client)
+    assert sign_in_via_oidc(browser, provider).headers["location"] == "/"
+    assert browser.get("/api/auth/me").json()["session_stage"] == "full"
+    by_password = fresh_browser(client).post("/api/auth/login", json={"name": "tester", "password": PASSWORD})
+    assert by_password.status_code == 200 and by_password.json().get("second_factor") is True
+
+
 def test_through_the_provider_an_account_without_one_sets_it_up_first_unless_the_provider_checks(
     client: TestClient, operator: Account, provider: FakeProvider
 ) -> None:
