@@ -52,7 +52,7 @@ def test_a_v9_database_comes_to_v10_whole_and_its_days_can_be_locked(
     assert made == [f"before schema {database.SCHEMA_VERSION}"]
     assert counts(path) == before, "no row lost"
     with closing(sqlite3.connect(path)) as connection:
-        assert int(connection.execute("PRAGMA user_version").fetchone()[0]) == database.SCHEMA_VERSION == 10
+        assert int(connection.execute("PRAGMA user_version").fetchone()[0]) == database.SCHEMA_VERSION
         migrated = schema_of(connection)
         # Everybody there was is allowed both, nobody has answered for a night, no day is locked.
         assert connection.execute("SELECT count(*) FROM users WHERE ai_allowed = 1 AND immich_allowed = 1 "

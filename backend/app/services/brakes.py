@@ -21,6 +21,8 @@ LIMITS = {
     "new_note": 120,
     #: A look at the own Immich: the photos of a day, a probe, saving the link.
     "immich": 30,
+    #: Paging through the whole collection, the albums, a search: a page a second is far more than a hand scrolls.
+    "immich_browse": 90,
     #: The small pictures of Immich: sixty on a day, a few pages in a minute.
     "immich_thumb": 600,
     #: Signing a device up for Web Push (its push service is looked up), a probe (it goes out to every device).
@@ -36,6 +38,7 @@ CODES = {
     "new_day": ("slow_down_writing", "Too much at once. Wait a minute."),
     "new_note": ("slow_down_writing", "Too much at once. Wait a minute."),
     "immich": ("immich_too_often", "Too many requests to Immich. Wait a minute."),
+    "immich_browse": ("immich_too_often", "Too many requests to Immich. Wait a minute."),
     "immich_thumb": ("immich_too_often", "Too many requests to Immich. Wait a minute."),
     "push": ("push_too_often", "Too many at once. Wait a minute."),
     "push_test": ("push_too_often", "Too many at once. Wait a minute."),

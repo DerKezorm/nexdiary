@@ -21,7 +21,7 @@ from urllib.parse import parse_qs, urlsplit
 from PIL import Image
 
 VERSION = {"major": 1, "minor": 132, "patch": 3}
-ALL = ("asset.read", "asset.view", "asset.download", "user.read")
+ALL = ("asset.read", "asset.view", "asset.download", "user.read", "album.read")
 
 
 def made_key() -> str:
@@ -53,9 +53,14 @@ class Asset:
     visibility: str = "timeline"
     original: bytes | None = None
     word: str = ""
+    #: When it reached Immich (``createdAt``); empty: when it was taken.
+    uploaded: str = ""
+    #: What the smart search and the metadata search find it by.
+    about: str = ""
 
     def json(self) -> dict[str, Any]:
         return {"id": self.id, "type": self.type, "fileCreatedAt": self.taken, "localDateTime": self.taken,
+                "createdAt": self.uploaded or self.taken,
                 "isTrashed": self.trashed, "visibility": self.visibility, "originalFileName": "IMG_0001.JPG",
                 "originalMimeType": "image/jpeg", "livePhotoVideoId": None}
 
@@ -75,6 +80,10 @@ class FakeImmich:
         self.libraries: dict[str, list[Asset]] = {}
         self.permissions: dict[str, tuple[str, ...]] = {}
         self.emails: dict[str, str] = {}
+        #: Albums per key: ``(album id, name, [asset ids])``.
+        self.albums: dict[str, list[tuple[str, str, list[str]]]] = {}
+        #: Whether the smart search is there (Immich answers 500 for it where it is switched off).
+        self.smart = True
         self.requests: list[Seen] = []
         #: ``(handler, op)``: True when it answered itself.
         self.misbehave: Callable[[BaseHTTPRequestHandler, str], bool] | None = None
@@ -145,21 +154,43 @@ class FakeImmich:
                     if "user.read" not in allowed:
                         return self.send_json(403, {"message": "Missing required permission: user.read"})
                     return self.send_json(200, {"id": "u1", "email": fake.emails.get(key, "")})
-                if path == "/api/search/metadata" and method == "POST":
+                if path == "/api/albums" and method == "GET":
+                    if "album.read" not in allowed:
+                        return self.send_json(403, {"message": "Missing required permission: album.read"})
+                    return self.send_json(200, [{"id": aid, "albumName": name, "assetCount": len(ids),
+                                                 "albumThumbnailAssetId": ids[0] if ids else None}
+                                                for aid, name, ids in fake.albums.get(key, [])])
+                if path in ("/api/search/metadata", "/api/search/smart") and method == "POST":
                     if "asset.read" not in allowed:
                         return self.send_json(403, {"message": "Missing required permission: asset.read"})
-                    after = datetime.fromisoformat(body["takenAfter"])
-                    before = datetime.fromisoformat(body["takenBefore"])
+                    if path.endswith("smart") and not fake.smart:
+                        return self.send_json(500, {"message": "Smart search is not enabled"})
                     found = [asset for asset in fake.libraries[key]
-                             if after <= datetime.fromisoformat(asset.taken) < before
-                             and (not body.get("type") or asset.type == body["type"])
+                             if (not body.get("type") or asset.type == body["type"])
                              and (body.get("withDeleted") or not asset.trashed)]
-                    found.sort(key=lambda asset: asset.taken)
+                    if body.get("takenAfter"):
+                        found = [a for a in found if datetime.fromisoformat(a.taken) >= datetime.fromisoformat(body["takenAfter"])]
+                    if body.get("takenBefore"):
+                        found = [a for a in found if datetime.fromisoformat(a.taken) < datetime.fromisoformat(body["takenBefore"])]
+                    if body.get("createdAfter"):
+                        found = [a for a in found if datetime.fromisoformat(a.uploaded or a.taken)
+                                 >= datetime.fromisoformat(body["createdAfter"])]
+                    if body.get("albumIds"):
+                        inside = {i for aid, _n, ids in fake.albums.get(key, []) if aid in body["albumIds"] for i in ids}
+                        found = [a for a in found if a.id in inside]
+                    if body.get("query"):
+                        found = [a for a in found if body["query"].lower() in a.about.lower()]
+                    for field_name in ("description", "city", "originalFileName"):
+                        if body.get(field_name):
+                            found = [a for a in found if body[field_name].lower() in a.about.lower()]
+                    found.sort(key=lambda asset: asset.taken, reverse=body.get("order") == "desc")
                     size = int(body.get("size") or 250)
-                    page = found[:size]
+                    number = int(body.get("page") or 1)
+                    page = found[(number - 1) * size: number * size]
+                    more = len(found) > number * size
                     return self.send_json(200, {"assets": {"total": len(found), "count": len(page),
                                                            "items": [asset.json() for asset in page],
-                                                           "nextPage": "2" if len(found) > size else None},
+                                                           "nextPage": str(number + 1) if more else None},
                                                 "albums": {"total": 0, "count": 0, "items": []}})
                 if path.startswith("/api/assets/"):
                     rest = path[len("/api/assets/"):].split("/")

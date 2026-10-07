@@ -50,9 +50,19 @@ def fresh_schema_sql() -> str:
     return "".join(" ".join(row[0].split()) + ";\n" for row in rows)
 
 
+def drop_v11(connection: sqlite3.Connection) -> None:
+    """Takes away what version 11 added (the mark of a draft the automatic writing made, the mark of the day it last
+    tried for)."""
+    connection.execute("DROP TABLE auto_marks")
+    # The migration tests of older versions take the drafts away before they get here: nothing left to change then.
+    if any(row[1] == "auto" for row in connection.execute("PRAGMA table_info(drafts)")):
+        connection.execute("ALTER TABLE drafts DROP COLUMN auto")
+
+
 def drop_v10(connection: sqlite3.Connection) -> None:
-    """Takes away what version 10 added (what the operator allows an account, the answer for a night, the lock of a day
-    with the trigger that holds it)."""
+    """Takes away what version 10 and everything after it added (what the operator allows an account, the answer for a
+    night, the lock of a day with the trigger that holds it)."""
+    drop_v11(connection)
     connection.execute("DROP TRIGGER trg_days_locked_stays")
     connection.execute("ALTER TABLE days DROP COLUMN locked_at")
     for column in ("ai_allowed", "immich_allowed", "night_for", "night_day"):

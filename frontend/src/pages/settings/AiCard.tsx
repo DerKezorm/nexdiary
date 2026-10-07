@@ -10,7 +10,7 @@ import { useTranslation } from 'react-i18next'
 
 import { aiApi, type AiModel, type AiProvider, type AiSettings } from '../../api/client'
 import { AI_PROVIDERS, LOCAL_URL, MESSAGES_URL, providerName } from '../../lib/aiProviders'
-import { Button, Card, Feedback, Input, Select, useAction } from './ui'
+import { Button, Card, Feedback, Input, Select, Toggle, useAction } from './ui'
 
 export function AiCard() {
   const { t, i18n } = useTranslation()
@@ -138,6 +138,17 @@ export function AiCard() {
       )}
       <Feedback problem={listing.problem} values={listing.values} />
       {chosen !== 'none' && chosen !== 'local' && <p className="mt-4 rounded-xl bg-sheet-2 px-4 py-3 text-xs leading-relaxed text-ink-2">{t('server.ai.outgoing')}</p>}
+      {/* The second bolt: without it nobody can have the day before written up on its own, whatever they choose. */}
+      {stored.provider !== 'none' && (
+        <div className="mt-4 border-t border-line pt-3">
+          <Toggle
+            label={t('server.ai.autoAllowed')}
+            hint={t('server.ai.autoAllowedHint')}
+            checked={Boolean(stored.auto_allowed)}
+            onChange={(auto_allowed) => void action.run(async () => take(await aiApi.save({ auto_allowed })), t('server.ai.saved'))}
+          />
+        </div>
+      )}
       <Feedback
         problem={action.problem}
         values={action.values}

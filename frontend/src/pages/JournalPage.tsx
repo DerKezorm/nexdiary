@@ -6,12 +6,12 @@
  * The server sends the days a page at a time and opens only those; the next page comes when the end of the list
  * comes into view, or with the button below it.
  */
-import { Lock, Search, Sparkles, Users } from 'lucide-react'
+import { LayoutGrid, List, Lock, Search, Sparkles, Users } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 
-import { ApiError, diaryApi, journalApi, type CatchUp, type JournalDay, type JournalOverview, type SearchResult } from '../api/client'
+import { ApiError, authApi, diaryApi, journalApi, type CatchUp, type JournalDay, type JournalLook, type JournalOverview, type SearchResult } from '../api/client'
 import { Avatar } from '../components/Avatar'
 import { CatchUpCard } from '../components/CatchUp'
 import { Chip } from '../components/Chip'
@@ -67,6 +67,45 @@ export function searchEntries(result: SearchResult): Shown[] {
       })
   }
   return out
+}
+
+/**
+ * Blog or timeline, switched right in the journal: two small buttons, kept with the account like the card under My
+ * account, Look (both stay the same thing). Shown at once, put right if the server refuses.
+ */
+function LookSwitch({ look }: { look: JournalLook }) {
+  const { t } = useTranslation()
+  const { me, setMe } = useAuth()
+  const choose = async (next: JournalLook) => {
+    if (!me || next === look) return
+    setMe({ ...me, profile: { ...me.profile, journal: next } })
+    try {
+      setMe({ ...me, profile: await authApi.preferences({ journal: next }) })
+    } catch {
+      setMe(me)
+    }
+  }
+  const options: { value: JournalLook; label: string; icon: typeof List }[] = [
+    { value: 'blog', label: t('journal.viewBlog'), icon: LayoutGrid },
+    { value: 'timeline', label: t('journal.viewTimeline'), icon: List },
+  ]
+  return (
+    <div role="group" aria-label={t('journal.view')} className="inline-flex shrink-0 rounded-full border border-line bg-sheet p-1" data-look-switch>
+      {options.map(({ value, label, icon: Icon }) => (
+        <button
+          key={value}
+          type="button"
+          onClick={() => void choose(value)}
+          aria-pressed={look === value}
+          aria-label={label}
+          title={label}
+          className={`rounded-full p-2 transition ${look === value ? 'bg-accent-soft text-accent' : 'text-muted hover:text-ink'}`}
+        >
+          <Icon size={17} aria-hidden />
+        </button>
+      ))}
+    </div>
+  )
 }
 
 export function JournalPage() {
@@ -174,9 +213,12 @@ export function JournalPage() {
 
   return (
     <div className="page pb-28 lg:pb-12">
-      <header className="pt-8 pb-5">
-        <h1 className="font-display text-3xl font-semibold tracking-tight sm:text-4xl">{t('journal.title')}</h1>
-        {overview && overview.count > 0 && <p className="mt-1 text-ink-2">{t('journal.count', { count: overview.count, since })}</p>}
+      <header className="flex items-end justify-between gap-4 pt-8 pb-5">
+        <div className="min-w-0">
+          <h1 className="font-display text-3xl font-semibold tracking-tight sm:text-4xl">{t('journal.title')}</h1>
+          {overview && overview.count > 0 && <p className="mt-1 text-ink-2">{t('journal.count', { count: overview.count, since })}</p>}
+        </div>
+        {!empty && <LookSwitch look={look} />}
       </header>
       {!query && <CatchUpCard data={catchUp} className="mb-5" />}
       {empty ? (

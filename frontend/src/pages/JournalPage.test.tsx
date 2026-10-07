@@ -31,6 +31,11 @@ let yearAgoOf: JournalDay | null = null
 let coverOnNote = false
 const NOTE_PHOTO = 'd'.repeat(32)
 const DAY_PHOTO = 'e'.repeat(32)
+/** The text of 4 October holds a picture of the photo of the day; Immich is connected. */
+let photoInText = false
+let immichOn = false
+const COLLECTION = 'a1a1a1a1-0000-4000-8000-000000000001'
+const TAKEN = '7'.repeat(32)
 
 function serve(): void {
   calls = []
@@ -53,8 +58,15 @@ function serve(): void {
       // The days of the leap year 2028: a plain page each.
       if (/^\/api\/days\/2028-\d\d-\d\d$/.test(url)) return json({ date: url.slice(-10), title: 'Schaltjahr', text: 'Text', tags: [], values: {}, cover: 'illu:baum.abend.herbst', cover_chosen: false, written_by: 'self', words: 1, revision: 0, created_at: '', updated_at: '' })
       if (/^\/api\/days\/2028-\d\d-\d\d\/shares$/.test(url) && method === 'GET') return json({ date: url.slice(10, 20), people: [], with_values: false, with_notes: false })
-      if (url === '/api/days/2026-10-04') return json({ date: '2026-10-04', title: 'Sonntag', text: 'Am **See**.', tags: ['familie'], values: { v1: 9 }, cover: coverOnNote ? `photo:${NOTE_PHOTO}` : 'illu:baum.abend.herbst', cover_chosen: false, written_by: 'ai', words: 2, revision: 0, created_at: '', updated_at: '' })
+      if (url === '/api/immich') return json(immichOn ? { allowed: true, connected: true, url: 'http://x', key_set: true, suggest: true } : { allowed: false, connected: false })
+      if (url.startsWith('/api/immich/timeline')) return json({ photos: [{ id: COLLECTION, taken_at: '2024-05-01T10:00:00+00:00' }], next: null })
+      if (url === '/api/immich/albums') return json({ available: true, albums: [] })
+      if (url.startsWith('/api/immich/photos?')) return json({ date: '2026-10-04', photos: [], more: false })
+      if (url === `/api/immich/photos/${COLLECTION}` && method === 'POST') return json({ id: TAKEN, date: '2026-10-04', source: 'immich', width: 4, height: 3, created_at: '', on_note: false }, 201)
+      if (url === '/api/days/2026-10-04' && method === 'PUT') return json({ date: '2026-10-04', title: 'Sonntag', text: 'Am **See**.', tags: ['familie'], values: {}, cover: body.cover, cover_chosen: true, written_by: 'ai', words: 2, revision: 1, created_at: '', updated_at: '' })
+      if (url === '/api/days/2026-10-04') return json({ date: '2026-10-04', title: 'Sonntag', text: photoInText ? `Am **See**.\n\n![Der See](photo:${DAY_PHOTO})\n\nSpäter.` : 'Am **See**.', tags: ['familie'], values: { v1: 9 }, cover: coverOnNote ? `photo:${NOTE_PHOTO}` : 'illu:baum.abend.herbst', cover_chosen: false, written_by: 'ai', words: 2, revision: 0, created_at: '', updated_at: '' })
       if (url === '/api/notes?date=2026-10-04') return json([{ id: 'n1', date: '2026-10-04', text: 'see! wasser kalt', unreadable: false, prompt: null, photo_id: null, created_at: '2026-10-04T10:00:00+00:00', updated_at: null }])
+      if (url === '/api/photos?date=2026-10-04' && photoInText && !coverOnNote) return json([{ id: DAY_PHOTO, date: '2026-10-04', source: 'upload', width: 4, height: 3, created_at: '', on_note: false }, { id: '9'.repeat(32), date: '2026-10-04', source: 'upload', width: 4, height: 3, created_at: '', on_note: false }])
       if (url === '/api/photos?date=2026-10-04')
         return json(
           coverOnNote
@@ -108,6 +120,8 @@ beforeAll(async () => {
 
 beforeEach(() => {
   coverOnNote = false
+  photoInText = false
+  immichOn = false
   yearAgoOf = null
   me.profile = { journal: 'blog', timezone: 'Europe/Berlin' }
   serve()
@@ -239,6 +253,35 @@ describe('a day read', () => {
     expect(grid.some((src) => src?.includes('f'.repeat(32)))).toBe(false)
     await click([...box.querySelectorAll('button')].find((button) => button.textContent?.includes('Teilen')))
     expect(box.querySelector('[role=dialog]')?.textContent).toContain('Das Titelbild ist ein Foto aus deinen Notizen und wird mitgezeigt.')
+  })
+
+  it('shows a photo that stands in the text inside the text and not a second time among the photos of the day', async () => {
+    photoInText = true
+    await show('/tag/2026-10-04')
+    const figure = box.querySelector('figure.diary-photo')!
+    expect(figure.querySelector('img')?.getAttribute('src')).toBe(`/api/photos/${DAY_PHOTO}`)
+    expect(figure.querySelector('figcaption')?.textContent).toBe('Der See')
+    const grid = [...box.querySelectorAll('article img')].map((image) => image.getAttribute('src'))
+    expect(grid.filter((src) => src?.includes(DAY_PHOTO))).toEqual([`/api/photos/${DAY_PHOTO}`])
+    expect(grid).toContain(`/api/photos/${'9'.repeat(32)}/preview`)
+  })
+
+  it('picks a cover from the whole collection of Immich: the photo becomes one of the day and its cover', async () => {
+    immichOn = true
+    await show('/tag/2026-10-04')
+    await click([...box.querySelectorAll('button')].find((button) => button.textContent?.includes('Titelbild ändern')))
+    await click([...document.querySelectorAll('button')].find((button) => button.textContent?.includes('Weitere aus Immich')))
+    expect(document.querySelector('[role=dialog]')?.textContent).toContain('Aus Immich wählen')
+    await click(document.querySelector('[data-immich-tiles] button:has(img)'))
+    expect(calls.find((call) => call.method === 'POST' && call.url === `/api/immich/photos/${COLLECTION}`)?.body).toEqual({ date: '2026-10-04', anywhen: true })
+    expect(calls.filter((call) => call.method === 'PUT' && call.url === '/api/days/2026-10-04').map((call) => call.body)).toEqual([{ cover: `photo:${TAKEN}` }])
+    expect(document.querySelector('[role=dialog]')).toBeNull()
+  })
+
+  it('offers no way into the collection where there is no Immich', async () => {
+    await show('/tag/2026-10-04')
+    await click([...box.querySelectorAll('button')].find((button) => button.textContent?.includes('Titelbild ändern')))
+    expect([...document.querySelectorAll('button')].some((button) => button.textContent?.includes('Weitere aus Immich'))).toBe(false)
   })
 
   it('says nothing of the kind for an illustration', async () => {

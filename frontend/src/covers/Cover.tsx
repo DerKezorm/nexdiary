@@ -3,7 +3,7 @@
  * Every day has a cover: its own photo, or one of the illustrations (`drawings.tsx`). As the mock's `Cover.tsx`: the
  * picture itself, and the picker with the day's photos, what fits the day, a search and filters over all of them.
  */
-import { Check, ImageIcon, ImagePlus, Loader2, Search, Trash2 } from 'lucide-react'
+import { Check, ImageIcon, ImagePlus, Images, Loader2, Search, Trash2 } from 'lucide-react'
 import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -52,6 +52,7 @@ export function CoverPicker({
   time = 'abend',
   immich = [],
   onImmich,
+  onMoreImmich,
   taking = null,
   problem = null,
 }: {
@@ -71,6 +72,8 @@ export function CoverPicker({
   immich?: ImmichPhoto[]
   /** Takes a photo of Immich for the day; the id of the photo it became, or null when that did not work. */
   onImmich?: (photo: ImmichPhoto) => Promise<string | null>
+  /** Opens the whole collection of the own Immich to pick from (the page closes this dialog); left out without one. */
+  onMoreImmich?: () => void
   /** The photo of Immich being taken right now. */
   taking?: string | null
   /** What went wrong taking a photo of Immich. */
@@ -127,7 +130,14 @@ export function CoverPicker({
       )}
       {(photos.length > 0 || onUpload || immich.length > 0) && (
         <>
-          <h3 className="mb-2 text-xs font-bold tracking-wide text-muted uppercase">{t('covers.ownPhotos')}</h3>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <h3 className="text-xs font-bold tracking-wide text-muted uppercase">{t('covers.ownPhotos')}</h3>
+            {onMoreImmich && (
+              <button type="button" onClick={onMoreImmich} className="inline-flex h-8 items-center gap-1.5 rounded-full bg-sheet-2 px-3 text-xs font-semibold text-ink-2 hover:bg-accent-soft hover:text-accent">
+                <Images size={14} aria-hidden /> {t('covers.moreImmich')}
+              </button>
+            )}
+          </div>
           <div className="mb-5 grid grid-cols-3 gap-2 sm:grid-cols-5">
             {photos.map((photo) => (
               <div key={photo.id} className="group relative">

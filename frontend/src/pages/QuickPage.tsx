@@ -6,7 +6,7 @@
  * Above the field stands the question of the day: tapped, the next note is the answer and keeps the question; the
  * cross puts it away for this visit.
  */
-import { ArrowUp, Camera, Check, Flame, LayoutGrid, MessageCircleQuestion, PenLine, X } from 'lucide-react'
+import { ArrowUp, Check, Flame, LayoutGrid, MessageCircleQuestion, PenLine, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
@@ -15,10 +15,10 @@ import { photoUrl, type Question } from '../api/client'
 import { LogoMark } from '../components/Logo'
 import { NightDialog, NightHint } from '../components/NightChoice'
 import { PendingPhoto, usePendingPhoto } from '../components/PendingPhoto'
+import { PhotoSourceButton } from '../components/PhotoSource'
 import { longDate, timeOf } from '../lib/dates'
 import { errorText } from '../lib/errors'
 import { sharedText } from '../lib/shared'
-import { PHOTO_ACCEPT } from '../lib/upload'
 import { useAiState } from '../state/ai'
 import { useAuth } from '../state/auth'
 import { useToday } from '../state/today'
@@ -44,7 +44,6 @@ export function QuickPage() {
   const question = today.data?.question
   const field = useRef<HTMLTextAreaElement>(null)
   const list = useRef<HTMLDivElement>(null)
-  const file = useRef<HTMLInputElement>(null)
   const pending = usePendingPhoto(today)
   const notes = today.data?.notes ?? []
 
@@ -157,21 +156,7 @@ export function QuickPage() {
         )}
         <PendingPhoto photo={pending.photo} busy={pending.busy} onDrop={pending.drop} />
         <div className="flex items-end gap-2">
-          <button type="button" onClick={() => file.current?.click()} disabled={pending.busy} className="mb-0.5 rounded-full p-3 text-muted active:bg-sheet-2" aria-label={t('photos.take')}>
-            <Camera size={22} />
-          </button>
-          <input
-            ref={file}
-            type="file"
-            accept={PHOTO_ACCEPT}
-            className="hidden"
-            aria-label={t('photos.take')}
-            onChange={(e) => {
-              const picked = e.target.files?.[0]
-              e.target.value = ''
-              if (picked) void pending.pick(picked)
-            }}
-          />
+          <PhotoSourceButton pending={pending} date={today.data?.date} size={22} className="mb-0.5 rounded-full p-3 text-muted active:bg-sheet-2" label={t('photos.take')} />
           <textarea
             ref={field}
             autoFocus

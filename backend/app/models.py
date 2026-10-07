@@ -370,6 +370,9 @@ class Draft(Base):
     content_enc: Mapped[bytes] = mapped_column(LargeBinary)
     base_revision: Mapped[int] = mapped_column(Integer, default=-1)
     updated_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    #: Made by the automatic writing in the morning and not touched since: it waits for the person and counts as no
+    #: page. Saving the draft from the writing view makes it the person's own (0).
+    auto: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
 
 
 class WritingPrompts(Base):
@@ -431,6 +434,17 @@ class ReminderMark(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     #: ``YYYY-MM-DD``; empty while none went out.
     sent_for: Mapped[str] = mapped_column(String(10), default="")
+
+
+class AutoMark(Base):
+    """The day the automatic writing last tried for, in the person's own time zone: set before the AI is asked, and
+    only where it stood earlier (a conditional update), so that each day is tried once, whatever comes of it."""
+
+    __tablename__ = "auto_marks"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    #: ``YYYY-MM-DD``; empty while none was tried.
+    tried_for: Mapped[str] = mapped_column(String(10), default="")
 
 
 # --- Sharing ---------------------------------------------------------------------------------------------------------

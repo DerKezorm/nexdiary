@@ -11,7 +11,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
 
-import { api, authApi, type Me, type Methods } from '../api/client'
+import { aiApi, api, authApi, type Autowrite, type Me, type Methods } from '../api/client'
 import { ApiTokens } from '../components/ApiTokens'
 import { Avatar } from '../components/Avatar'
 import { providerName } from '../lib/aiProviders'
@@ -22,7 +22,7 @@ import { JournalCard, LanguageCard, LayoutCard, LooksCard, PhoneCard } from './s
 import { PromptsCard } from './settings/PromptsCard'
 import { RemindersPart } from './settings/PushCards'
 import { DevicesCard, PasskeysCard, SecondFactorCard } from './settings/SecurityCards'
-import { Button, Card, Feedback, Input, TabRow, Toggle, useAction, type Tab } from './settings/ui'
+import { Button, Card, Confirm, Feedback, Input, Segment, Select, TabRow, Toggle, useAction, type Tab } from './settings/ui'
 import { ValuesCard } from './settings/ValuesCard'
 
 type Part = 'profile' | 'security' | 'looks' | 'writing' | 'reminders' | 'ai' | 'connections'
@@ -119,8 +119,72 @@ function AiPart({ me }: { me: Me }) {
           <p className="mt-1 text-ink-2">{t(`server.ai.${provider}Note`)}</p>
         </div>
       )}
+      {ai && me.ai_allowed !== false && mine && ai.provider !== 'none' && ai.auto_allowed && <AutoWrite me={me} to={ai.to} model={ai.model} />}
       <Feedback problem={action.problem} />
     </Card>
+  )
+}
+
+const MORNING_TIMES = Array.from({ length: 16 }, (_, index) => {
+  const minutes = 4 * 60 + index * 30
+  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
+})
+const AUTOWRITE_OFF: Autowrite = { on: false, time: '07:00', length: 'long' }
+
+/**
+ * "Automatisch ausformulieren": off from the start, only where the operator opened it. Switching it on asks first and
+ * says where the notes go, without a press of a button, every morning; the server wants that confirmation too. The
+ * result is a draft that waits for the person, never a page.
+ */
+export function AutoWrite({ me, to, model }: { me: Me; to: string; model: string }) {
+  const { t } = useTranslation()
+  const { setMe } = useAuth()
+  const action = useAction()
+  const [asking, setAsking] = useState(false)
+  const choice = me.profile.autowrite ?? AUTOWRITE_OFF
+  const keep = (autowrite: Autowrite) => setMe({ ...me, profile: { ...me.profile, autowrite } })
+  const change = (next: Partial<Autowrite> & { confirmed?: boolean }) => action.run(async () => keep(await aiApi.autowrite(next)))
+  const times = MORNING_TIMES.includes(choice.time) ? MORNING_TIMES : [...MORNING_TIMES, choice.time].sort()
+  return (
+    <div className="mt-4 border-t border-line pt-4" data-autowrite>
+      <Toggle
+        label={t('autowrite.title')}
+        hint={t('autowrite.hint')}
+        checked={choice.on}
+        onChange={(on) => (on ? setAsking(true) : void change({ on: false }))}
+      />
+      {choice.on && (
+        <div className="mt-3 flex flex-wrap items-end gap-4">
+          <Select label={t('autowrite.time')} value={choice.time} options={times.map((time) => ({ value: time, label: time }))} onChange={(time) => void change({ time })} className="w-36" />
+          <div>
+            <span className="mb-1 block text-sm font-semibold">{t('autowrite.length')}</span>
+            <Segment
+              label={t('autowrite.length')}
+              value={choice.length}
+              options={[
+                { value: 'short', label: t('write.lengthShort') },
+                { value: 'long', label: t('write.lengthLong') },
+              ]}
+              onChange={(length) => void change({ length })}
+            />
+          </div>
+        </div>
+      )}
+      <p className="mt-3 text-xs leading-relaxed text-muted">{t('autowrite.note')}</p>
+      <Feedback problem={action.problem} values={action.values} />
+      {asking && (
+        <Confirm
+          title={t('autowrite.confirmTitle')}
+          text={to ? t('autowrite.confirmCloud', { to }) : t('autowrite.confirmLocal', { model })}
+          confirm={t('autowrite.confirm')}
+          onCancel={() => setAsking(false)}
+          onConfirm={async () => {
+            keep(await aiApi.autowrite({ on: true, confirmed: true }))
+            setAsking(false)
+          }}
+        />
+      )}
+    </div>
   )
 }
 

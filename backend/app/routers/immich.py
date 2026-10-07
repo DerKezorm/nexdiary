@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
 
 from ..deps import Account, DbSession, OperatorAccount
-from ..services import diary, immich, vault
+from ..services import diary, immich, immich_browse, vault
 
 router = APIRouter(prefix="/api", tags=["immich"])
 
@@ -38,6 +38,14 @@ class TakeIn(Strict):
     date: str = Field(default="", max_length=10)
     #: For a note: the photo goes with the notes of the day, never with its photos.
     note: bool = False
+    #: A photo of the whole collection, whenever it was taken: it belongs to the day it is taken for.
+    anywhen: bool = False
+
+
+class SearchIn(Strict):
+    #: In the body, not in the address: an address ends up in proxy logs and the browser's history.
+    q: str = Field(max_length=immich_browse.SEARCH_WORD_MAX * 4)
+    page: int = Field(default=1, ge=1, le=immich_browse.PAGES_MAX)
 
 
 class OperatorIn(Strict):
@@ -75,6 +83,36 @@ def photos_of_day(account: Account, db: DbSession,
     return immich.photos_of_day(db, account.id, vault.dek_for(account.id), day, diary.zone_of(account))
 
 
+@router.get("/immich/timeline", summary="The whole collection of the own Immich, newest first, a page at a time")
+def timeline(account: Account, db: DbSession, until: Annotated[str, Query(max_length=10)] = "",
+             page: Annotated[int, Query(ge=1, le=immich_browse.PAGES_MAX)] = 1) -> dict[str, Any]:
+    """``until`` (a day or a month) starts with the photos taken up to the end of it."""
+    return immich_browse.timeline(db, account.id, vault.dek_for(account.id), diary.zone_of(account), until=until,
+                                  page=page)
+
+
+@router.get("/immich/recent", summary="The photos uploaded to the own Immich lately, newest upload first")
+def recent(account: Account, db: DbSession, date: Annotated[str, Query(max_length=10)] = "") -> dict[str, Any]:
+    day = diary.check_date(account, date) if date else diary.note_day(account).isoformat()
+    return immich_browse.recent(db, account.id, vault.dek_for(account.id), day, diary.now())
+
+
+@router.get("/immich/albums", summary="The albums of the own Immich; left out when the key may not read them")
+def albums(account: Account, db: DbSession) -> dict[str, Any]:
+    return immich_browse.albums(db, account.id, vault.dek_for(account.id))
+
+
+@router.get("/immich/albums/{album}/photos", summary="The photos of one album, newest first, a page at a time")
+def album_photos(album: str, account: Account, db: DbSession,
+                 page: Annotated[int, Query(ge=1, le=immich_browse.PAGES_MAX)] = 1) -> dict[str, Any]:
+    return immich_browse.album_photos(db, account.id, vault.dek_for(account.id), album, page=page)
+
+
+@router.post("/immich/search", summary="Search the own Immich for a word; the word travels in the body")
+def search(payload: SearchIn, account: Account, db: DbSession) -> dict[str, Any]:
+    return immich_browse.search(db, account.id, vault.dek_for(account.id), payload.q, page=payload.page)
+
+
 def _thumbnail(db: Any, account_id: int, asset: str) -> tuple[bytes, str]:
     return immich.thumbnail(db, account_id, vault.dek_for(account_id), asset)
 
@@ -95,7 +133,7 @@ def take(asset: str, payload: TakeIn, response: Response, account: Account, db: 
     day = diary.check_date(account, payload.date) if payload.date else diary.note_day(account).isoformat()
     diary.ensure_open(db, account.id, day)
     photo, new = immich.take(db, account.id, vault.dek_for(account.id), immich.check_asset(asset), day,
-                             diary.zone_of(account), diary.now(), payload.note)
+                             diary.zone_of(account), diary.now(), payload.note, anywhen=payload.anywhen)
     response.status_code = 201 if new else 200
     return photo
 

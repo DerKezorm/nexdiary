@@ -119,6 +119,19 @@ describe('a day shared with me', () => {
     expect(refresh).toHaveBeenCalled()
   })
 
+  it('shows the photos of the text inside the text, through the share, and an address of another kind never', async () => {
+    const inside = 'c'.repeat(32)
+    answer = { ...DAY, text: `Am See.\n\n![Der See](photo:${inside})\n\n![fremd](https://example.com/a.png)\n\n![eigen](/api/photos/${inside})` }
+    await show('/geteilt/7/2026-10-04')
+    const figure = box.querySelector('figure.diary-photo')!
+    expect(figure.querySelector('img')?.getAttribute('src')).toBe(`/api/shared/7/2026-10-04/photos/${inside}`)
+    expect(figure.querySelector('figcaption')?.textContent).toBe('Der See')
+    const pictures = [...box.querySelectorAll('img')].map((image) => image.getAttribute('src') ?? '')
+    expect(pictures.some((src) => src.includes('example.com') || src === `/api/photos/${inside}`)).toBe(false)
+    expect(pictures.filter((src) => src.endsWith(inside))).toHaveLength(1)
+    answer = DAY
+  })
+
   it('shows values and notes when they came with it', async () => {
     answer = { ...DAY, with_values: true, with_notes: true, values: [{ name: 'Stimmung', low: 'mies', high: 'super', value: 9 }], notes: [{ text: 'see! wasser kalt', prompt: null, photo_id: 'c'.repeat(32), created_at: '2026-10-04T06:10:00+00:00' }] }
     await show('/geteilt/7/2026-10-04')

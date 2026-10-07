@@ -101,6 +101,7 @@ AI_MESSAGES = {
     "ai_off": "No AI is set up on this server.",
     "ai_switched_off": "You switched the AI off for yourself.",
     "ai_not_allowed": "Your operator has not allowed the AI for your account.",
+    "ai_auto_off": "Your operator has not allowed writing up days on their own.",
     "ai_incomplete": "The AI service is not set up completely.",
     "ai_provider_unknown": "There is no such kind of AI service.",
     "ai_address_missing": "Give the address of the service.",
@@ -183,6 +184,8 @@ def state(db: Session, own_switch: bool, allowed: bool) -> dict[str, Any]:
         "to": host_of(url) if provider in CLOUD else "",
         "model": model if provider != "none" else "",
         "mine": own_switch,
+        # Whether the operator lets a person have the day before written up in the morning without a press.
+        "auto_allowed": bool(values["ai_auto_allowed"]),
         # The operator's say for this account: without it there is no button and the server refuses.
         "allowed": allowed,
         "available": provider != "none" and own_switch and allowed,
@@ -197,6 +200,7 @@ def operator_view(db: Session) -> dict[str, Any]:
         "url": str(values["ai_url"] or ""),
         "model": str(values["ai_model"] or ""),
         "key_set": bool(values["ai_key_enc"]),
+        "auto_allowed": bool(values["ai_auto_allowed"]),
     }
 
 
@@ -222,7 +226,8 @@ def check_address(url: str, provider: str) -> str:
     return url if url.endswith("/") else url + "/"
 
 
-def save(db: Session, *, provider: str | None, url: str | None, model: str | None, key: str | None) -> dict[str, Any]:
+def save(db: Session, *, provider: str | None, url: str | None, model: str | None, key: str | None,
+         auto_allowed: bool | None = None) -> dict[str, Any]:
     """Changes what was sent; left out stays. A new address is resolved and checked before it is kept, so that the
     operator hears at once that it lies in the wrong network (every request checks again).
 
@@ -243,6 +248,8 @@ def save(db: Session, *, provider: str | None, url: str | None, model: str | Non
         changes["ai_url"] = next_url
     if model is not None:
         changes["ai_model"] = " ".join(model.split())[:200]
+    if auto_allowed is not None:
+        changes["ai_auto_allowed"] = bool(auto_allowed)
     moved = next_provider != current["provider"] or (next_provider in WORKING and next_url != current["url"])
     if key is not None:
         changes["ai_key_enc"] = encrypt_secret(key.strip(), KEY_CONTEXT) if key.strip() else ""
@@ -598,6 +605,9 @@ class _Pace:
 
 
 pace = _Pace(PER_MINUTE, PER_DAY)
+#: The morning writing has a limit of its own, far below the one for a person pressing the button: it tries a day once.
+AUTO_PER_DAY = 3
+auto_pace = _Pace(PER_MINUTE, AUTO_PER_DAY)
 operator_pace = _Pace(OPERATOR_PER_MINUTE, None)
 _writing: set[Hashable] = set()
 _writing_lock = threading.Lock()
@@ -628,6 +638,7 @@ def _one_at_a_time(who: Hashable) -> Iterator[None]:
 def forget() -> None:
     """For the tests."""
     pace.forget()
+    auto_pace.forget()
     operator_pace.forget()
     with _writing_lock:
         _writing.clear()
@@ -663,12 +674,16 @@ def usable(db: Session, own_switch: bool) -> Service:
 
 
 def formulate(db: Session, account_id: int, own_switch: bool, notes: list[dict[str, Any]], zone: tzinfo,
-              length: str) -> dict[str, str]:
-    """The suggestion for a page out of the notes given (the caller reads them: the person's own, of one day)."""
+              length: str, *, automatic: bool = False) -> dict[str, str]:
+    """The suggestion for a page out of the notes given (the caller reads them: the person's own, of one day). With
+    ``automatic`` (only the morning planner, ``services/autowrite.py``) the operator's second bolt must be open as
+    well, and the limit is the planner's own."""
     if length not in LENGTHS:
         raise error("invalid_input", "The input is not valid.", 422, fields=["length"])
     check_allowed(db, account_id)
     found = usable(db, own_switch)
+    if automatic and not settings_service.get(db, "ai_auto_allowed"):
+        raise fail("ai_auto_off", 403)
     if not any(note.get("text") and not note.get("unreadable") for note in notes):
         raise fail("ai_no_notes", 409)
     user = material(notes, zone)
@@ -677,8 +692,8 @@ def formulate(db: Session, account_id: int, own_switch: bool, notes: list[dict[s
     # No read transaction held while the service writes, which may take minutes.
     db.rollback()
     with _one_at_a_time(account_id):
-        pace.take(account_id, zone)
-        title, text = split_answer(_ask(found, length, user, f"formulate-{length}"))
+        (auto_pace if automatic else pace).take(account_id, zone)
+        title, text = split_answer(_ask(found, length, user, f"{'auto' if automatic else 'formulate'}-{length}"))
     if not text:
         raise fail("ai_empty", 502)
     return {"title": title, "text": text, "length": length}

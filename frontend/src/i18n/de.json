@@ -118,7 +118,10 @@
     "loading": "Lädt …",
     "onlyNotes": "Nur Notizen, noch keine Seite",
     "untitled": "Ohne Titel",
-    "unreadable": "Dieser Tag lässt sich nicht lesen."
+    "unreadable": "Dieser Tag lässt sich nicht lesen.",
+    "view": "Ansicht",
+    "viewBlog": "Blog",
+    "viewTimeline": "Zeitleiste"
   },
   "stats": {
     "title": "Statistik",
@@ -386,7 +389,7 @@
       "url": "Adresse von Immich",
       "key": "API-Schlüssel",
       "keyKept": "gespeichert, leer lassen zum Behalten",
-      "keyHint": "In Immich unter Kontoeinstellungen → API-Schlüssel, mit den Rechten „asset.read“, „asset.view“ und „asset.download“.",
+      "keyHint": "In Immich unter Kontoeinstellungen → API-Schlüssel, mit den Rechten „asset.read“, „asset.view“ und „asset.download“. Dazu optional „album.read“, damit du auch Alben durchblättern kannst.",
       "suggest": "Fotos des Tages vorschlagen",
       "suggestHint": "Auf „Heute“ erscheinen die Fotos, die du an diesem Tag gemacht hast.",
       "save": "Speichern und prüfen",
@@ -972,7 +975,9 @@
       "outgoing": "Was hinausgeht: beim Druck auf „Ausformulieren“ die Notizen dieses einen Tages mit ihrer Uhrzeit und, wo eine Notiz eine Frage beantwortet, mit der Frage. Ohne Namen des Kontos, ohne Datum, ohne Fotos und ohne Werte. Sonst nichts. Wer das nicht will, schaltet die KI in seinem Konto ab.",
       "saved": "Gespeichert.",
       "keyOptional": "API-Schlüssel (falls nötig)",
-      "keyLocalHint": "Nur, wenn der Dienst einen verlangt, etwa LiteLLM. Ollama braucht keinen."
+      "keyLocalHint": "Nur, wenn der Dienst einen verlangt, etwa LiteLLM. Ollama braucht keinen.",
+      "autoAllowed": "Automatisches Ausformulieren erlauben",
+      "autoAllowedHint": "Aus: Niemand kann sich den Vortag am Morgen von allein ausformulieren lassen. An: Jede Person entscheidet in ihrem Konto selbst, ab Werk ist es dort aus. Die Notizen gehen dann ohne Knopfdruck an den eingestellten Dienst."
     },
     "immich": {
       "title": "Immich",
@@ -1038,7 +1043,15 @@
     "heading": "Zwischenüberschrift",
     "quote": "Zitat",
     "list": "Liste",
-    "undo": "Rückgängig"
+    "undo": "Rückgängig",
+    "image": "Bild einfügen",
+    "imageCamera": "Foto aufnehmen",
+    "imageFile": "Datei hochladen",
+    "imageImmich": "Aus Immich",
+    "imageDay": "Aus den Fotos dieses Tages",
+    "imageDayTitle": "Foto dieses Tages einfügen",
+    "imageDayNone": "Für diesen Tag gibt es noch kein Foto.",
+    "imageDayPick": "Foto einfügen"
   },
   "write": {
     "finishTitle": "Den Tag aufschreiben",
@@ -1093,7 +1106,9 @@
     "aiDraftTitle": "Entwurf behalten?",
     "aiDraftText": "Für diesen Tag gibt es schon einen Entwurf. Du kannst ihn behalten oder die KI aus deinen Notizen neu ausformulieren lassen; der Entwurf geht dann verloren. Deine Notizen bleiben, wie sie sind.",
     "aiDraftKeep": "Entwurf behalten",
-    "aiDraftAnew": "Neu ausformulieren"
+    "aiDraftAnew": "Neu ausformulieren",
+    "noteInsert": "In den Text einfügen",
+    "noteInsertHint": "Antippen fügt es in den Text ein."
   },
   "covers": {
     "title": "Titelbild für diesen Tag",
@@ -1146,7 +1161,8 @@
     },
     "deletePhoto": "Foto löschen",
     "deleteAsk": "Foto löschen?",
-    "deleteYes": "Löschen"
+    "deleteYes": "Löschen",
+    "moreImmich": "Weitere aus Immich"
   },
   "photos": {
     "title": "Fotos von heute",
@@ -1161,7 +1177,11 @@
     "alt": "Foto",
     "fromImmich": "aus Immich · {{count}} gewählt",
     "immichAway": "Immich ist gerade nicht erreichbar. Alles andere geht wie immer.",
-    "pick": "Foto übernehmen"
+    "pick": "Foto übernehmen",
+    "newInImmich": "Neu in Immich",
+    "allImmich": "Alle Fotos",
+    "takeOrPick": "Foto aufnehmen oder wählen",
+    "fromImmichNote": "Aus Immich"
   },
   "errors": {
     "day_locked": "Dieser Tag ist für immer verschlossen und lässt sich nicht mehr ändern.",
@@ -1379,7 +1399,12 @@
     "immich_tls": "Das Zertifikat deines Immich ist nicht vertrauenswürdig (etwa selbst ausgestellt). Nimm im Heimnetz http, oder gib Immich ein gültiges Zertifikat.",
     "reset_invalid": "Dieser Link gilt nicht mehr.",
     "reset_off": "Das ist auf diesem Server nicht eingerichtet. Frag den Betreiber.",
-    "use_account_page": "Dein eigenes Passwort änderst du unter Mein Konto."
+    "use_account_page": "Dein eigenes Passwort änderst du unter Mein Konto.",
+    "ai_auto_off": "Dein Betreiber hat das automatische Ausformulieren nicht erlaubt.",
+    "autowrite_unconfirmed": "Zum Einschalten gehört die Bestätigung, wohin die Notizen gehen.",
+    "bad_autowrite": "Diesen Wert bietet nexdiary nicht an.",
+    "immich_search_empty": "Gib einen Suchbegriff ein.",
+    "immich_until_invalid": "Das ist kein Tag und kein Monat."
   },
   "entry": {
     "back": "← Tagebuch",
@@ -1471,5 +1496,66 @@
       "ok": "Zuletzt am {{when}}. Bewahre ihn getrennt von den Sicherungen auf.",
       "warn": "Noch nie gesichert. Ohne ihn ist eine Sicherung nicht lesbar: Server, Sicherung, Hauptschlüssel sichern."
     }
+  },
+  "textPhoto": {
+    "gone": "Dieses Foto gibt es nicht mehr.",
+    "up": "Nach oben",
+    "down": "Nach unten",
+    "remove": "Bild entfernen",
+    "caption": "Bildunterschrift"
+  },
+  "immichPicker": {
+    "title": "Aus Immich wählen",
+    "intro": "Deine ganze Sammlung, die neuesten Fotos zuerst. Ein Foto wird erst kopiert, wenn du es antippst, und gehört dann zu diesem Tag, egal wann es aufgenommen wurde.",
+    "ways": "Wie suchen?",
+    "all": "Alle Fotos",
+    "albums": "Alben",
+    "search": "Suche",
+    "take": "Foto übernehmen",
+    "loading": "Lädt …",
+    "more": "Mehr laden",
+    "dayBefore": "Einen Tag früher",
+    "dayAfter": "Einen Tag später",
+    "jumpDay": "Zu einem Tag springen",
+    "jumpMonth": "Zu einem Monat springen",
+    "thisDay": "Zu diesem Tag",
+    "newest": "Zu den neuesten",
+    "nothing": "Keine Fotos gefunden.",
+    "unnamed": "Ohne Namen",
+    "albumCount_one": "{{count}} Foto",
+    "albumCount_other": "{{count}} Fotos",
+    "noAlbums": "Es gibt keine Alben.",
+    "allAlbums": "Alle Alben",
+    "albumEmpty": "In diesem Album sind keine Fotos.",
+    "searchPlaceholder": "Was ist auf dem Foto? Zum Beispiel Strand oder Geburtstag",
+    "searchLabel": "Suchbegriff",
+    "searchDo": "Suchen",
+    "smart": "Immich sucht nach dem, was auf den Fotos zu sehen ist.",
+    "metadata": "Die intelligente Suche ist in Immich nicht eingeschaltet. Gesucht wird in Beschreibung, Ort und Dateiname.",
+    "searchHint": "Gib einen Begriff ein und drücke „Suchen“.",
+    "searchNothing": "Dazu gibt es keine Fotos.",
+    "noAlbumRight": "Alben fehlen hier, weil dem API-Schlüssel das Recht „album.read“ fehlt. Alles andere geht auch ohne."
+  },
+  "autowrite": {
+    "title": "Automatisch ausformulieren",
+    "hint": "Jeden Morgen entsteht aus den Notizen von gestern ein Entwurf, ohne dass du etwas drückst. Er wartet auf dich, bis du ihn abnimmst.",
+    "time": "Uhrzeit",
+    "length": "Länge",
+    "note": "Der Entwurf zählt erst als Seite, wenn du ihn abnimmst: Er ist in keiner Serie, keiner Statistik und nicht teilbar. Pro Tag wird es einmal versucht.",
+    "confirmTitle": "Automatisch ausformulieren einschalten?",
+    "confirmCloud": "Deine Notizen gehen dann jeden Morgen ohne Knopfdruck an {{to}}.",
+    "confirmLocal": "Deine Notizen gehen dann jeden Morgen ohne Knopfdruck an das Modell deines Betreibers ({{model}}), das in seinem eigenen Netz läuft.",
+    "confirm": "Einschalten",
+    "waiting": "Automatisch ausformuliert, wartet auf dich",
+    "waitingText": "Lies den Entwurf durch und ändere, was du willst. Mit „Abnehmen“ wird daraus die Seite dieses Tages, mit „Verwerfen“ ist er weg.",
+    "accept": "Abnehmen",
+    "discard": "Verwerfen",
+    "cardYesterday": "Dein Entwurf von gestern wartet",
+    "cardDay": "Dein Entwurf vom {{date}} wartet",
+    "cardText": "Automatisch ausformuliert. Lies ihn durch und nimm ihn ab oder verwirf ihn.",
+    "cardMore_one": "Und {{count}} weiterer Entwurf wartet.",
+    "cardMore_other": "Und {{count}} weitere Entwürfe warten.",
+    "look": "Ansehen",
+    "mark": "Automatisch ausformuliert, wartet auf dich"
   }
 }

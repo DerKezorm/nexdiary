@@ -235,9 +235,13 @@ def visible_photos(db: Session, owner_id: int, day: str, content: dict[str, Any]
     cover_photo = covers.photo_of(cover)
     if cover_photo is not None:
         allowed.add(cover_photo)
+    # Pictures in the text belong to the text: seen with it, of this very day, whether they came with a note or not.
+    in_text = set(diary.text_photo_ids(content["text"])) & {row.uid for row in rows}
+    allowed |= in_text
     if with_notes:
         allowed |= _note_photo_ids(db, owner_id, day) & diary.photo_ids_of(db, owner_id)
-    listed = [{key: item[key] for key in ("id", "width", "height")} for item in of_the_day if item["id"] != cover_photo]
+    listed = [{key: item[key] for key in ("id", "width", "height")} for item in of_the_day
+              if item["id"] != cover_photo and item["id"] not in in_text]
     return cover, listed, allowed
 
 

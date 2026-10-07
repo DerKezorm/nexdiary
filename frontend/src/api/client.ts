@@ -132,7 +132,12 @@ export type Profile = {
   notify_login?: boolean
   /** When and how to be reminded (changed with `pushApi.reminder`). */
   reminder?: Reminder
+  /** Having yesterday written up in the morning on its own (changed with `aiApi.autowrite`). */
+  autowrite?: Autowrite
 }
+
+/** Off from the start; `time` is the person's own clock, 04:00 to 11:59. */
+export type Autowrite = { on: boolean; time: string; length: 'short' | 'long' }
 
 export type ReminderMode = 'never' | 'daily' | 'pause'
 export type Reminder = {
@@ -303,7 +308,7 @@ export type Photo = { id: string; date: string; source: 'upload' | 'immich'; wid
 /** Between 0:00 and 3:59 (`active`): the two days a note may belong to, and what the person answered (null: not yet). */
 export type Night = { active: false } | { active: true; today: string; yesterday: string; choice: 'yesterday' | 'today' | null }
 /** Days with notes and no page in the last sixty days, newest first. */
-export type CatchUp = { count: number; days: { date: string; notes: number; start: string }[] }
+export type CatchUp = { count: number; auto?: number; days: { date: string; notes: number; start: string; auto?: boolean }[] }
 
 /** `question`: the question of the day (writing prompts), null when the person switched questions off. `date` is
  * the day being kept: today, or after midnight the day the person said their notes belong to. */
@@ -340,8 +345,10 @@ export type Draft = {
   ai_length?: AiLength | null
   base_revision: number
   updated_at: string
+  /** Made by the morning writing and not touched since: it waits for the person and is no page yet. */
+  auto?: boolean
 }
-export type DraftIn = Omit<Draft, 'updated_at'>
+export type DraftIn = Omit<Draft, 'updated_at' | 'auto'>
 
 export const diaryApi = {
   today: () => api<TodayData>('/api/today'),
@@ -381,8 +388,8 @@ export type AiProvider = 'none' | 'local' | 'openai' | 'messages'
 export type AiLength = 'short' | 'long'
 /** What a person may know about the AI: whether there is one for them (`available`), of which kind, the host the notes
  * go to for a service on the internet (`to`), and the own switch (`mine`). */
-export type AiState = { provider: AiProvider; to: string; model: string; mine: boolean; allowed?: boolean; available: boolean }
-export type AiSettings = { provider: AiProvider; url: string; model: string; key_set: boolean }
+export type AiState = { provider: AiProvider; to: string; model: string; mine: boolean; allowed?: boolean; available: boolean; auto_allowed?: boolean }
+export type AiSettings = { provider: AiProvider; url: string; model: string; key_set: boolean; auto_allowed?: boolean }
 export type AiModel = { id: string; name: string }
 
 export const aiApi = {
@@ -391,6 +398,9 @@ export const aiApi = {
   formulate: (date: string, length: AiLength) => api<{ title: string; text: string; length: AiLength }>('/api/ai/formulate', { method: 'POST', body: { date, length } }),
   settings: () => api<AiSettings>('/api/settings/ai'),
   save: (change: Partial<Omit<AiSettings, 'key_set'>> & { key?: string }) => api<AiSettings>('/api/settings/ai', { method: 'PUT', body: change }),
+  /** Having yesterday written up in the morning on its own; switching it on needs `confirmed` (the person was told
+   * where the notes go). */
+  autowrite: (change: Partial<Autowrite> & { confirmed?: boolean }) => api<Autowrite>('/api/me/autowrite', { method: 'PUT', body: change }),
   models: (typed: { provider?: AiProvider; url?: string; key?: string }) => api<AiModel[]>('/api/settings/ai/models', { method: 'POST', body: typed }),
   probe: () => api<{ seconds: number }>('/api/settings/ai/probe', { method: 'POST' }),
 }
@@ -423,7 +433,15 @@ export const photosApi = {
  * back, only whether one is stored. */
 export type ImmichState = { allowed: boolean; connected: boolean; account_blocked?: boolean; url?: string; key_set?: boolean; suggest?: boolean; email?: string; version?: string }
 /** A photo of the own Immich on a day: its id there, when it was taken, and the photo taken from it, if one was. */
-export type ImmichPhoto = { id: string; taken_at: string; photo_id: string | null }
+export type ImmichPhoto = { id: string; taken_at: string; photo_id: string | null; uploaded_at?: string }
+/** A photo of the whole collection (no "taken already" mark: it is taken for whichever day is being written). */
+export type ImmichEntry = { id: string; taken_at: string }
+export type ImmichPage = { photos: ImmichEntry[]; next: number | null }
+export type ImmichSearch = ImmichPage & { mode: 'smart' | 'metadata' }
+/** Uploaded lately: `uploaded_at` is when it reached Immich, `taken_at` when it was shot. */
+export type ImmichRecent = { date: string; photos: ImmichPhoto[]; more: boolean }
+export type ImmichAlbum = { id: string; name: string; count: number; cover: string | null }
+export type ImmichAlbums = { available: boolean; needed?: string; albums: ImmichAlbum[] }
 export type ImmichDay = { date: string; photos: ImmichPhoto[]; more: boolean }
 export type ImmichProbe = { version: string; today: number; more: boolean; email: string }
 export type ImmichSettings = { allowed: boolean; hosts: string[]; connected: number }
@@ -436,8 +454,18 @@ export const immichApi = {
   disconnect: () => api<void>('/api/immich', { method: 'DELETE' }),
   probe: () => api<ImmichProbe>('/api/immich/probe', { method: 'POST' }),
   photos: (date?: string) => api<ImmichDay>('/api/immich/photos', { query: { date } }),
-  take: (asset: string, date?: string, note = false) =>
-    api<Photo>(`/api/immich/photos/${encodeURIComponent(asset)}`, { method: 'POST', body: { ...(date ? { date } : {}), ...(note ? { note: true } : {}) } }),
+  take: (asset: string, date?: string, note = false, anywhen = false) =>
+    api<Photo>(`/api/immich/photos/${encodeURIComponent(asset)}`, {
+      method: 'POST',
+      body: { ...(date ? { date } : {}), ...(note ? { note: true } : {}), ...(anywhen ? { anywhen: true } : {}) },
+    }),
+  /** The whole collection, newest first; `until` (a day or a month) starts with what was taken up to its end. */
+  timeline: (page = 1, until = '') => api<ImmichPage>('/api/immich/timeline', { query: { page, ...(until ? { until } : {}) } }),
+  recent: (date?: string) => api<ImmichRecent>('/api/immich/recent', { query: date ? { date } : {} }),
+  albums: () => api<ImmichAlbums>('/api/immich/albums'),
+  albumPhotos: (album: string, page = 1) => api<ImmichPage>(`/api/immich/albums/${encodeURIComponent(album)}/photos`, { query: { page } }),
+  /** The word travels in the body, never in an address. */
+  search: (q: string, page = 1) => api<ImmichSearch>('/api/immich/search', { method: 'POST', body: { q, page } }),
   settings: () => api<ImmichSettings>('/api/settings/immich'),
   saveSettings: (change: { allowed?: boolean; hosts?: string[] }) => api<ImmichSettings>('/api/settings/immich', { method: 'PUT', body: change }),
 }

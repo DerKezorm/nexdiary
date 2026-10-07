@@ -113,6 +113,8 @@ MESSAGES = {
     "immich_not_a_picture": "This photo is not a picture nexdiary takes.",
     "immich_other_day": "This photo was taken on another day.",
     "immich_busy": "Many photos are on their way right now. Try again in a moment.",
+    "immich_search_empty": "There is nothing to look for.",
+    "immich_until_invalid": "This is not a day or a month.",
 }
 
 
@@ -451,7 +453,8 @@ def _slot(account_id: int) -> Iterator[None]:
 #: Small pictures of one person on their way at once; the others wait in line (``waiting``) without holding a thread.
 THUMBS_AT_ONCE = 4
 #: Small pictures of one person that may wait in line: a day's photos and a few more.
-THUMBS_WAITING = LIMIT + 20
+#: One page of the timeline (``immich_browse.PAGE``) and some of the one before, still on their way.
+THUMBS_WAITING = 140
 _lines: dict[int, tuple[asyncio.Semaphore, list[int]]] = {}
 
 
@@ -724,8 +727,9 @@ def _download(db: Session, account_id: int, link: Link, asset: str, original: bo
 
 
 def take(db: Session, account_id: int, dek: bytes, asset: str, day: str, zone: tzinfo, moment: datetime,
-         on_note: bool = False) -> tuple[dict[str, Any], bool]:
-    """Copies one photo of the person's own Immich to a day: checked to be a still picture of that day, fetched,
+         on_note: bool = False, *, anywhen: bool = False) -> tuple[dict[str, Any], bool]:
+    """Copies one photo of the person's own Immich to a day: checked to be a still picture of that day (with
+    ``anywhen``: a still picture taken whenever, which then belongs to the day it is taken for), fetched,
     drawn anew without anything but its pixels and sealed (``photos``). The same photo taken again for the same
     purpose returns the photo that stands. An original nexdiary does not take (a RAW file, one too large) is taken
     from the large picture Immich made of it."""
@@ -738,7 +742,12 @@ def take(db: Session, account_id: int, dek: bytes, asset: str, day: str, zone: t
     info = _get_json(db, account_id, link, "GET", f"/api/assets/{asset}", "asset")
     if isinstance(info, dict) and str(info.get("id") or "").lower() != asset:
         raise fail("immich_unreadable", 502)
-    if _still(info, day, zone) is None:
+    if anywhen:
+        from .immich_browse import any_still
+
+        if any_still(info) is None:
+            raise fail("immich_not_a_picture", 422)
+    elif _still(info, day, zone) is None:
         if isinstance(info, dict) and info.get("type") == "IMAGE" and not info.get("isTrashed"):
             raise fail("immich_other_day", 422)
         raise fail("immich_not_a_picture", 422)

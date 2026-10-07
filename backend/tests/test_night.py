@@ -365,9 +365,9 @@ def test_days_with_notes_and_no_page_are_listed_newest_first_for_the_last_sixty_
     note(client, "zu alt", date="2026-08-07")  # 61 days: out
     note(client, "heute noch offen")  # the day being kept is not among them
     listed = client.get("/api/catch-up").json()
-    assert listed == {"count": 2, "days": [
-        {"date": "2026-10-05", "notes": 2, "start": "Kastanien gesammelt und dann noch lange gequatscht"},
-        {"date": "2026-08-09", "notes": 1, "start": "alt"},
+    assert listed == {"count": 2, "auto": 0, "days": [
+        {"date": "2026-10-05", "notes": 2, "start": "Kastanien gesammelt und dann noch lange gequatscht", "auto": False},
+        {"date": "2026-08-09", "notes": 1, "start": "alt", "auto": False},
     ]}
     assert client.get("/api/today").json()["catch_up"] == listed
 
@@ -390,7 +390,7 @@ def test_only_the_own_days_are_listed(client: TestClient, account: Account) -> N
     note(client, "meine", date="2026-10-05")
     with person("rita") as rita:
         zone(rita, "UTC")
-        assert rita.get("/api/catch-up").json() == {"count": 0, "days": []}
+        assert rita.get("/api/catch-up").json() == {"count": 0, "auto": 0, "days": []}
         note(rita, "ihre", date="2026-10-04")
         assert [item["date"] for item in rita.get("/api/catch-up").json()["days"]] == ["2026-10-04"]
     assert [item["date"] for item in client.get("/api/catch-up").json()["days"]] == ["2026-10-05"]
@@ -412,5 +412,5 @@ def test_a_photo_only_note_makes_a_day_with_no_start(client: TestClient, account
     shot = client.post("/api/photos", params={"upload_id": str(uuid.uuid4()), "note": "true", "date": "2026-10-05"},
                        content=picture()).json()
     client.post("/api/notes", json={"id": str(uuid.uuid4()), "text": "", "date": "2026-10-05", "photo_id": shot["id"]})
-    assert client.get("/api/catch-up").json()["days"] == [{"date": "2026-10-05", "notes": 1, "start": ""}]
+    assert client.get("/api/catch-up").json()["days"] == [{"date": "2026-10-05", "notes": 1, "start": "", "auto": False}]
 

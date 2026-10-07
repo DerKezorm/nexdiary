@@ -114,8 +114,10 @@ def system_of(body: dict[str, Any]) -> str:
 
 
 def test_there_is_no_ai_from_the_start_and_nothing_goes_out(client: TestClient, account: Account, model: Model) -> None:
-    assert client.get("/api/settings/ai").json() == {"provider": "none", "url": "", "model": "", "key_set": False}
-    assert client.get("/api/ai").json() == {"provider": "none", "to": "", "model": "", "mine": True, "allowed": True, "available": False}
+    assert client.get("/api/settings/ai").json() == {"provider": "none", "url": "", "model": "", "key_set": False,
+                                                       "auto_allowed": False}
+    assert client.get("/api/ai").json() == {"provider": "none", "to": "", "model": "", "mine": True, "auto_allowed": False,
+                                                   "allowed": True, "available": False}
     note(client, "kastanien gesammelt")
     refused = formulate(client)
     assert (refused.status_code, refused.json()["detail"]["code"]) == (403, "ai_off")
@@ -138,7 +140,8 @@ def test_only_the_operator_chooses_the_service(client: TestClient, account: Acco
 def test_the_key_is_never_shown_and_belongs_to_its_address(client: TestClient, account: Account, model: Model) -> None:
     key = set_up(client)
     view = client.get("/api/settings/ai")
-    assert view.json() == {"provider": "openai", "url": CLOUD + "/", "model": "model-a", "key_set": True}
+    assert view.json() == {"provider": "openai", "url": CLOUD + "/", "model": "model-a", "key_set": True,
+                          "auto_allowed": False}
     assert key not in view.text
     # Another model keeps the key.
     assert client.put("/api/settings/ai", json={"model": "model-b"}).json()["key_set"] is True
@@ -314,7 +317,8 @@ def test_each_person_may_switch_the_ai_off_for_themselves(client: TestClient, ac
         note(ben, "bens notiz")
         note(client, "jules notiz")
         assert ben.get("/api/ai").json() == {"provider": "openai", "to": "ai.example.com", "model": "model-a",
-                                             "mine": True, "allowed": True, "available": True}
+                                             "mine": True, "auto_allowed": False,
+                                             "allowed": True, "available": True}
         assert ben.put("/api/me/preferences", json={"ai": False}).json()["ai"] is False
         assert ben.get("/api/ai").json()["available"] is False and ben.get("/api/ai").json()["mine"] is False
         refused = formulate(ben)
@@ -329,7 +333,8 @@ def test_a_local_model_is_not_named_to_the_members(client: TestClient, account: 
     set_up(client, "local", LOCAL, model_name="llama3.1:8b")
     with person("ben") as ben:
         state = ben.get("/api/ai").json()
-        assert state == {"provider": "local", "to": "", "model": "llama3.1:8b", "mine": True, "allowed": True, "available": True}
+        assert state == {"provider": "local", "to": "", "model": "llama3.1:8b", "mine": True, "auto_allowed": False,
+                                             "allowed": True, "available": True}
         assert "ollama" not in ben.get("/api/ai").text
 
 

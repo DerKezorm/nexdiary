@@ -47,7 +47,19 @@ from .routers import settings as settings_router
 from .routers import totp as totp_router
 from .routers import v1 as v1_router
 from .security import HashingBusy, purge_sessions
-from .services import accounts, backups, locales, logs, notices, pictures, reminders, settings_service, totp, vault
+from .services import (
+    accounts,
+    autowrite,
+    backups,
+    locales,
+    logs,
+    notices,
+    pictures,
+    reminders,
+    settings_service,
+    totp,
+    vault,
+)
 from .services import apitokens as apitokens_service
 from .services import passkeys as passkeys_service
 
@@ -116,6 +128,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         tasks.append(asyncio.create_task(backups.run_forever(stop)))
         tasks.append(asyncio.create_task(_sweep_forever(stop)))
         tasks.append(asyncio.create_task(reminders.run_forever(stop)))
+        tasks.append(asyncio.create_task(autowrite.run_forever(stop)))
     logger.info("nexdiary %s started", __version__)
     with SessionLocal() as db:
         accounts.announce_setup_code(db)

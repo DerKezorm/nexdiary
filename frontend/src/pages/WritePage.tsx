@@ -29,8 +29,10 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 
-import { aiApi, ApiError, diaryApi, photosApi, photoUrl, promptsApi, type AiLength, type DayChange, type DayPage, type DraftIn, type ImmichPhoto, type Note, type Photo, type Question } from '../api/client'
+import { aiApi, ApiError, diaryApi, immichApi, photosApi, photoUrl, promptsApi, type AiLength, type DayChange, type DayPage, type DraftIn, type ImmichEntry, type ImmichPhoto, type Note, type Photo, type Question } from '../api/client'
+import { DayPhotoPicker } from '../components/DayPhotoPicker'
 import { Dialog } from '../components/Dialog'
+import { ImmichPicker } from '../components/ImmichPicker'
 import { LockDialog, LockedMark } from '../components/LockDay'
 import { TagPicker } from '../components/TagPicker'
 import { CoverImage, CoverPicker, defaultCover } from '../covers/Cover'
@@ -43,7 +45,7 @@ import { errorText } from '../lib/errors'
 import { uploadPhoto } from '../lib/upload'
 import { useAiState } from '../state/ai'
 import { useAuth } from '../state/auth'
-import { useImmichDay } from '../state/immich'
+import { useImmichDay, useImmichReady } from '../state/immich'
 
 /** After the last key, how long until the draft goes out; and the longest it waits while somebody types on. */
 const DRAFT_PAUSE_MS = 1500
@@ -143,6 +145,13 @@ export default function WritePage() {
   const [copied, setCopied] = useState(false)
   const [editorEmpty, setEditorEmpty] = useState(true)
   const [picking, setPicking] = useState(false)
+  /** Where a picture for the text or the cover is picked from: the whole collection of the own Immich, or the photos
+   * kept for the day. */
+  const [chooser, setChooser] = useState<'text' | 'cover' | 'day' | null>(null)
+  const [imaging, setImaging] = useState(false)
+  const immichReady = useImmichReady()
+  /** The draft that stands is one the morning writing made and nobody has accepted yet. */
+  const [autoDraft, setAutoDraft] = useState(false)
   // The photos of the day in the own Immich, asked for only while the cover is being chosen.
   const immich = useImmichDay(date, picking)
   const [uploading, setUploading] = useState(false)
@@ -212,6 +221,7 @@ export default function WritePage() {
           touched.current = new Set(FIELDS.filter((field) => !same(kept[field], (started.current ?? server)[field]) || started.current === null))
           sentDraft.current = JSON.stringify({ ...kept, base_revision: draft.base_revision })
           setRestored(timeOf(draft.updated_at, zone))
+          setAutoDraft(Boolean(draft.auto))
         } else {
           setPage(server)
           latest.current = { page: server, base: found?.revision ?? -1, origin: latest.current.origin }
@@ -425,6 +435,7 @@ export default function WritePage() {
       // Replaced by the next draft anyway.
     }
     setRestored(null)
+    setAutoDraft(false)
     const server = pageOf(day)
     setPage(server)
     setOrigin({ by: null, length: 'long' })
@@ -456,6 +467,37 @@ export default function WritePage() {
     if (!photo) return null
     setPhotos((current) => (current.some((item) => item.id === photo.id) ? current : [...current, photo]))
     return photo.id
+  }
+
+  const keepPhotoHere = (photo: Photo) => setPhotos((current) => (current.some((item) => item.id === photo.id) ? current : [...current, photo]))
+
+  /** A photo from the device (camera or file) into the text, as a block of its own where the caret is. */
+  const insertFromFile = async (file: File) => {
+    setImaging(true)
+    setProblem(null)
+    try {
+      const photo = await uploadPhoto(file, date)
+      keepPhotoHere(photo)
+      editor.current?.insertPhoto(photo.id)
+    } catch (error) {
+      setProblem(codeOf(error))
+    } finally {
+      setImaging(false)
+    }
+  }
+
+  /** A photo of the whole collection of the own Immich into the text; it becomes a photo of this day. */
+  const pickForText = async (entry: ImmichEntry) => {
+    const photo = await immichApi.take(entry.id, date, false, true)
+    keepPhotoHere(photo)
+    editor.current?.insertPhoto(photo.id)
+  }
+
+  /** The same, as the cover of the day. */
+  const pickForCover = async (entry: ImmichEntry) => {
+    const photo = await immichApi.take(entry.id, date, false, true)
+    keepPhotoHere(photo)
+    changed({ cover: `photo:${photo.id}` })
   }
 
   const back = async () => {
@@ -628,7 +670,21 @@ export default function WritePage() {
         </div>
         <div ref={setToolbarHost} />
         </div>
-        {restored && (
+        {restored && autoDraft && (
+          <Notice>
+            <span className="block font-semibold">{t('autowrite.waiting')}</span>
+            <span className="mt-1 block text-ink-2">{t('autowrite.waitingText')}</span>
+            <span className="mt-3 flex flex-wrap gap-2" data-auto-draft>
+              <button type="button" onClick={() => void save()} disabled={!canSave} className="inline-flex h-8 items-center rounded-full bg-accent px-3.5 text-sm font-semibold text-accent-ink disabled:opacity-50">
+                {t('autowrite.accept')}
+              </button>
+              <button type="button" onClick={() => void discardDraft()} className="inline-flex h-8 items-center rounded-full px-3.5 text-sm font-semibold text-ink-2 hover:bg-sheet-2">
+                {t('autowrite.discard')}
+              </button>
+            </span>
+          </Notice>
+        )}
+        {restored && !autoDraft && (
           <Notice>
             {t('write.draftBack', { time: restored })}{' '}
             <button type="button" onClick={() => void discardDraft()} className="font-semibold text-accent underline-offset-2 hover:underline">
@@ -750,6 +806,12 @@ export default function WritePage() {
                 }}
                 onEmptyChange={setEditorEmpty}
                 toolbarHost={toolbarHost}
+                images={{
+                  busy: imaging,
+                  onFile: (file) => void insertFromFile(file),
+                  onImmich: immichReady ? () => setChooser('text') : undefined,
+                  onDay: photos.length > 0 ? () => setChooser('day') : undefined,
+                }}
                 placeholder={t('write.bodyPlaceholder')}
                 label={t('write.bodyLabel')}
               />
@@ -773,6 +835,7 @@ export default function WritePage() {
         )}
         <section className="card p-5">
           <h2 className="mb-3 font-display text-lg font-semibold">{t('write.yourNotes')}</h2>
+          {notes.some((note) => note.photo_id) && <p className="-mt-1 mb-3 text-xs text-muted">{t('write.noteInsertHint')}</p>}
           {notes.length === 0 ? (
             <p className="text-sm text-muted">{t('write.noNotes')}</p>
           ) : (
@@ -783,7 +846,18 @@ export default function WritePage() {
                   <span className="min-w-0 text-ink-2">
                     {note.prompt && <span className="block font-serif text-accent italic">{note.prompt}</span>}
                     {note.text}
-                    {note.photo_id && <img src={photoUrl(note.photo_id, true)} alt={t('photos.alt')} className="mt-1.5 h-16 w-24 rounded-lg object-cover" />}
+                    {note.photo_id && (
+                      <button
+                        type="button"
+                        onClick={() => editor.current?.insertPhoto(note.photo_id as string)}
+                        disabled={!loaded || formulating}
+                        title={t('write.noteInsert')}
+                        aria-label={t('write.noteInsert')}
+                        className="mt-1.5 block overflow-hidden rounded-lg ring-accent transition hover:ring-2 focus-visible:ring-2 disabled:opacity-50"
+                      >
+                        <img src={photoUrl(note.photo_id, true)} alt={t('photos.alt')} className="h-16 w-24 object-cover" draggable={false} />
+                      </button>
+                    )}
                   </span>
                 </li>
               ))}
@@ -848,8 +922,20 @@ export default function WritePage() {
           taking={immich.taking}
           problem={immich.problem}
           onImmich={takeFromImmich}
+          onMoreImmich={
+            immichReady
+              ? () => {
+                  setPicking(false)
+                  setChooser('cover')
+                }
+              : undefined
+          }
         />
       )}
+
+      {chooser === 'text' && <ImmichPicker date={date} onClose={() => setChooser(null)} onPick={pickForText} />}
+      {chooser === 'cover' && <ImmichPicker date={date} onClose={() => setChooser(null)} onPick={pickForCover} />}
+      {chooser === 'day' && <DayPhotoPicker photos={photos} onPick={(photo) => editor.current?.insertPhoto(photo.id)} onClose={() => setChooser(null)} />}
     </div>
   )
 }

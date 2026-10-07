@@ -218,7 +218,7 @@ export function SharedEntryPage() {
             </div>
           </div>
           <h1 className="mt-6 mb-6 font-display text-3xl font-semibold tracking-tight break-words sm:text-[2.6rem] sm:leading-tight">{day.title || t('journal.untitled')}</h1>
-          <Markdown text={day.text} />
+          <Markdown text={day.text} photo={(id) => src(id, false)} />
           {day.photos.length > 0 && (
             <div className="mt-6 grid grid-cols-2 gap-3">
               {day.photos.map((photo) => (

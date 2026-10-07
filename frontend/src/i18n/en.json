@@ -118,7 +118,10 @@
     "loading": "Loading …",
     "onlyNotes": "Notes only, no page yet",
     "untitled": "Untitled",
-    "unreadable": "This day cannot be read."
+    "unreadable": "This day cannot be read.",
+    "view": "View",
+    "viewBlog": "Blog",
+    "viewTimeline": "Timeline"
   },
   "stats": {
     "title": "Statistics",
@@ -386,7 +389,7 @@
       "url": "Address of Immich",
       "key": "API key",
       "keyKept": "stored, leave empty to keep",
-      "keyHint": "In Immich under Account Settings → API Keys, with the permissions “asset.read”, “asset.view” and “asset.download”.",
+      "keyHint": "In Immich under Account Settings → API Keys, with the permissions “asset.read”, “asset.view” and “asset.download”. Optionally “album.read” as well, so that you can browse albums too.",
       "suggest": "Suggest the photos of the day",
       "suggestHint": "“Today” shows the photos you took on that day.",
       "save": "Save and check",
@@ -972,7 +975,9 @@
       "outgoing": "What goes out: when someone presses \"Write it up\", the notes of that one day with their times and, where a note answers a question, with the question. Without the name of the account, without the date, without photos and without ratings. Nothing else. Whoever does not want that switches the AI off in their account.",
       "saved": "Saved.",
       "keyOptional": "API key (if needed)",
-      "keyLocalHint": "Only when the service asks for one, such as LiteLLM. Ollama needs none."
+      "keyLocalHint": "Only when the service asks for one, such as LiteLLM. Ollama needs none.",
+      "autoAllowed": "Allow writing up automatically",
+      "autoAllowedHint": "Off: nobody can have the day before written up on its own in the morning. On: each person decides in their own account, where it is off from the start. The notes then go to the service set up here without a press of a button."
     },
     "immich": {
       "title": "Immich",
@@ -1038,7 +1043,15 @@
     "heading": "Subheading",
     "quote": "Quote",
     "list": "List",
-    "undo": "Undo"
+    "undo": "Undo",
+    "image": "Insert picture",
+    "imageCamera": "Take a photo",
+    "imageFile": "Upload a file",
+    "imageImmich": "From Immich",
+    "imageDay": "From the photos of this day",
+    "imageDayTitle": "Insert a photo of this day",
+    "imageDayNone": "There is no photo for this day yet.",
+    "imageDayPick": "Insert photo"
   },
   "write": {
     "finishTitle": "Write the day up",
@@ -1093,7 +1106,9 @@
     "aiDraftTitle": "Keep the draft?",
     "aiDraftText": "There is a draft for this day already. You can keep it, or have the AI write it up anew from your notes; the draft is lost then. Your notes stay as they are.",
     "aiDraftKeep": "Keep the draft",
-    "aiDraftAnew": "Write it up anew"
+    "aiDraftAnew": "Write it up anew",
+    "noteInsert": "Insert into the text",
+    "noteInsertHint": "Tapping it puts it into the text."
   },
   "covers": {
     "title": "Cover for this day",
@@ -1146,7 +1161,8 @@
     },
     "deletePhoto": "Delete photo",
     "deleteAsk": "Delete this photo?",
-    "deleteYes": "Delete"
+    "deleteYes": "Delete",
+    "moreImmich": "More from Immich"
   },
   "photos": {
     "title": "Photos of today",
@@ -1161,7 +1177,11 @@
     "alt": "Photo",
     "fromImmich": "from Immich · {{count}} chosen",
     "immichAway": "Immich cannot be reached right now. Everything else works as always.",
-    "pick": "Take photo"
+    "pick": "Take photo",
+    "newInImmich": "New in Immich",
+    "allImmich": "All photos",
+    "takeOrPick": "Take or choose a photo",
+    "fromImmichNote": "From Immich"
   },
   "errors": {
     "day_locked": "This day is locked for good and cannot be changed any more.",
@@ -1379,7 +1399,12 @@
     "immich_tls": "The certificate of your Immich is not trusted (made by oneself, for example). Use http in the home network, or give Immich a valid certificate.",
     "reset_invalid": "This link does not work any more.",
     "reset_off": "This is not set up on this server. Ask the operator.",
-    "use_account_page": "You change your own password under My account."
+    "use_account_page": "You change your own password under My account.",
+    "ai_auto_off": "Your operator has not allowed writing up days automatically.",
+    "autowrite_unconfirmed": "Switching this on needs the confirmation of where the notes go.",
+    "bad_autowrite": "nexdiary does not offer this value.",
+    "immich_search_empty": "Type a search term.",
+    "immich_until_invalid": "This is not a day or a month."
   },
   "entry": {
     "back": "← Journal",
@@ -1471,5 +1496,66 @@
       "ok": "Last on {{when}}. Keep it apart from the backups.",
       "warn": "Never saved. Without it a backup cannot be read: Server, Backups, Save master key."
     }
+  },
+  "textPhoto": {
+    "gone": "This photo is gone.",
+    "up": "Move up",
+    "down": "Move down",
+    "remove": "Remove picture",
+    "caption": "Caption"
+  },
+  "immichPicker": {
+    "title": "Choose from Immich",
+    "intro": "Your whole collection, newest photos first. A photo is copied only when you tap it, and then belongs to this day, whenever it was taken.",
+    "ways": "How to look?",
+    "all": "All photos",
+    "albums": "Albums",
+    "search": "Search",
+    "take": "Use photo",
+    "loading": "Loading …",
+    "more": "Load more",
+    "dayBefore": "One day earlier",
+    "dayAfter": "One day later",
+    "jumpDay": "Jump to a day",
+    "jumpMonth": "Jump to a month",
+    "thisDay": "To this day",
+    "newest": "To the newest",
+    "nothing": "No photos found.",
+    "unnamed": "Untitled",
+    "albumCount_one": "{{count}} photo",
+    "albumCount_other": "{{count}} photos",
+    "noAlbums": "There are no albums.",
+    "allAlbums": "All albums",
+    "albumEmpty": "This album has no photos.",
+    "searchPlaceholder": "What is in the photo? For example beach or birthday",
+    "searchLabel": "Search term",
+    "searchDo": "Search",
+    "smart": "Immich looks for what can be seen in the photos.",
+    "metadata": "Smart search is not switched on in Immich. This looks in description, place and file name.",
+    "searchHint": "Type a term and press “Search”.",
+    "searchNothing": "There are no photos for that.",
+    "noAlbumRight": "Albums are missing here because the API key lacks the permission “album.read”. Everything else works without it."
+  },
+  "autowrite": {
+    "title": "Write up automatically",
+    "hint": "Every morning your notes of yesterday become a draft, without you pressing anything. It waits for you until you accept it.",
+    "time": "Time",
+    "length": "Length",
+    "note": "The draft counts as a page only once you accept it: it is in no streak, no statistics and cannot be shared. Each day is tried once.",
+    "confirmTitle": "Switch on writing up automatically?",
+    "confirmCloud": "Your notes will then go to {{to}} every morning without a press of a button.",
+    "confirmLocal": "Your notes will then go to your operator's model ({{model}}), which runs in their own network, every morning without a press of a button.",
+    "confirm": "Switch on",
+    "waiting": "Written up automatically, waiting for you",
+    "waitingText": "Read the draft and change what you like. “Accept” turns it into the page of this day, “Discard” throws it away.",
+    "accept": "Accept",
+    "discard": "Discard",
+    "cardYesterday": "Your draft from yesterday is waiting",
+    "cardDay": "Your draft from {{date}} is waiting",
+    "cardText": "Written up automatically. Read it and accept it, or discard it.",
+    "cardMore_one": "And {{count}} more draft is waiting.",
+    "cardMore_other": "And {{count}} more drafts are waiting.",
+    "look": "Take a look",
+    "mark": "Written up automatically, waiting for you"
   }
 }

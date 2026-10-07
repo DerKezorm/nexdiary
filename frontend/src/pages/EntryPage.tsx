@@ -9,9 +9,10 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 
-import { ApiError, diaryApi, journalApi, photosApi, photoUrl, sharingApi, type DayPage, type DayShares, type ImmichPhoto, type JournalDay, type Note, type Photo, type ValueDef } from '../api/client'
+import { ApiError, diaryApi, immichApi, journalApi, photosApi, photoUrl, sharingApi, type DayPage, type DayShares, type ImmichEntry, type ImmichPhoto, type JournalDay, type Note, type Photo, type ValueDef } from '../api/client'
 import { Avatar } from '../components/Avatar'
 import { LockDialog, LockedMark } from '../components/LockDay'
+import { ImmichPicker } from '../components/ImmichPicker'
 import { Markdown } from '../components/Markdown'
 import { ShareDialog } from '../components/ShareDialog'
 import { YearAgo } from '../components/YearAgo'
@@ -20,8 +21,9 @@ import { addDays, longDate, timeOf, yearBefore } from '../lib/dates'
 import { errorText } from '../lib/errors'
 import { nameOf } from '../lib/people'
 import { uploadPhoto } from '../lib/upload'
+import { textPhotoIds } from '../lib/markdown'
 import { useAuth } from '../state/auth'
-import { useImmichDay } from '../state/immich'
+import { useImmichDay, useImmichReady } from '../state/immich'
 
 type Loaded = { day: DayPage; notes: Note[]; photos: Photo[]; values: ValueDef[]; shares: DayShares }
 
@@ -38,6 +40,9 @@ export function EntryPage() {
   const [share, setShare] = useState(false)
   const [locking, setLocking] = useState(false)
   const [picking, setPicking] = useState(false)
+  /** The whole collection of the own Immich, to pick the cover from (the cover picker closes for it). */
+  const [collection, setCollection] = useState(false)
+  const immichReady = useImmichReady()
   const [uploading, setUploading] = useState(false)
   // The photos of the day in the own Immich, asked for only while the cover is being chosen.
   const immich = useImmichDay(date, picking)
@@ -102,6 +107,13 @@ export function EntryPage() {
     return photo.id
   }
 
+  /** A photo of the whole collection, whenever it was shot, becomes a photo of this day and its cover. */
+  const takeAny = async (entry: ImmichEntry) => {
+    const photo = await immichApi.take(entry.id, date, false, true)
+    setData((current) => (current ? { ...current, photos: current.photos.some((item) => item.id === photo.id) ? current.photos : [...current.photos, photo] } : current))
+    await setCover(`photo:${photo.id}`)
+  }
+
   const removePhoto = async (photo: Photo) => {
     try {
       await photosApi.remove(photo.id)
@@ -125,7 +137,8 @@ export function EntryPage() {
   const { day, notes, photos, values, shares } = data
   const onNotes = new Set(notes.map((note) => note.photo_id).filter(Boolean))
   const coverPhoto = day.cover.startsWith('photo:') ? day.cover.slice('photo:'.length) : null
-  const dayPhotos = photos.filter((photo) => !photo.on_note && !onNotes.has(photo.id) && photo.id !== coverPhoto)
+  const inText = new Set(textPhotoIds(day.text))
+  const dayPhotos = photos.filter((photo) => !photo.on_note && !onNotes.has(photo.id) && photo.id !== coverPhoto && !inText.has(photo.id))
   // A cover taken from the notes goes to whoever the day is shared with, notes or not: the dialog says so.
   const coverFromNotes = coverPhoto !== null && (onNotes.has(coverPhoto) || photos.some((photo) => photo.id === coverPhoto && photo.on_note))
   const rated = values.filter((value) => day.values[value.id] !== undefined)
@@ -287,8 +300,17 @@ export function EntryPage() {
           taking={immich.taking}
           problem={immich.problem}
           onImmich={takeFromImmich}
+          onMoreImmich={
+            immichReady
+              ? () => {
+                  setPicking(false)
+                  setCollection(true)
+                }
+              : undefined
+          }
         />
       )}
+      {collection && !day.locked && <ImmichPicker date={date} onClose={() => setCollection(false)} onPick={takeAny} />}
     </div>
   )
 }

@@ -28,7 +28,8 @@ def test_a_display_name_is_not_too_long_and_has_no_control_characters(client: Te
 
 DEFAULTS = {"palette": "salbei", "mode": "system", "layout": "page", "quick_start": True, "journal": "blog", "timezone_source": "browser",
             "ai": True, "notify_login": True, "timezone": "",
-            "reminder": {"mode": "daily", "time": "20:30", "days": 2, "skip_if_written": True, "with_prompt": True}}
+            "reminder": {"mode": "daily", "time": "20:30", "days": 2, "skip_if_written": True, "with_prompt": True},
+            "autowrite": {"on": False, "time": "07:00", "length": "long"}}
 
 
 def test_light_or_dark_is_kept_with_the_account(client: TestClient, account: Account) -> None:

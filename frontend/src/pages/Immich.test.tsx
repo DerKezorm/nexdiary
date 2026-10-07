@@ -43,7 +43,8 @@ function serve(): void {
       const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
       if (url.startsWith('/api/today')) return json(today)
       if (url === '/api/ai') return json({ provider: 'none', to: '', model: '', mine: true, available: false })
-      if (url.startsWith('/api/immich/photos?') || url === '/api/immich/photos') return json(day.data, day.status)
+      // "Today" shows what was uploaded lately; the writing view and the cover picker the photos of their day.
+      if (url.startsWith('/api/immich/recent') || url.startsWith('/api/immich/photos?') || url === '/api/immich/photos') return json(day.data, day.status)
       if (url === `/api/immich/photos/${A1}` && method === 'POST') return json(PHOTO, 201)
       if (url === `/api/photos/${PHOTO.id}` && method === 'DELETE') return new Response(null, { status: 204 })
       if (url === '/api/immich' && method === 'GET') return json(state)

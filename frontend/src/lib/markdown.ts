@@ -14,6 +14,10 @@
  * closing mark of its kind, so an opener of the same kind inside finds none, and marks nest at most as deep as there
  * are kinds (`*`, `**`, `_`, `__`).
  *
+ * One picture is known: `![caption](photo:<id>)` on a line of its own, the id of one of the person's own photos (the
+ * server keeps only those). Every other picture, an address or `data:` or `photo:` anywhere else, is nothing but the
+ * characters it is written with and is never loaded.
+ *
  * `tame` gives the same limits to the editor: its parser (remark) takes seconds or overflows the stack on such texts.
  */
 export type Inline = { kind: 'text'; text: string } | { kind: 'break' } | { kind: 'strong' | 'em'; children: Inline[] }
@@ -23,6 +27,10 @@ export type Block =
   | { kind: 'heading'; children: Inline[] }
   | { kind: 'quote'; children: Block[] }
   | { kind: 'list'; ordered: boolean; start: number; items: Block[][] }
+  | { kind: 'photo'; id: string; caption: string }
+
+/** A picture of the page: a line holding nothing but `![caption](photo:<id>)`. */
+export const PHOTO_LINE = /^ {0,3}!\[((?:\\.|[^\]\\\n]){0,300})\]\(photo:([0-9a-f]{32})\)[ \t]*$/
 
 /** How deep quotes and lists nest: deeper than any page is written, shallow enough for any stack. */
 export const MAX_DEPTH = 20
@@ -99,9 +107,18 @@ function blocks(lines: string[], depth: number): Block[] {
       paragraph.push(lines[index])
       index++
     }
-    out.push({ kind: 'paragraph', children: parseInline(paragraph.join(NEWLINE)) })
+    // A picture stands alone in its paragraph, as the editor writes it; beside words it is just those characters.
+    // Only at the top of the page, as in the editor: in a quote or a list it is the words of its caption.
+    const picture = depth === 0 && paragraph.length === 1 ? PHOTO_LINE.exec(paragraph[0]) : null
+    if (picture) out.push({ kind: 'photo', id: picture[2], caption: unescapeText(picture[1]) })
+    else out.push({ kind: 'paragraph', children: parseInline(paragraph.join(NEWLINE)) })
   }
   return out
+}
+
+/** The characters a backslash stands before are themselves. */
+function unescapeText(text: string): string {
+  return text.replace(/\\([!-/:-@[-`{-~])/g, '$1')
 }
 
 function parseList(lines: string[], from: number, depth: number): [Block, number] {
@@ -314,6 +331,9 @@ export function plainText(markdown: string): string {
         words.push(' ')
         for (let i = node.children.length - 1; i >= 0; i--) stack.push(node.children[i])
         break
+      case 'photo':
+        words.push(' ')
+        break
       case 'quote':
         words.push(' ')
         for (let i = node.children.length - 1; i >= 0; i--) stack.push(node.children[i])
@@ -363,6 +383,8 @@ function blockMarkdown(nodes: Block[]): string {
         case 'paragraph':
           // Spaces at its start would make a paragraph code to the editor.
           return inlineMarkdown(node.children).trimStart()
+        case 'photo':
+          return `![${escapeText(node.caption)}](photo:${node.id})`
         case 'heading':
           return '## ' + inlineMarkdown(node.children)
         case 'quote':
@@ -411,4 +433,10 @@ function countMarks(markdown: string): number {
     else if (char === '*' || char === '_') count++
   }
   return count
+}
+
+/** The photos a page shows inside its text, in order, each once (the ones that stand on a line of their own). */
+export function textPhotoIds(markdown: string): string[] {
+  const ids = parseBlocks(markdown).flatMap((block) => (block.kind === 'photo' ? [block.id] : []))
+  return [...new Set(ids)]
 }

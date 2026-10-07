@@ -8,14 +8,15 @@
  * the day stands under the field; its answer becomes a note with the question. With Immich connected, the photos taken
  * there today are suggested in "Fotos von heute" and copied only when chosen.
  */
-import { ArrowUp, Camera, Check, Flame, ImagePlus, Loader2, MessageCircleQuestion, PenLine, Shuffle, Sparkles, Trash2, X } from 'lucide-react'
+import { ArrowUp, Check, Flame, ImagePlus, Images, Loader2, MessageCircleQuestion, PenLine, Shuffle, Sparkles, Trash2, X } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
-import { immichThumbUrl, photoUrl, type AiLength, type AiState, type ImmichPhoto, type Note, type TodayData, type ValueDef } from '../api/client'
-import { CatchUpCard } from '../components/CatchUp'
+import { immichApi, immichThumbUrl, photoUrl, type AiLength, type AiState, type ImmichEntry, type ImmichPhoto, type Note, type TodayData, type ValueDef } from '../api/client'
+import { AutoDraftCard, CatchUpCard } from '../components/CatchUp'
 import { Dialog } from '../components/Dialog'
+import { ImmichPicker } from '../components/ImmichPicker'
 import { LockedMark } from '../components/LockDay'
 import { NightDialog, NightHint } from '../components/NightChoice'
 import { NoteMenu } from '../components/NoteMenu'
@@ -25,6 +26,7 @@ import { longDate, timeOf } from '../lib/dates'
 import { errorText } from '../lib/errors'
 import { PHOTO_ACCEPT } from '../lib/upload'
 import { PendingPhoto, usePendingPhoto } from '../components/PendingPhoto'
+import { PhotoSourceButton } from '../components/PhotoSource'
 import { aiHint } from '../lib/aiProviders'
 import { useAiState } from '../state/ai'
 import { useImmichDay } from '../state/immich'
@@ -163,6 +165,7 @@ function Before({ today }: { today: TodayState }) {
           <LockedMark /> {t('today.lockedDay')}
         </p>
       )}
+      <AutoDraftCard data={data.catch_up} today={data.date} />
       <CatchUpCard data={data.catch_up} />
     </div>
   )
@@ -296,11 +299,13 @@ function FinishCard({ today, ai }: { today: TodayState; ai: AiState | null }) {
  * chosen with a tap (copied to the day only then) and put back with another; then the own uploads, each with its time,
  * and a tile to add one. Immich not answering leaves a quiet line; everything else goes on. */
 function PhotosBlock({ today, bare = false }: { today: TodayState; bare?: boolean }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { me } = useAuth()
   const [busy, setBusy] = useState(false)
   const file = useRef<HTMLInputElement>(null)
-  const immich = useImmichDay(today.data?.date)
+  // What was uploaded lately, not what was shot today: Immich often receives a phone's photos hours late.
+  const immich = useImmichDay(today.data?.date, true, 'recent')
+  const [choosing, setChoosing] = useState(false)
   // The photos of the day itself; a photo that came with a note stands with its note.
   const onNotes = new Set((today.data?.notes ?? []).map((note) => note.photo_id).filter(Boolean))
   const photos = (today.data?.photos ?? []).filter((photo) => !photo.on_note && !onNotes.has(photo.id))
@@ -325,28 +330,47 @@ function PhotosBlock({ today, bare = false }: { today: TodayState; bare?: boolea
     if (photo) today.keepPhoto(photo)
   }
   const extra = immich.photos ? t('photos.fromImmich', { count: suggested.filter(chosen).length }) : t('photos.count', { count: photos.length })
+  const zone = me?.profile?.timezone
+  /** Any photo of the whole collection, copied for today. */
+  const pickAny = async (entry: ImmichEntry) => {
+    const day = today.data?.date
+    if (!day) return
+    const photo = await immichApi.take(entry.id, day, false, true)
+    today.keepPhoto(photo)
+  }
   return (
     <Block title={t('photos.title')} bare={bare} extra={<span className="text-sm text-muted">{extra}</span>}>
+      {immich.connected && (
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <span className="text-xs font-bold tracking-wide text-muted uppercase">{suggested.length > 0 ? t('photos.newInImmich') : ''}</span>
+          <button type="button" onClick={() => setChoosing(true)} className="inline-flex h-8 items-center gap-1.5 rounded-full bg-sheet-2 px-3 text-xs font-semibold text-ink-2 hover:bg-accent-soft hover:text-accent">
+            <Images size={14} aria-hidden /> {t('photos.allImmich')}
+          </button>
+        </div>
+      )}
       <div className="scroll-x -mx-1 flex gap-2.5 overflow-x-auto px-1 pb-1">
         {suggested.map((entry) => {
           const on = chosen(entry)
-          const time = timeOf(entry.taken_at, me?.profile?.timezone)
+          const shot = new Intl.DateTimeFormat(i18n.language, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: zone || undefined }).format(new Date(entry.taken_at))
           return (
-            <button
-              key={entry.id}
-              type="button"
-              onClick={() => void toggle(entry)}
-              disabled={immich.taking !== null}
-              className="relative shrink-0 overflow-hidden rounded-xl"
-              aria-pressed={on}
-              aria-label={`${t('photos.pick')} ${time}`}
-            >
-              <img src={immichThumbUrl(entry.id)} alt="" className={`h-24 w-32 object-cover transition ${on ? '' : 'opacity-75 saturate-50'}`} draggable={false} />
-              <span className="absolute bottom-1 left-1.5 rounded bg-black/35 px-1 text-[0.68rem] font-bold text-white">{time}</span>
-              <span className={`absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white ${on ? 'bg-accent text-accent-ink' : 'bg-black/20'}`}>
-                {immich.taking === entry.id ? <Loader2 size={13} className="animate-spin text-white" aria-hidden /> : on && <Check size={14} strokeWidth={3} aria-hidden />}
+            <div key={entry.id} className="w-32 shrink-0">
+              <button
+                type="button"
+                onClick={() => void toggle(entry)}
+                disabled={immich.taking !== null}
+                className="relative block w-full overflow-hidden rounded-xl"
+                aria-pressed={on}
+                aria-label={`${t('photos.pick')} ${shot}`}
+              >
+                <img src={immichThumbUrl(entry.id)} alt="" className={`h-24 w-32 object-cover transition ${on ? '' : 'opacity-75 saturate-50'}`} draggable={false} />
+                <span className={`absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white ${on ? 'bg-accent text-accent-ink' : 'bg-black/20'}`}>
+                  {immich.taking === entry.id ? <Loader2 size={13} className="animate-spin text-white" aria-hidden /> : on && <Check size={14} strokeWidth={3} aria-hidden />}
+                </span>
+              </button>
+              <span className="mt-1 block truncate text-[0.7rem] text-muted" data-shot>
+                {shot}
               </span>
-            </button>
+            </div>
           )
         })}
         {own.map((photo) => (
@@ -386,6 +410,7 @@ function PhotosBlock({ today, bare = false }: { today: TodayState; bare?: boolea
         />
       </div>
       {immich.away && <p className="mt-2 text-xs text-muted">{t('photos.immichAway')}</p>}
+      {choosing && today.data && <ImmichPicker date={today.data.date} onClose={() => setChoosing(false)} onPick={pickAny} />}
       {immich.problem && (
         <p role="alert" className="mt-2 text-xs text-bad">
           {errorText(immich.problem.code, immich.problem.values)}
@@ -438,7 +463,6 @@ function Capture({ today, chat = false }: { today: TodayState; chat?: boolean })
   const { t } = useTranslation()
   const [text, setText] = useState('')
   const field = useRef<HTMLTextAreaElement>(null)
-  const file = useRef<HTMLInputElement>(null)
   const pending = usePendingPhoto(today)
   const add = async () => {
     if (!text.trim() && !pending.photo) return
@@ -452,21 +476,7 @@ function Capture({ today, chat = false }: { today: TodayState; chat?: boolean })
     <div className={`card p-2 ${chat ? 'rounded-[1.6rem]' : ''}`}>
       <PendingPhoto photo={pending.photo} busy={pending.busy} onDrop={pending.drop} />
       <div className="flex items-end gap-2">
-      <button type="button" onClick={() => file.current?.click()} disabled={pending.busy} className="rounded-full p-2.5 text-muted hover:bg-sheet-2 hover:text-accent" title={t('photos.alt')} aria-label={t('photos.attach')}>
-        <Camera size={20} />
-      </button>
-      <input
-        ref={file}
-        type="file"
-        accept={PHOTO_ACCEPT}
-        className="hidden"
-        aria-label={t('photos.attach')}
-        onChange={(e) => {
-          const picked = e.target.files?.[0]
-          e.target.value = ''
-          if (picked) void pending.pick(picked)
-        }}
-      />
+      <PhotoSourceButton pending={pending} date={today.data?.date} className="rounded-full p-2.5 text-muted hover:bg-sheet-2 hover:text-accent" label={t('photos.attach')} />
       <textarea
         ref={field}
         value={text}

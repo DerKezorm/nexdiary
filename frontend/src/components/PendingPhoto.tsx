@@ -6,7 +6,7 @@ import { Loader2, X } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { photoUrl, type Photo } from '../api/client'
+import { immichApi, photoUrl, type Photo } from '../api/client'
 import type { TodayState } from '../state/today'
 
 /** A photo waiting beside the field for the note it goes with: picked, uploaded, shown small with a way to drop it. */
@@ -20,12 +20,19 @@ export function usePendingPhoto(today: TodayState) {
     setBusy(false)
     if (made) setPhoto(made)
   }
+  /** A photo of the whole collection of the own Immich for the next note: copied now, for the day of the note. Throws
+   * (an `ApiError`) when Immich or the server refuses; the picker says why. */
+  const pickImmich = async (asset: string, date: string) => {
+    const made = await immichApi.take(asset, date, true, true)
+    today.keepPhoto(made)
+    setPhoto(made)
+  }
   /** Taken back before the note went out: the photo was only for it. */
   const drop = () => {
     if (photo) void today.deletePhoto(photo.id)
     setPhoto(null)
   }
-  return { photo, busy, pick, drop, sent: () => setPhoto(null) }
+  return { photo, busy, pick, pickImmich, drop, sent: () => setPhoto(null) }
 }
 
 export function PendingPhoto({ photo, busy, onDrop }: { photo: Photo | null; busy: boolean; onDrop: () => void }) {

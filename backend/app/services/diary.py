@@ -297,8 +297,54 @@ def clean_tags(tags: list[str]) -> list[str]:
     return out
 
 
+# --- Photos in the text ----------------------------------------------------------------------------------------------
+
+#: A picture inside a page: ``![caption](photo:<id>)``, the id of one of the person's own photos. The only picture
+#: syntax a page keeps; any other picture (an address, ``data:``) is turned into its words when the page is read.
+PHOTO_IMAGE = re.compile(r"!\[((?:\\.|[^\]\\\n]){0,300})\]\(photo:([0-9a-f]{32})\)")
+_PARTIAL_IMAGE = re.compile(r"!\[[^\]\n]*(?:\]\(?(?:photo:?[0-9a-f]*)?)?$")
+_BLANKS = re.compile(r"\n{3,}")
+
+
+def text_photo_ids(markdown: str) -> list[str]:
+    """The photos a page shows in its text, each once, in the order they stand."""
+    return list(dict.fromkeys(match.group(2) for match in PHOTO_IMAGE.finditer(markdown)))
+
+
+def strip_images(markdown: str, *, keep_caption: bool = False) -> str:
+    """The text without its pictures: for counting words, for the start of a page in a list, for the search (which
+    finds a caption, but not the id behind it)."""
+    return PHOTO_IMAGE.sub(lambda match: match.group(1) if keep_caption else "", markdown)
+
+
+def scrub_text_photos(db: Session, account_id: int, day: str, markdown: str) -> str:
+    """The text as it may be kept: a picture of a photo that is not the person's own, or not of this day, is removed (a
+    deleted photo cannot be told from a stranger's, and both must answer alike). The rest of the text is untouched."""
+    wanted = text_photo_ids(markdown)
+    if not wanted:
+        return markdown
+    known = set(db.scalars(select(Photo.uid).where(Photo.user_id == account_id, Photo.date == day,
+                                                   Photo.uid.in_(wanted))))
+    if known == set(wanted):
+        return markdown
+    kept = PHOTO_IMAGE.sub(lambda match: match.group(0) if match.group(2) in known else "", markdown)
+    return _BLANKS.sub("\n\n", kept).strip()
+
+
+def adopt_text_photos(db: Session, account_id: int, day: str, markdown: str) -> None:
+    """A photo that stands in the text is a photo of the day, whether it came with a note or not: it no longer goes
+    with its note (deleting the note leaves it). Not on a locked day."""
+    wanted = text_photo_ids(markdown)
+    if not wanted:
+        return
+    db.execute(update(Photo).where(Photo.user_id == account_id, Photo.date == day, Photo.uid.in_(wanted),
+                                   Photo.on_note.is_(True), ~_locked_day(Photo.user_id, Photo.date))
+               .values(on_note=False))
+    db.commit()
+
+
 def words_in(value: str) -> int:
-    return len(_WORD.findall(value))
+    return len(_WORD.findall(strip_images(value)))
 
 
 #: How much of a page a list shows as its start.
@@ -330,7 +376,10 @@ EXCERPT_SOURCE = EXCERPT_MAX * 8
 def excerpt(markdown: str, limit: int = EXCERPT_MAX) -> str:
     """The start of a page in plain words, cut at a word."""
     cut_source = len(markdown) > EXCERPT_SOURCE
-    words = plain_text(markdown[:EXCERPT_SOURCE])
+    head = strip_images(markdown[:EXCERPT_SOURCE])
+    if cut_source:
+        head = _PARTIAL_IMAGE.sub("", head)
+    words = plain_text(head)
     if cut_source and words and len(words) <= limit:
         return words.rstrip(" ,;:") + " …"
     if len(words) <= limit:
@@ -711,11 +760,14 @@ def _follow_note(db: Session, account_id: int, dek: bytes, uid: str | None, day:
 
 
 def _is_cover(account_id: int, dek: bytes, sealed: bytes | None, day: str, uid: str) -> bool:
+    """Whether the page of the day holds this photo: as its cover, or as a picture in its text. Such a photo goes with
+    neither the note it came with nor the move of that note."""
     if sealed is None:
         return False
     content = _readable_content(account_id, dek, day, sealed)
     # A page that does not open keeps the photo: it may be its cover.
-    return content is None or content.get("cover") == covers.PHOTO_PREFIX + uid
+    return (content is None or content.get("cover") == covers.PHOTO_PREFIX + uid
+            or uid in text_photo_ids(content["text"]))
 
 
 def delete_note(db: Session, account_id: int, dek: bytes, uid: str) -> list[str]:
@@ -999,7 +1051,7 @@ def clean_day_patch(db: Session, account_id: int, day: str, fields: dict[str, An
     if fields.get("title") is not None:
         patch["title"] = clean_line(fields["title"], TITLE_MAX, "title_too_long")
     if fields.get("text") is not None:
-        patch["text"] = clean_text(fields["text"], TEXT_MAX, "text_too_long")
+        patch["text"] = scrub_text_photos(db, account_id, day, clean_text(fields["text"], TEXT_MAX, "text_too_long"))
     if fields.get("tags") is not None:
         patch["tags"] = clean_tags(fields["tags"])
     if "written_by" in fields:
@@ -1101,6 +1153,8 @@ def catch_up(db: Session, account_id: int, dek: bytes, before: date) -> dict[str
                                                                       Day.date.in_(dates))):
             if has_page(_readable_content(account_id, dek, day.date, day.content_enc)):
                 written.add(day.date)
+    waiting = set(db.scalars(select(Draft.date).where(Draft.user_id == account_id, Draft.auto.is_(True),
+                                                      Draft.date.in_(dates)))) if dates else set()
     days = []
     for row in rows:
         if row.date in written:
@@ -1110,8 +1164,8 @@ def catch_up(db: Session, account_id: int, dek: bytes, before: date) -> dict[str
             if note["text"] and not note["unreadable"]:
                 start = excerpt(note["text"], START_MAX)
                 break
-        days.append({"date": row.date, "notes": int(row.n), "start": start})
-    return {"count": len(days), "days": days}
+        days.append({"date": row.date, "notes": int(row.n), "start": start, "auto": row.date in waiting})
+    return {"count": len(days), "days": days, "auto": sum(1 for entry in days if entry["auto"])}
 
 
 # --- Drafts ---------------------------------------------------------------------------------------------------------
@@ -1155,13 +1209,14 @@ def save_draft(db: Session, account_id: int, dek: bytes, day: str, draft: dict[s
     limit = quota.limit_bytes(db)
     written = db.execute(
         text(
-            "INSERT INTO drafts (user_id, date, content_enc, base_revision, updated_at) "  # noqa: S608 - constants
-            "SELECT :user, :date, :content, :base, :now "
+            "INSERT INTO drafts (user_id, date, content_enc, base_revision, updated_at, auto) "  # noqa: S608 - constants
+            "SELECT :user, :date, :content, :base, :now, 0 "
             f"WHERE (:quota IS NULL OR {quota.USED} - coalesce((SELECT length(content_enc) FROM drafts "
             "WHERE user_id = :user AND date = :date), 0) + length(:content) <= :quota) "
             "AND NOT EXISTS (SELECT 1 FROM days WHERE user_id = :user AND date = :date AND locked_at IS NOT NULL) "
             "ON CONFLICT (user_id, date) DO UPDATE SET content_enc = excluded.content_enc, "
-            "base_revision = excluded.base_revision, updated_at = excluded.updated_at"
+            # Saved from the writing view the draft is the person's own: it no longer waits as the morning's.
+            "base_revision = excluded.base_revision, updated_at = excluded.updated_at, auto = 0"
         ).bindparams(bindparam("now", type_=UtcDateTime())),
         {"user": account_id, "date": day, "content": sealed, "base": base_revision, "now": moment, "quota": limit},
     )
@@ -1169,11 +1224,33 @@ def save_draft(db: Session, account_id: int, dek: bytes, day: str, draft: dict[s
     if written.rowcount != 1:
         ensure_open(db, account_id, day)
         raise quota.full(db)
-    return {**draft, "base_revision": base_revision, "updated_at": moment.isoformat()}
+    return {**draft, "base_revision": base_revision, "updated_at": moment.isoformat(), "auto": False}
+
+
+def save_auto_draft(db: Session, account_id: int, dek: bytes, day: str, draft: dict[str, Any],
+                    revision: int) -> bool:
+    """The draft the morning writing made, kept for the person to take or throw away. One statement: only where the
+    day has no draft yet, is not locked, and still stands on the revision that was read (-1: no page then), so a page
+    the person saved meanwhile is never met by a draft. True when it was kept."""
+    sealed = vault.seal_json(dek, draft, _draft_aad(account_id, day))
+    limit = quota.limit_bytes(db)
+    written = db.execute(
+        text(
+            "INSERT INTO drafts (user_id, date, content_enc, base_revision, updated_at, auto) "  # noqa: S608 - constants
+            "SELECT :user, :date, :content, :base, :now, 1 "
+            f"WHERE (:quota IS NULL OR {quota.USED} + length(:content) <= :quota) "
+            "AND coalesce((SELECT CASE WHEN locked_at IS NOT NULL THEN -2 ELSE revision END FROM days "
+            "WHERE user_id = :user AND date = :date), -1) = :base "
+            "ON CONFLICT (user_id, date) DO NOTHING"
+        ).bindparams(bindparam("now", type_=UtcDateTime())),
+        {"user": account_id, "date": day, "content": sealed, "base": revision, "now": now(), "quota": limit},
+    )
+    db.commit()
+    return written.rowcount == 1
 
 
 def get_draft(db: Session, account_id: int, dek: bytes, day: str) -> dict[str, Any] | None:
-    row = db.execute(select(Draft.content_enc, Draft.base_revision, Draft.updated_at)
+    row = db.execute(select(Draft.content_enc, Draft.base_revision, Draft.updated_at, Draft.auto)
                      .where(Draft.user_id == account_id, Draft.date == day)).first()
     if row is None:
         return None
@@ -1191,7 +1268,7 @@ def get_draft(db: Session, account_id: int, dek: bytes, day: str) -> dict[str, A
     ai_length = content.get("ai_length") if content.get("ai_length") in ("short", "long") else None
     return {"title": content.get("title", ""), "text": content.get("text", ""), "tags": content.get("tags", []),
             "cover": cover, "written_by": written_by, "ai_length": ai_length, "base_revision": row.base_revision,
-            "updated_at": row.updated_at.isoformat()}
+            "updated_at": row.updated_at.isoformat(), "auto": bool(row.auto)}
 
 
 def delete_draft(db: Session, account_id: int, day: str) -> None:
@@ -1263,7 +1340,7 @@ def search(db: Session, account_id: int, dek: bytes, query: str) -> dict[str, An
         content = _readable_content(account_id, dek, row.date, row.content_enc)
         if content is None:
             continue
-        for kind, value in (("title", content["title"]), ("text", content["text"])):
+        for kind, value in (("title", content["title"]), ("text", strip_images(content["text"], keep_caption=True))):
             found = _find(value, needle)
             if found:
                 hits.append(Hit(row.date, kind, _snippet(value, found[2], found[0], len(needle))))

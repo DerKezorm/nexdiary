@@ -1,6 +1,7 @@
 /**
- * The photos of one day in the own Immich, for "Today" and the cover picker: asked for only while `enabled`, never
- * kept anywhere but here. Without Immich (not allowed, not connected, switched off) the list is null and nothing is
+ * The photos of one day in the own Immich, for the writing view and the cover picker, or (`mode: 'recent'`, for
+ * "Today") what was uploaded lately, newest upload first: Immich often receives a phone's photos hours late, so the
+ * shots of today are not yet there when the day is. Asked for only while `enabled`, never kept anywhere but here. Without Immich (not allowed, not connected, switched off) the list is null and nothing is
  * said; when Immich does not answer, `away` says so quietly and everything else goes on.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -10,9 +11,11 @@ import { ApiError, immichApi, type ImmichPhoto, type Photo } from '../api/client
 /** Answers that only mean "no Immich here": the page shows none and says nothing. */
 const ABSENT = new Set(['immich_closed', 'immich_not_connected', 'immich_suggest_off', 'immich_host_not_allowed'])
 
-export function useImmichDay(date: string | undefined, enabled = true) {
+export function useImmichDay(date: string | undefined, enabled = true, mode: 'day' | 'recent' = 'day') {
   const [photos, setPhotos] = useState<ImmichPhoto[] | null>(null)
   const [away, setAway] = useState(false)
+  /** Whether there is a connected Immich at all (even with the photos of the day switched off): null until known. */
+  const [connected, setConnected] = useState<boolean | null>(null)
   const [taking, setTaking] = useState<string | null>(null)
   const [problem, setProblem] = useState<{ code: string; values: Record<string, unknown> } | null>(null)
   const busy = useRef(false)
@@ -25,8 +28,9 @@ export function useImmichDay(date: string | undefined, enabled = true) {
     immichApi
       .state()
       .then((state) => {
+        if (alive) setConnected(Boolean(state.allowed && state.connected))
         if (!state.allowed || !state.connected || state.suggest === false) throw new ApiError(409, 'immich_not_connected')
-        return immichApi.photos(date)
+        return mode === 'recent' ? immichApi.recent(date) : immichApi.photos(date)
       })
       .then(
       (day) => {
@@ -44,7 +48,7 @@ export function useImmichDay(date: string | undefined, enabled = true) {
     return () => {
       alive = false
     }
-  }, [date, enabled])
+  }, [date, enabled, mode])
 
   /** Takes a photo for the day (copied now, once); the photo, or null when the server refused (said in `problem`). */
   const take = useCallback(
@@ -54,7 +58,7 @@ export function useImmichDay(date: string | undefined, enabled = true) {
       setTaking(asset)
       setProblem(null)
       try {
-        const photo = await immichApi.take(asset, date, note)
+        const photo = await immichApi.take(asset, date, note, mode === 'recent')
         if (!note) setPhotos((current) => current && current.map((entry) => (entry.id === asset ? { ...entry, photo_id: photo.id } : entry)))
         return photo
       } catch (error) {
@@ -65,7 +69,7 @@ export function useImmichDay(date: string | undefined, enabled = true) {
         setTaking(null)
       }
     },
-    [date],
+    [date, mode],
   )
 
   /** A photo taken from Immich was deleted: its tile is free again. */
@@ -73,7 +77,24 @@ export function useImmichDay(date: string | undefined, enabled = true) {
     setPhotos((current) => current && current.map((entry) => (entry.photo_id === photoId ? { ...entry, photo_id: null } : entry)))
   }, [])
 
-  return { photos, away, taking, problem, take, released }
+  return { photos, away, connected, taking, problem, take, released }
 }
 
 export type ImmichDayState = ReturnType<typeof useImmichDay>
+
+/** Whether there is an Immich to pick from at all (allowed, and connected): null while that is being asked. Always
+ * answered by the server, so no refused request lands in the console of a visitor whose operator keeps Immich closed. */
+export function useImmichReady(): boolean | null {
+  const [ready, setReady] = useState<boolean | null>(null)
+  useEffect(() => {
+    let alive = true
+    immichApi.state().then(
+      (state) => alive && setReady(Boolean(state.allowed && state.connected)),
+      () => alive && setReady(false),
+    )
+    return () => {
+      alive = false
+    }
+  }, [])
+  return ready
+}

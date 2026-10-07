@@ -34,6 +34,8 @@ class AiSettingsIn(Strict):
     model: str | None = Field(default=None, max_length=200)
     #: Empty removes the key; left out keeps it (unless the address or the kind of service changes).
     key: str | None = Field(default=None, max_length=500)
+    #: Whether people may have the day before written up in the morning on their own (off from the start).
+    auto_allowed: bool | None = None
 
 
 class ModelsIn(Strict):
@@ -74,7 +76,8 @@ def settings(_operator: OperatorAccount, db: DbSession) -> dict[str, Any]:
 
 @router.put("/settings/ai", summary="Choose the AI service of the server; only the fields sent change")
 def save(payload: AiSettingsIn, _operator: OperatorAccount, db: DbSession) -> dict[str, Any]:
-    return ai.save(db, provider=payload.provider, url=payload.url, model=payload.model, key=payload.key)
+    return ai.save(db, provider=payload.provider, url=payload.url, model=payload.model, key=payload.key,
+                   auto_allowed=payload.auto_allowed)
 
 
 @router.post("/settings/ai/models", summary="The models a service offers, with the address typed or stored")

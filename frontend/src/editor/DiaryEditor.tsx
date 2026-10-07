@@ -23,12 +23,14 @@ import { $prose, getMarkdown } from '@milkdown/kit/utils'
 import type { EditorState } from '@milkdown/kit/prose/state'
 import { Plugin, PluginKey, Selection, TextSelection } from '@milkdown/kit/prose/state'
 import type { EditorView } from '@milkdown/kit/prose/view'
-import { Bold, Heading2, Italic, List, Quote, Undo2, type LucideIcon } from 'lucide-react'
+import { Bold, Camera, Heading2, ImagePlus, Images, Italic, List, Loader2, Quote, Undo2, Upload, type LucideIcon } from 'lucide-react'
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 
+import { PHOTO_ACCEPT } from '../lib/upload'
 import { tame } from '../lib/markdown'
+import { insertPhoto } from './photo'
 import { diaryPlugins, HEADING_LEVEL } from './setup'
 
 export type DiaryEditorHandle = {
@@ -37,6 +39,8 @@ export type DiaryEditorHandle = {
   focus: () => void
   /** The caret at the very end of the text, in focus (to go on writing there). */
   moveToEnd: () => void
+  /** A photo of the person's own into the text where the caret is, as a block of its own with a caption. */
+  insertPhoto: (id: string) => void
   /** The view of the editor for whoever must reach into it: the page, and the tests with their key presses. */
   withView: (action: (view: EditorView) => void) => void
   /** The text as it stands this moment. `onChange` comes a little after the typing (Milkdown waits for a pause);
@@ -71,6 +75,15 @@ function activeOf(state: EditorState): Active {
   }
 }
 
+/** The ways the button "Image" offers: a photo from the device (the camera, a file), from the own Immich, from the photos
+ * of the day. A way that is left out is not offered. */
+export type ImageWays = {
+  busy: boolean
+  onFile: (file: File) => void
+  onImmich?: () => void
+  onDay?: () => void
+}
+
 export function DiaryEditor({
   value,
   onChange,
@@ -78,6 +91,7 @@ export function DiaryEditor({
   placeholder,
   label,
   toolbarHost,
+  images,
   ref,
 }: {
   value: string
@@ -89,6 +103,8 @@ export function DiaryEditor({
   /** Where the bar of formats goes (the page's sticky top bar, so that both stay in view together). Left out, it
    * stands above the text and keeps to the top on its own while the page scrolls. */
   toolbarHost?: HTMLElement | null
+  /** Where a picture in the text may come from; left out, the bar has no button for it. */
+  images?: ImageWays
   ref?: Ref<DiaryEditorHandle>
 }) {
   const { t } = useTranslation()
@@ -205,6 +221,7 @@ export function DiaryEditor({
         view.focus()
       }),
     withView,
+    insertPhoto: (id: string) => withView((view) => insertPhoto(view, id)),
     getMarkdown: () => {
       const instance = editor.current
       return instance ? instance.action(getMarkdown()).replace(/\s+$/, '') : null
@@ -249,7 +266,7 @@ export function DiaryEditor({
   ]
 
   const bar = (
-      <div role="toolbar" aria-label={t('editor.tools')} className={`${toolbarHost ? 'mb-2' : 'sticky top-14 z-10 -mx-1 mb-3 lg:top-0'} flex gap-0.5 rounded-full border border-line bg-sheet/95 p-1 backdrop-blur`}>
+      <div role="toolbar" aria-label={t('editor.tools')} className={`${toolbarHost ? 'mb-2' : 'sticky top-14 z-10 -mx-1 mb-3 lg:top-0'} relative flex gap-0.5 rounded-full border border-line bg-sheet/95 p-1 backdrop-blur`}>
         {tools.map(({ icon: Icon, label: name, on, run: act }) => (
           <button
             key={name}
@@ -265,6 +282,7 @@ export function DiaryEditor({
             <Icon size={17} />
           </button>
         ))}
+        {images && <ImageButton ways={images} ready={ready} />}
       </div>
   )
 
@@ -284,3 +302,78 @@ export function DiaryEditor({
 }
 
 export default DiaryEditor
+
+/** The button "Image" of the bar and the small menu under it. The device's file (and the camera) go through hidden
+ * fields; the other ways are the page's business. */
+function ImageButton({ ways, ready }: { ways: ImageWays; ready: boolean }) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const holder = useRef<HTMLSpanElement>(null)
+  const camera = useRef<HTMLInputElement>(null)
+  const file = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const away = (event: PointerEvent) => {
+      if (!holder.current?.contains(event.target as Node)) setOpen(false)
+    }
+    const key = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('pointerdown', away)
+    document.addEventListener('keydown', key)
+    return () => {
+      document.removeEventListener('pointerdown', away)
+      document.removeEventListener('keydown', key)
+    }
+  }, [open])
+  const item = (icon: LucideIcon, label: string, act: () => void) => {
+    const Icon = icon
+    return (
+      <button
+        key={label}
+        type="button"
+        role="menuitem"
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => {
+          setOpen(false)
+          act()
+        }}
+        className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm font-semibold text-ink-2 hover:bg-sheet-2 hover:text-ink"
+      >
+        <Icon size={16} aria-hidden /> {label}
+      </button>
+    )
+  }
+  const pick = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const chosen = event.target.files?.[0]
+    event.target.value = ''
+    if (chosen) ways.onFile(chosen)
+  }
+  return (
+    <span ref={holder} className="relative inline-flex">
+      <button
+        type="button"
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => setOpen((current) => !current)}
+        disabled={!ready || ways.busy}
+        title={t('editor.image')}
+        aria-label={t('editor.image')}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className={`rounded-full p-2 hover:bg-sheet-2 hover:text-ink ${open ? 'bg-accent-soft text-accent' : 'text-ink-2'}`}
+      >
+        {ways.busy ? <Loader2 size={17} className="animate-spin" aria-hidden /> : <ImagePlus size={17} />}
+      </button>
+      {open && (
+        <div role="menu" aria-label={t('editor.image')} className="card absolute top-full right-0 z-30 mt-2 w-64 p-1.5 shadow-soft" data-image-menu>
+          {item(Camera, t('editor.imageCamera'), () => camera.current?.click())}
+          {item(Upload, t('editor.imageFile'), () => file.current?.click())}
+          {ways.onImmich && item(Images, t('editor.imageImmich'), ways.onImmich)}
+          {ways.onDay && item(ImagePlus, t('editor.imageDay'), ways.onDay)}
+        </div>
+      )}
+      <input ref={camera} type="file" accept={PHOTO_ACCEPT} capture="environment" className="hidden" aria-label={t('editor.imageCamera')} onChange={pick} />
+      <input ref={file} type="file" accept={PHOTO_ACCEPT} className="hidden" aria-label={t('editor.imageFile')} onChange={pick} />
+    </span>
+  )
+}

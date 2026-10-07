@@ -197,6 +197,100 @@ body {
   .prose-diary:focus {
     outline: none;
   }
+  /* A picture inside a page: its own block, the full width of the text, with a quiet caption. */
+  .diary-photo {
+    position: relative;
+    margin: 1.6em 0;
+  }
+  .diary-photo img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 1rem;
+    background: var(--sheet-2);
+  }
+  .diary-photo figcaption {
+    margin-top: 0.55em;
+    text-align: center;
+    font-family: var(--font-serif);
+    font-size: 0.9rem;
+    font-style: italic;
+    color: var(--muted);
+  }
+  .diary-photo-gone {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 2.4rem 1rem;
+    border-radius: 1rem;
+    background: var(--sheet-2);
+    color: var(--muted);
+    font-family: var(--font-sans);
+    font-size: 0.85rem;
+    font-style: normal;
+  }
+  /* In the editor the caption is a field, and the block has its tools while the pointer or the caret is on it. */
+  .diary-photo-edit input {
+    display: block;
+    width: 100%;
+    margin-top: 0.55em;
+    border: 0;
+    border-bottom: 1px dashed var(--line);
+    background: transparent;
+    text-align: center;
+    font-family: var(--font-serif);
+    font-size: 0.9rem;
+    font-style: italic;
+    color: var(--ink-2);
+  }
+  .diary-photo-edit input:focus {
+    outline: none;
+    border-bottom-color: var(--accent);
+  }
+  .diary-photo-edit.ProseMirror-selectednode img {
+    outline: 3px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .diary-photo-tools {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    display: flex;
+    gap: 0.25rem;
+    padding: 0.2rem;
+    border-radius: 9999px;
+    background: rgb(0 0 0 / 0.5);
+    backdrop-filter: blur(6px);
+  }
+  /* Quiet until the pointer or the caret is on the picture; always there where there is no pointer. */
+  .diary-photo-edit .diary-photo-tools {
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .diary-photo-edit:hover .diary-photo-tools,
+  .diary-photo-edit:focus-within .diary-photo-tools,
+  .diary-photo-edit.ProseMirror-selectednode .diary-photo-tools {
+    opacity: 1;
+  }
+  @media (hover: none) {
+    .diary-photo-edit .diary-photo-tools {
+      opacity: 1;
+    }
+  }
+  .diary-photo-tools button {
+    display: flex;
+    height: 1.9rem;
+    width: 1.9rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    color: #fff;
+  }
+  .diary-photo-tools button:hover,
+  .diary-photo-tools button:focus-visible {
+    background: rgb(255 255 255 / 0.2);
+  }
   .scroll-x {
     scrollbar-width: none;
   }

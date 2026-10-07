@@ -225,9 +225,12 @@ def put_day(date: str, payload: DayIn, request: Request, account: Account, db: D
         brakes.take("new_day", account.id)
     fields = {name: getattr(payload, name) for name in payload.model_fields_set if name != "base_revision"}
     patch = diary.clean_day_patch(db, account.id, key, fields)
-    return diary.change_day(db, account.id, dek, key, lambda content: diary.merge(content, patch),
-                            base_revision=payload.base_revision,
-                            discard_draft=payload.base_revision is not None)
+    saved = diary.change_day(db, account.id, dek, key, lambda content: diary.merge(content, patch),
+                             base_revision=payload.base_revision,
+                             discard_draft=payload.base_revision is not None)
+    if "text" in patch:
+        diary.adopt_text_photos(db, account.id, key, saved["text"])
+    return saved
 
 
 # --- Drafts ---------------------------------------------------------------------------------------------------------

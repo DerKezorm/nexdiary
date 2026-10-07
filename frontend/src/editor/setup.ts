@@ -79,6 +79,7 @@ import { Plugin, PluginKey } from '@milkdown/kit/prose/state'
 import { $inputRule, $prose, $remark, $useKeymap } from '@milkdown/kit/utils'
 
 import { remarkFlatten } from './flatten'
+import { photoSchema, photoView } from './photo'
 
 /** The only heading a page has: the subheading (the title of the day stands above the text, outside it). */
 export const HEADING_LEVEL = 2
@@ -208,6 +209,8 @@ export const diaryPlugins: MilkdownPlugin[] = [
   emphasisSchema,
   strongAttr,
   strongSchema,
+  photoSchema,
+  photoView,
 
   wrapInBlockquoteInputRule,
   wrapInBulletListInputRule,

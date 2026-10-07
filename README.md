@@ -211,6 +211,10 @@ or one that speaks the Messages API. Every person can switch it off for their ac
 - Before the button it says where the notes go: they stay at home, or the provider is named.
 - The AI orders and smooths, writes in the first person, short or long, and invents nothing. Its suggestion is only a
   suggestion in the editor; the notes are never changed.
+- **Writing up on its own** is a second, deliberate step: the operator opens it (Settings, AI, off from the start), and
+  each person switches it on for themselves (My account, AI, off from the start, with a confirmation that says where
+  the notes go). Then, each morning at the chosen time, yesterday's notes become a draft that waits for you: it is no
+  page, in no streak and no statistics and cannot be shared until you accept it. Each day is tried once.
 - A local service must lie in your own network and a service on the internet must be reached over https: an address
   that points elsewhere is refused, when it is saved and at every request. The API key is sealed and never shown again.
 
@@ -218,9 +222,11 @@ or one that speaks the Messages API. Every person can switch it off for their ac
 
 Photos can come from your own Immich. The operator opens this first (Settings, Immich, closed from the start)
 and names the hosts that may be reached. Each person then connects their own: the address and an API key with the
-permissions `asset.read`, `asset.view` and `asset.download`. "Today" suggests the photos taken that day; a photo is
-copied into nexdiary only when you take it. The browser never talks to Immich: the small pictures come through
-nexdiary. Videos are left out.
+permissions `asset.read`, `asset.view` and `asset.download` (and, if you want to browse albums, `album.read`).
+"Today" suggests what was uploaded to Immich lately (it often receives a phone's photos hours late), and "All photos"
+opens your whole collection, newest first, with a date or month to jump to, your albums and a search. A photo is
+copied into nexdiary only when you take it, and belongs to the day it is taken for, whenever it was shot. The browser
+never talks to Immich: the small pictures come through nexdiary. Videos are left out.
 
 ## Push
 

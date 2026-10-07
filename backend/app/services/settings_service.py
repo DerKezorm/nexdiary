@@ -58,6 +58,9 @@ DEFAULTS: dict[str, Any] = {
     "ai_model": "",
     #: Sealed with the server's secret (context ``operator:ai-key``); never shown again.
     "ai_key_enc": "",
+    #: Whether a person may let the AI write up the day before on its own, in the morning (``services/autowrite.py``).
+    #: Off from the start: the operator opens it, and each person still has to switch it on for themselves.
+    "ai_auto_allowed": False,
     #: Immich (``services/immich.py``): closed from the start. Open, each person may connect their own Immich, but
     #: only on one of these hosts (``host`` or ``host:port``): the address is a way into the own network.
     "immich_allowed": False,

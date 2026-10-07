@@ -51,6 +51,7 @@ from ..security import (
 )
 from ..services import (
     accounts,
+    autowrite,
     diary,
     locales,
     mailer,
@@ -558,6 +559,8 @@ def profile_of(stored: Any) -> dict[str, Any]:
     out["timezone"] = stored.get("timezone") if diary.valid_time_zone(stored.get("timezone")) else ""
     # When and how to remind (``services/reminders.py``); changed with its own route.
     out["reminder"] = reminders.of(stored)
+    # Whether and when the day before is written up in the morning on its own (``services/autowrite.py``).
+    out["autowrite"] = autowrite.of(stored)
     return out
 
 
@@ -570,7 +573,7 @@ def set_preferences(payload: dict[str, Any], account: Account, db: DbSession) ->
     if payload.get("timezone_source") == "browser" and current["timezone_source"] == "manual":
         payload = {key: value for key, value in payload.items() if key not in ("timezone", "timezone_source")}
     for key, value in payload.items():
-        if key == "reminder":
+        if key in ("reminder", "autowrite"):
             raise error("bad_preference", "This value is not one nexdiary offers.", 422, field=key)
         if key == "timezone":
             if not diary.valid_time_zone(value):
@@ -596,6 +599,22 @@ def set_reminder(payload: dict[str, Any], account: Account, db: DbSession) -> di
     row.profile = {**current, "reminder": after}
     db.commit()
     reminders.after_saving(db, row, before, after, clock.now())
+    return after
+
+
+@router.put("/me/autowrite", summary="Have yesterday written up in the morning; only the values sent change")
+def set_autowrite(payload: dict[str, Any], account: Account, db: DbSession) -> dict[str, Any]:
+    """Off from the start. Switching it on asks for ``confirmed: true`` (the interface says where the notes go first)
+    and needs the AI to be usable for this person and the operator's second bolt to be open."""
+    row = db.get(AccountRow, account.id)
+    assert row is not None
+    current = profile_of(row.profile)
+    before = current["autowrite"]
+    after = autowrite.check(before, payload)
+    if after["on"]:
+        autowrite.may_switch_on(db, row, bool(current["ai"]))
+    row.profile = {**current, "autowrite": after}
+    db.commit()
     return after
 
 
