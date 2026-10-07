@@ -43,7 +43,9 @@ function serve(): void {
       calls.push({ method, url, body })
       const found = answers[`${method} ${url}`]
       if (found === 204) return new Response(null, { status: 204 })
-      if (found instanceof Blob) return new Response(found, { status: 200 })
+      // A file answer as plain bytes: Node 22's Response does not take jsdom's Blob (it did in Node 25), so the
+      // test hands over the text and lets the real Response make the blob the client reads.
+      if (found instanceof Blob) return new Response(await found.text(), { status: 200 })
       return new Response(JSON.stringify(found ?? {}), { status: 200, headers: { 'Content-Type': 'application/json' } })
     }),
   )
