@@ -316,3 +316,105 @@ def test_the_operator_reset_takes_the_passkeys_too(client: TestClient, operator:
     reset = client.post(f"/api/accounts/{member.id}/totp/reset", json={"current_password": PASSWORD})
     assert reset.status_code == 200 and reset.json()["two_factor"] is False and reset.json()["passkeys"] == 0
     assert passkey_sign_in(browser("203.0.113.12"), key)[0].status_code == 401
+
+
+# --- Challenges: nobody who is not signed in crowds out the rest (B10) --------------------------------------------------
+
+
+def test_a_sender_holds_a_limited_number_of_open_sign_in_challenges(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.services import passkeys as service
+
+    monkeypatch.setattr(service, "BEGINS_PER_ADDRESS", 1000)
+    greedy = browser("203.0.113.150")
+    answers = [greedy.post("/api/auth/passkey/begin").status_code for _ in range(service.PER_ADDRESS + 3)]
+    assert answers[: service.PER_ADDRESS] == [200] * service.PER_ADDRESS
+    assert set(answers[service.PER_ADDRESS :]) == {429}
+    # Another sender is not in the way of it.
+    assert browser("203.0.113.151").post("/api/auth/passkey/begin").status_code == 200
+    # A challenge that is used (or has run out) makes room again.
+    service.forget()
+    assert greedy.post("/api/auth/passkey/begin").status_code == 200
+
+
+def test_asking_for_challenges_counts_for_the_sender_apart_from_failed_passwords(
+    monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.services import passkeys as service
+
+    monkeypatch.setattr(service, "PER_ADDRESS", 1000)
+    make_account("anna")
+    greedy = browser("203.0.113.152")
+    answers = [greedy.post("/api/auth/passkey/begin").status_code for _ in range(service.BEGINS_PER_ADDRESS + 2)]
+    assert answers[: service.BEGINS_PER_ADDRESS] == [200] * service.BEGINS_PER_ADDRESS
+    assert answers[-1] == 429
+    rested = greedy.post("/api/auth/passkey/begin")
+    assert rested.headers["retry-after"] == "900"
+    # Asking for challenges is not a failed sign-in: the password still works from the same address.
+    assert greedy.post("/api/auth/login", json={"name": "anna", "password": PASSWORD}).status_code == 200
+
+
+def test_a_flood_of_sign_in_challenges_leaves_adding_and_confirming_alone(
+    client: TestClient, operator: Account, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.services import passkeys as service
+
+    monkeypatch.setattr(service, "MAX_ANONYMOUS", 30)
+    monkeypatch.setattr(service, "PER_ADDRESS", 3)
+    key = SoftKey()
+    adding = json.loads(client.post("/api/auth/passkeys/begin").json()["options"])
+    created = key.create(adding)
+    # Fills the store of the sign-ins up to its end, from many senders, and past it.
+    for number in range(60):
+        brake.forget()
+        assert browser(f"198.51.100.{number + 1}").post("/api/auth/passkey/begin").status_code == 200
+    assert len(service._anonymous) <= 30
+    # The signed-in person finishes what they began, and can begin again, for adding and for confirming.
+    done = client.post("/api/auth/passkeys", json={"name": "Laptop", "password": PASSWORD, "credential": created})
+    assert done.status_code == 201, done.text
+    again = client.post("/api/auth/passkeys/confirm/begin")
+    assert again.status_code == 200
+    # And a sign-in of a new sender is not turned away while the store is full: the oldest made room.
+    brake.forget()
+    assert browser("198.51.100.200").post("/api/auth/passkey/begin").status_code == 200
+
+
+def test_the_challenges_of_one_account_do_not_crowd_out_another(
+    client: TestClient, operator: Account, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.services import passkeys as service
+
+    monkeypatch.setattr(service, "PER_ACCOUNT", 3)
+    anna = browser()
+    member = make_account("anna")
+    sign_in(anna, member)
+    options = json.loads(anna.post("/api/auth/passkeys/begin").json()["options"])
+    # The operator asks over and over, from many sessions of their own: only their own place fills.
+    for number in range(6):
+        extra = browser(f"203.0.113.{170 + number}")
+        sign_in(extra, operator)
+        assert extra.post("/api/auth/passkeys/begin").status_code == 200
+    assert len(service._accounts[operator.id]) == 3
+    key = SoftKey()
+    done = anna.post("/api/auth/passkeys", json={"name": "Phone", "password": PASSWORD, "credential": key.create(options)})
+    assert done.status_code == 201, done.text
+
+
+def test_the_passkey_button_is_offered_without_a_public_address_only_on_localhost(
+    client: TestClient, operator: Account
+) -> None:
+    with SessionLocal() as db:
+        settings_service.save(db, {"public_url": ""})
+
+    def offered(host: str) -> bool:
+        return bool(client.get("/api/auth/methods", headers={"Host": host}).json()["passkeys"])
+
+    assert offered("localhost:8550") is True and offered("localhost") is True
+    for host in ("testserver", "192.168.1.20:8550", "diary.example.com", "127.0.0.1:8550", "localhost.example.com"):
+        assert offered(host) is False, host
+    # With a public https address the name in the request does not matter: the address is the one passkeys are for.
+    with SessionLocal() as db:
+        settings_service.save(db, {"public_url": ORIGIN})
+    assert offered("192.168.1.20:8550") is True
+    with SessionLocal() as db:
+        settings_service.save(db, {"public_url": "http://diary.example.com"})
+    assert offered("localhost:8550") is False

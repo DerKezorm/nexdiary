@@ -37,7 +37,7 @@ _settings.data_dir.mkdir(parents=True, exist_ok=True)
 BUSY_SECONDS = 15
 
 #: The version of the schema the models describe.
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 
 def _v2_diary(connection: Connection) -> None:
@@ -205,10 +205,28 @@ def _v8_security(connection: Connection) -> None:
         connection.exec_driver_sql(statement)
 
 
+def _v9_recovery(connection: Connection) -> None:
+    """Version 9: the links with which a person sets a new password, and the sealed name of an API token (names that
+    stand in the clear are sealed when the server starts, once the master key is there). Written out as it stood then,
+    not taken from the models."""
+    for statement in (
+        (
+            "CREATE TABLE password_resets ( id INTEGER NOT NULL, account_id INTEGER NOT NULL, "
+            "token_hash VARCHAR(64) NOT NULL, created_by INTEGER, created_at DATETIME NOT NULL, "
+            "expires_at DATETIME NOT NULL, PRIMARY KEY (id), UNIQUE (token_hash), "
+            "FOREIGN KEY(account_id) REFERENCES users (id) ON DELETE CASCADE, "
+            "FOREIGN KEY(created_by) REFERENCES users (id) ON DELETE SET NULL )"
+        ),
+        "CREATE INDEX ix_password_resets_account_id ON password_resets (account_id)",
+        "ALTER TABLE api_tokens ADD COLUMN name_enc BLOB",
+    ):
+        connection.exec_driver_sql(statement)
+
+
 #: ``MIGRATIONS[n]`` brings a database from version ``n - 1`` to ``n``. Version 1 is the first schema; it has no step.
 MIGRATIONS: dict[int, Callable[[Connection], None]] = {
     2: _v2_diary, 3: _v3_photos_and_drafts, 4: _v4_sharing, 5: _v5_writing_prompts, 6: _v6_immich, 7: _v7_push,
-    8: _v8_security,
+    8: _v8_security, 9: _v9_recovery,
 }
 
 # No pool with an upper bound: with the default pool the sixteenth concurrent request would block the event

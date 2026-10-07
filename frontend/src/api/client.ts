@@ -179,7 +179,7 @@ export type SessionStage = 'full' | 'setup' | 'codes'
 export type SecondFactorWaiting = { second_factor: true; totp: boolean; passkey: boolean }
 
 export type SetupState = { needs_setup: boolean; code_required: boolean; signed_in: boolean; version: string; min_password: number }
-export type Methods = { password: boolean; oidc: boolean; oidc_name: string; passkeys?: boolean }
+export type Methods = { password: boolean; oidc: boolean; oidc_name: string; passkeys?: boolean; forgot?: boolean }
 export type SignedSession = { id: string; device: string; phone: boolean; network: string; created_at: string; last_seen_at: string; remember: boolean; here: boolean }
 export type Passkey = { id: string; name: string; created_at: string; last_used_at: string | null; credential: string }
 export type Readiness = { points: { key: string; state: 'ok' | 'warn' | 'bad'; values: Record<string, unknown> }[]; open: number }
@@ -207,6 +207,8 @@ export const authApi = {
   preferences: (change: Partial<Profile>) => api<Profile>('/api/me/preferences', { method: 'PUT', body: change }),
   profile: (display_name: string) => api<Me>('/api/me/profile', { method: 'PUT', body: { display_name } }),
   password: (current: string, next: string) => api<void>('/api/auth/password', { method: 'PUT', body: { current, new: next } }),
+  /** "Forgot your password?": a link to the address on record, if there is one; the answer is the same either way. */
+  forgot: (name: string) => api<{ ok: true }>('/api/auth/forgot', { method: 'POST', body: { name } }),
   whatsNewSeen: () => api<Me>('/api/me/whats-new/seen', { method: 'POST' }),
 }
 
@@ -231,7 +233,8 @@ export type ApiToken = {
   expires_at: string | null
   blocked: boolean
 }
-export type AnyApiToken = ApiToken & { account: string }
+/** What the operator sees of a token: whose it is and its first characters, never what its owner called it. */
+export type AnyApiToken = Omit<ApiToken, 'name'> & { account: string }
 
 /** API tokens for programs (`/api/v1`); reading only. */
 export const apiTokensApi = {

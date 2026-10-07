@@ -659,3 +659,131 @@ def test_a_time_step_is_taken_once_also_by_two_at_the_same_moment() -> None:
     with SessionLocal() as db:
         assert totp.claim_step(db, account.id, step) is False
         assert totp.claim_step(db, account.id, step + 1) is True
+
+
+# --- A lock that strangers cause does not keep the owner out of the code step (B10) ----------------------------------
+
+
+def with_second_factor(name: str) -> tuple[Account, str, list[str]]:
+    """An account with a code from an app and recovery codes, straight in the database; gives the seed."""
+    account = make_account(name)
+    seed = totp.generate_seed()
+    codes = totp.generate_recovery_codes()
+    with SessionLocal() as db:
+        row = db.get(Account, account.id)
+        assert row is not None
+        row.totp_secret_enc, row.totp_recovery = totp.seal_seed(seed), totp.recovery_hashes(codes)
+        db.commit()
+    return account, seed, codes
+
+
+def a_code(account: Account, seed: str) -> str:
+    """The code of this moment, with the replay guard rewound so that any number of sign-ins can use it."""
+    with SessionLocal() as db:
+        row = db.get(Account, account.id)
+        assert row is not None
+        row.totp_last_step = 0
+        db.commit()
+    return totp.code_at(seed, time.time())
+
+
+def sign_in_with_code(browser: TestClient, account: Account, seed: str, name: str = "anna"):
+    first = browser.post("/api/auth/login", json={"name": name, "password": PASSWORD})
+    assert first.status_code == 200 and first.json()["second_factor"] is True, first.text
+    return browser.post("/api/auth/login/totp", json={"code": a_code(account, seed)})
+
+
+def test_strangers_who_lock_an_account_do_not_lock_its_owner_out_of_the_code_step() -> None:
+    require_second_factor()
+    anna, seed, codes = with_second_factor("anna")
+    own = fresh("192.0.2.10")
+    assert sign_in_with_code(own, anna, seed).status_code == 200
+    assert own.cookies.get(DEVICE_COOKIE, path="/api/auth")
+    own.post("/api/auth/logout")
+    lock("anna")
+    # The password step lets the owner's browser through a lock already; the code step now does as well.
+    assert own.post("/api/auth/login", json={"name": "anna", "password": PASSWORD}).json()["second_factor"] is True
+    answer = own.post("/api/auth/login/totp", json={"code": a_code(anna, seed)})
+    assert answer.status_code == 200, answer.text
+    assert answer.json()["session_stage"] == "full"
+    with SessionLocal() as db:
+        row = db.get(Account, anna.id)
+        assert row is not None and row.locked_until is None, "a passed code lifts the lock"
+    # The same with a recovery code.
+    own.post("/api/auth/logout")
+    lock("anna")
+    own.post("/api/auth/login", json={"name": "anna", "password": PASSWORD})
+    by_recovery = own.post("/api/auth/login/totp", json={"code": codes[0]})
+    assert by_recovery.status_code == 200, by_recovery.text
+
+
+def test_a_wrong_code_from_the_known_browser_neither_counts_towards_the_lock_nor_ends_the_sign_in_early() -> None:
+    require_second_factor()
+    anna, seed, _codes = with_second_factor("anna")
+    own = fresh("192.0.2.11")
+    assert sign_in_with_code(own, anna, seed).status_code == 200
+    own.post("/api/auth/logout")
+    lock("anna")
+    with SessionLocal() as db:
+        row = db.get(Account, anna.id)
+        assert row is not None
+        until, counted = row.locked_until, row.failed_logins
+    own.post("/api/auth/login", json={"name": "anna", "password": PASSWORD})
+    for _ in range(totp.MAX_ATTEMPTS - 1):
+        wrong = own.post("/api/auth/login/totp", json={"code": "000000"})
+        assert wrong.status_code == 401 and wrong.json()["detail"]["code"] == "totp_code_wrong"
+    with SessionLocal() as db:
+        row = db.get(Account, anna.id)
+        assert row is not None and (row.locked_until, row.failed_logins) == (until, counted)
+    # What stays for it: five codes per sign-in, then the password again.
+    last = own.post("/api/auth/login/totp", json={"code": "000000"})
+    assert last.status_code == 401 and last.json()["detail"]["code"] == "second_factor_expired"
+
+
+def test_a_stranger_who_gets_to_the_code_step_of_a_locked_account_is_stopped() -> None:
+    """Without the cookie of a browser that signed in as the account, the lock holds at the code step: right code,
+    right recovery code or not."""
+    require_second_factor()
+    anna, seed, codes = with_second_factor("anna")
+    stranger = fresh("198.51.100.50")
+    assert stranger.post("/api/auth/login", json={"name": "anna", "password": PASSWORD}).json()["second_factor"]
+    lock("anna")
+    refused = stranger.post("/api/auth/login/totp", json={"code": a_code(anna, seed)})
+    assert refused.status_code == 429 and refused.json()["detail"]["code"] == "account_locked"
+    # The waiting sign-in is over, and the recovery code gets no further.
+    assert stranger.post("/api/auth/login/totp", json={"code": codes[0]}).status_code == 401
+    # A device cookie of another account or a forged one changes nothing.
+    other, other_seed, _ = with_second_factor("bert")
+    with SessionLocal() as db:
+        row = db.get(Account, anna.id)
+        assert row is not None
+        row.locked_until = None
+        db.commit()
+    twin = fresh("198.51.100.51")
+    assert twin.post("/api/auth/login", json={"name": "anna", "password": PASSWORD}).json()["second_factor"]
+    lock("anna")
+    twin.cookies.set(DEVICE_COOKIE, security.device_token(other.id), path="/api/auth")
+    assert twin.post("/api/auth/login/totp", json={"code": a_code(anna, seed)}).status_code == 429
+    assert other_seed
+
+
+def test_the_known_browser_signs_in_with_a_passkey_while_strangers_hold_the_lock() -> None:
+    from .test_passkeys import ORIGIN, SoftKey, add_key, passkey_sign_in
+
+    with SessionLocal() as db:
+        settings_service.save(db, {"public_url": ORIGIN})
+    anna = make_account("anna")
+    own = fresh("192.0.2.12")
+    assert own.post("/api/auth/login", json={"name": "anna", "password": PASSWORD}).status_code == 200
+    key = SoftKey()
+    assert add_key(own, key).status_code == 201
+    own.post("/api/auth/logout")
+    lock("anna")
+    with SessionLocal() as db:
+        row = db.get(Account, anna.id)
+        assert row is not None and row.locked_until is not None
+    stranger = fresh("198.51.100.60")
+    assert passkey_sign_in(stranger, key)[0].status_code == 401
+    brake.forget()
+    answer, _ = passkey_sign_in(own, key)
+    assert answer.status_code == 200, answer.text

@@ -49,7 +49,19 @@ from ..security import (
     session_account,
     start_session,
 )
-from ..services import accounts, diary, locales, mailer, notices, photos, reminders, settings_service, totp, vault
+from ..services import (
+    accounts,
+    diary,
+    locales,
+    mailer,
+    notices,
+    photos,
+    reminders,
+    resets,
+    settings_service,
+    totp,
+    vault,
+)
 from ..services.accounts import AccountError
 
 logger = logging.getLogger("nexdiary.auth")
@@ -285,7 +297,7 @@ def setup(payload: SetupIn, request: Request, response: Response, db: DbSession)
 
 
 @router.get("/auth/methods", summary="How one can sign in here (no sign-in needed)")
-def methods(db: DbSession) -> dict[str, Any]:
+def methods(request: Request, db: DbSession) -> dict[str, Any]:
     from ..services import passkeys
 
     values = settings_service.get_all(db)
@@ -295,7 +307,9 @@ def methods(db: DbSession) -> dict[str, Any]:
         "oidc": oidc,
         "oidc_name": values["oidc_provider_name"] if oidc else "",
         # Passkeys work under the public https address, or on localhost.
-        "passkeys": passkeys.available(db),
+        "passkeys": passkeys.available(db, request.url.hostname),
+        # "Forgot your password?" where a mail goes out and the link has a public address to point to.
+        "forgot": bool(values["password_login"]) and resets.available(db),
     }
 
 
@@ -590,11 +604,6 @@ class RoleIn(BaseModel):
     current_password: str = Field(default="", max_length=200)
 
 
-class PasswordSetIn(BaseModel):
-    password: str = Field(max_length=200)
-    current_password: str = Field(default="", max_length=200)
-
-
 class OperatorConfirmIn(BaseModel):
     current_password: str = Field(default="", max_length=200)
 
@@ -685,15 +694,3 @@ def set_role(
     db.commit()
     logger.warning("Role changed name=%s role=%s by=%s", row.name, payload.role, operator.name)
     return account_view(row)
-
-
-@router.put("/accounts/{account_id}/password", status_code=204, summary="Give an account a new password")
-def set_password(
-    account_id: int, payload: PasswordSetIn, request: Request, operator: OperatorAccount, db: DbSession,
-) -> None:
-    confirm_operator(request, db, operator, payload.current_password)
-    check_password(payload.password)
-    row = _row(db, account_id)
-    accounts.set_password(db, row, payload.password)
-    end_all_sessions(db, row.id)
-    logger.warning("Password set name=%s by=%s", row.name, operator.name)

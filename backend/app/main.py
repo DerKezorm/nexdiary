@@ -35,6 +35,7 @@ from .routers import (
     photos,
     prompts,
     push,
+    resets,
     sharing,
     stats,
 )
@@ -47,6 +48,7 @@ from .routers import totp as totp_router
 from .routers import v1 as v1_router
 from .security import HashingBusy, purge_sessions
 from .services import accounts, backups, locales, logs, notices, pictures, reminders, settings_service, totp, vault
+from .services import apitokens as apitokens_service
 from .services import passkeys as passkeys_service
 
 logger = logging.getLogger("nexdiary")
@@ -54,6 +56,7 @@ logger = logging.getLogger("nexdiary")
 ROUTERS = [
     health, about, locales_router, logs_router, auth, totp_router, oidc, invites, settings_router, backups_router,
     avatars_router, apitokens, v1_router, diary, photos, sharing, ai, prompts, immich, push, passkeys, stats,
+    resets,
 ]
 
 
@@ -94,6 +97,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     init_db()
     # The master key is there and fits the database, or the start stops here with the reason.
     vault.startup()
+    apitokens_service.seal_legacy_names()
     private.tighten_all()
     logs.attach_store(_read_log_mode, _write_log_mode)
     logs.apply_stored_mode()

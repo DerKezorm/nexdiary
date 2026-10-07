@@ -10,8 +10,25 @@ services:
     restart: unless-stopped
 
     ports:
-      # Host port on the left, container port on the right.
-      - "8550:8000"
+      # Host port on the left, container port on the right. Only this machine reaches it (127.0.0.1): put a reverse
+      # proxy with https in front and let it forward to http://127.0.0.1:8550 (a proxy in another container: put both
+      # in one Docker network and forward to http://nexdiary:8000). Set NEXDIARY_TRUSTED_PROXIES below to the proxy.
+      # To reach nexdiary directly from your home network instead, write "8550:8000", but only for a network you trust:
+      # without https, passwords and codes cross it in the clear.
+      - "127.0.0.1:8550:8000"
+
+    # The container needs nothing it is not given: it may not gain rights later, and starts with only what the
+    # entrypoint needs to set the ownership of /data (CHOWN, DAC_READ_SEARCH) and to drop from root to the user
+    # nexdiary (SETUID, SETGID). nexdiary itself runs as that user, with none.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_READ_SEARCH
+      - SETUID
+      - SETGID
 
     volumes:
       # Database, logs, backups and the operator's own languages.

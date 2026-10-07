@@ -97,6 +97,7 @@ def test_build_output_and_data_never_go_into_a_commit() -> None:
     import os
     import shutil
     import subprocess
+    import time
 
     import pytest
 
@@ -105,8 +106,16 @@ def test_build_output_and_data_never_go_into_a_commit() -> None:
         if os.environ.get("CI"):
             pytest.fail("CI without a git checkout")
         pytest.skip("no git checkout here")
-    listed = subprocess.run(["git", "ls-files", "--cached", "--others", "--exclude-standard"], cwd=root,
-                            capture_output=True, text=True, check=True).stdout.splitlines()
+    # Another git command in the same tree (a commit in another window, an index being written) can make one listing
+    # fail for a moment: asked again, a few times, before the test calls it a failure.
+    for attempt in range(4):
+        done = subprocess.run(["git", "ls-files", "--cached", "--others", "--exclude-standard"], cwd=root,
+                              capture_output=True, text=True, check=False, timeout=60)
+        if done.returncode == 0:
+            break
+        time.sleep(0.5 * (attempt + 1))
+    assert done.returncode == 0, done.stderr[-500:]
+    listed = done.stdout.splitlines()
     assert len(listed) > 50, "the listing went wrong"
     forbidden = ("node_modules/", ".venv/", "/dist/", "__pycache__/", ".pytest_cache/", ".ruff_cache/", "/data/")
     bad = [path for path in listed if any(part in "/" + path for part in forbidden)

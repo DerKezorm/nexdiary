@@ -17,6 +17,7 @@ import logging
 import threading
 import time
 from collections import deque
+from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor, wait
 from datetime import datetime
 from email.message import EmailMessage
@@ -164,6 +165,22 @@ def new_sign_in(account: Account, address: str, agent: str, *, first: bool, know
         _pending.add(future)
     future.add_done_callback(_done)
     return True
+
+
+def later(job: Callable[..., None], *args: Any) -> None:
+    """Runs ``job`` in the background beside the notices (a mail that must not hold a request up, nor tell by its
+    duration what it did). A failure is logged and touches nothing."""
+
+    def run() -> None:
+        try:
+            job(*args)
+        except Exception:
+            logger.exception("A job in the background failed")
+
+    future = _pool.submit(run)
+    with _lock:
+        _pending.add(future)
+    future.add_done_callback(_done)
 
 
 def _done(future: Future[Any]) -> None:

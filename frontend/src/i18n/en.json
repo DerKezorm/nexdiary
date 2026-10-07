@@ -367,7 +367,8 @@
       "submit": "Sign in",
       "passwordOff": "Sign-in with a password is turned off here. Only the operator can still use it.",
       "oidc": "Sign in with {{name}}",
-      "passkey": "Sign in with a passkey"
+      "passkey": "Sign in with a passkey",
+      "forgot": "Forgot your password?"
     },
     "code": {
       "title": "Second factor",
@@ -404,6 +405,24 @@
       "title": "Your recovery codes",
       "text": "Each one signs you in once, when the phone is not at hand. They are shown only now: keep them apart from the phone.",
       "done": "I have them, go on"
+    },
+    "forgot": {
+      "title": "Forgot your password",
+      "text": "Enter your name or your mail address. If there is an account with a mail address for it, we send a link with which you choose a new password.",
+      "label": "Name or mail address",
+      "submit": "Send link",
+      "sent": "If there is such an account, a link is on its way. It works once and for 24 hours."
+    },
+    "reset": {
+      "title": "New password",
+      "text": "Choose a new password for {{name}}. Every device signs in again afterwards. Your second factor stays.",
+      "password": "New password",
+      "again": "Once more",
+      "submit": "Save password",
+      "invalidTitle": "Link not valid",
+      "invalidText": "This link does not work any more: it was used or has run out. Ask for a new one, or tap \"Forgot your password?\" when signing in.",
+      "doneTitle": "Password saved",
+      "doneText": "You can sign in with the new password now."
     }
   },
   "whatsNew": {
@@ -680,15 +699,14 @@
     "blocked": "blocked",
     "makeOperator": "Make operator",
     "makeMember": "Make member",
-    "newPassword": "Reset password",
-    "givePassword": "Give a password",
+    "newPassword": "Send a link to reset",
+    "givePassword": "Send a link for a password",
     "resetTwoFactor": "Remove second factor",
     "signOutEverywhere": "Sign out everywhere",
     "block": "Block",
     "unblock": "Unblock",
     "deleteAccount": "Delete account",
     "more": "More for {{name}}",
-    "passwordGiven": "The new password for {{name}}, to pass on once:",
     "confirm": {
       "role": {
         "title": "Change the role of {{name}}?",
@@ -704,11 +722,6 @@
         "title": "Delete {{name}}?",
         "text": "The account is deleted with everything that belongs to it and cannot be brought back.",
         "button": "Delete account"
-      },
-      "password": {
-        "title": "Reset the password of {{name}}?",
-        "text": "A random new one is made and shown once; every session of the account ends.",
-        "button": "Reset"
       },
       "reset": {
         "title": "Remove the second factor of {{name}}?",
@@ -759,6 +772,11 @@
         "title": "Leave the second factor to the provider?",
         "text": "Whoever comes in through {{name}} is no longer asked for a second factor here. That is safe only when {{name}} requires one itself.",
         "button": "Leave it"
+      },
+      "link": {
+        "title": "Send {{name}} a link to reset the password?",
+        "text": "The person chooses their password themselves. The link goes by mail to their address when mail is set up, otherwise you get it once to pass on. The second factor stays.",
+        "button": "Send link"
       }
     },
     "signin": "Sign-in",
@@ -815,7 +833,7 @@
     "send": "Send",
     "mailSent": "The test mail is out.",
     "backups": "Backup",
-    "backupsHint": "One file with everything: accounts, settings and everything you write. Restoring shows a trial run first.",
+    "backupsHint": "One file with everything: accounts, settings and everything you write. A backup also holds the server's secrets; keep it like a password. Restoring shows a trial run first.",
     "schedule": "Automatically",
     "off": "off",
     "daily": "every night",
@@ -951,7 +969,10 @@
       "savedAt": "Last saved on {{when}}.",
       "never": "Never saved.",
       "saved": "Master key saved as a file. Keep it apart from the backups."
-    }
+    },
+    "linkSent": "The link for {{name}} went to {{email}}. It works once and for 24 hours.",
+    "linkShown": "The link for {{name}}, shown only now, valid once and for 24 hours. Pass it on, the person chooses the password themselves:",
+    "linkLabel": "Link to the password"
   },
   "editor": {
     "tools": "Formatting",
@@ -1292,7 +1313,10 @@
     "too_many_passkeys": "No more than ten passkeys per account.",
     "passkey_cancelled": "Cancelled. The browser did not hand over a passkey.",
     "passkey_unsupported": "This browser cannot use passkeys here.",
-    "immich_tls": "The certificate of your Immich is not trusted (made by oneself, for example). Use http in the home network, or give Immich a valid certificate."
+    "immich_tls": "The certificate of your Immich is not trusted (made by oneself, for example). Use http in the home network, or give Immich a valid certificate.",
+    "reset_invalid": "This link does not work any more.",
+    "reset_off": "This is not set up on this server. Ask the operator.",
+    "use_account_page": "You change your own password under My account."
   },
   "entry": {
     "back": "← Journal",
@@ -1356,7 +1380,9 @@
     "brake": {
       "title": "Protection against guessing",
       "ok": "After 5 wrong tries a 15 minute pause, per account and per address. Every try is in the log.",
-      "warn": "All visitors come through a proxy nexdiary does not know: the pause holds per account, per address only roughly. See “Behind the proxy”."
+      "warn": "All visitors come through a proxy nexdiary does not know: the pause holds per account, per address only roughly. See “Behind the proxy”.",
+      "bad": "The list of trusted proxies holds public networks ({{networks}}). Anybody could then make up the sender's address, and the pause after wrong tries no longer holds. List only the address of your proxy.",
+      "broken": "The protection against guessing fails its own test. Restart nexdiary; if that does not help, please report it."
     },
     "encryption": {
       "title": "Entries encrypted",
@@ -1374,7 +1400,8 @@
       "title": "Behind the proxy",
       "ok": "The visitors' real address arrives (proxy {{proxies}} entered as trusted). Without that the protection against guessing would see everybody as one.",
       "direct": "The visitors arrive directly, without a proxy in between.",
-      "warn": "The requests come through a proxy ({{proxy}}) that is not entered as trusted: the protection against guessing sees everybody as one. Set NEXDIARY_TRUSTED_PROXIES to its address."
+      "warn": "The requests come through a proxy ({{proxy}}) that is not entered as trusted: the protection against guessing sees everybody as one. Set NEXDIARY_TRUSTED_PROXIES to its address.",
+      "bad": "Public networks are listed as trusted ({{networks}}). Set NEXDIARY_TRUSTED_PROXIES to the address of your proxy, not to the whole internet."
     },
     "master_key_saved": {
       "title": "Master key saved",

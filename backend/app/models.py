@@ -98,7 +98,7 @@ class Account(Base):
     #: Set when the operator blocked the account: no sign-in, sessions and tokens end at once.
     blocked_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
     #: The second factor (``services/totp.py``): the seed encrypted with the server secret, empty while off; the
-    #: recovery codes as a JSON list of SHA-256 hashes; the time step of the last code taken (no replay).
+    #: recovery codes as a JSON list of keyed hashes; the time step of the last code taken (no replay).
     totp_secret_enc: Mapped[str] = mapped_column(Text, default="")
     totp_recovery: Mapped[str] = mapped_column(Text, default="")
     totp_last_step: Mapped[int] = mapped_column(Integer, default=0)
@@ -183,14 +183,32 @@ class Invite(Base):
     expires_at: Mapped[datetime] = mapped_column(UtcDateTime)
 
 
+class PasswordReset(Base):
+    """A link with which a person sets a new password (``services/resets.py``). Only the hash of the token is stored;
+    used once, then gone. At most one per account: a new one replaces the one before."""
+
+    __tablename__ = "password_resets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    #: The operator who sent it; empty when the person asked for it themselves ("Forgot your password?").
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(UtcDateTime)
+
+
 class ApiToken(Base):
-    """A token an account made for programs (``/api/v1``). Only the SHA-256 is stored."""
+    """A token an account made for programs (``/api/v1``). Only the SHA-256 is stored.
+
+    The name is sealed with the owner's data key (``name_enc``); ``name`` stays empty. A token made before that, whose
+    name still stands in the clear, is sealed at the next start (``services/apitokens.py``)."""
 
     __tablename__ = "api_tokens"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     account_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    name: Mapped[str] = mapped_column(String(100))
+    name: Mapped[str] = mapped_column(String(100), default="")
     #: ``read``, the only level there is.
     level: Mapped[str] = mapped_column(String(8))
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
@@ -199,6 +217,7 @@ class ApiToken(Base):
     last_used_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
     expires_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
     blocked_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    name_enc: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
 
 
 # --- The diary -------------------------------------------------------------------------------------------------------

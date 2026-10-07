@@ -267,6 +267,11 @@ export function LoginPage() {
         <Input label={t('auth.password')} value={password} onChange={setPassword} type="password" autoComplete="current-password" />
         <Remember on={remember} onChange={setRemember} />
         <Primary busy={busy}>{t('auth.login.submit')}</Primary>
+        {methods?.forgot && (
+          <Link to="/forgot" className="block text-center text-xs text-muted hover:text-ink">
+            {t('auth.login.forgot')}
+          </Link>
+        )}
         {methods && !methods.password && <p className="text-xs text-muted">{t('auth.login.passwordOff')}</p>}
       </form>
       {(passkeys || methods?.oidc) && <Or />}
@@ -466,6 +471,126 @@ export function InvitePage() {
           </a>
         </>
       )}
+    </AuthFrame>
+  )
+}
+
+/** "Forgot your password?": the name or the address on record, and the same answer whether there is such an account. */
+export function ForgotPage() {
+  const { t } = useTranslation()
+  const [name, setName] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [problem, setProblem] = useState<string | null>(null)
+  const [sent, setSent] = useState(false)
+  if (sent) {
+    return (
+      <AuthFrame title={t('auth.forgot.title')}>
+        <p role="status" className="text-sm text-ink-2">
+          {t('auth.forgot.sent')}
+        </p>
+        <Link to="/login" className={OUTLINE + ' mt-5'}>
+          {t('auth.backToLogin')}
+        </Link>
+      </AuthFrame>
+    )
+  }
+  return (
+    <AuthFrame title={t('auth.forgot.title')} text={t('auth.forgot.text')}>
+      <form
+        className="space-y-4"
+        onSubmit={async (event) => {
+          event.preventDefault()
+          if (!name.trim()) return setProblem('name_missing')
+          setBusy(true)
+          setProblem(null)
+          try {
+            await authApi.forgot(name.trim())
+            setSent(true)
+          } catch (error) {
+            setProblem(codeOf(error))
+          } finally {
+            setBusy(false)
+          }
+        }}
+      >
+        <Problem code={problem} />
+        <Input label={t('auth.forgot.label')} value={name} onChange={setName} autoComplete="username" autoFocus />
+        <Primary busy={busy}>{t('auth.forgot.submit')}</Primary>
+        <Link to="/login" className="block text-center text-xs text-muted hover:text-ink">
+          {t('auth.backToLogin')}
+        </Link>
+      </form>
+    </AuthFrame>
+  )
+}
+
+type ResetState = { name: string; min_password: number }
+
+/** The page of the link: the person chooses the new password themselves. Nobody is signed in by it; the sign-in follows. */
+export function ResetPage() {
+  const { t } = useTranslation()
+  const { token = '' } = useParams()
+  const [state, setState] = useState<ResetState | null>(null)
+  const [invalid, setInvalid] = useState(false)
+  const [password, setPassword] = useState('')
+  const [again, setAgain] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [problem, setProblem] = useState<string | null>(null)
+  const [done, setDone] = useState(false)
+
+  useEffect(() => {
+    api<ResetState>(`/api/reset/${encodeURIComponent(token)}`).then(setState, () => setInvalid(true))
+  }, [token])
+
+  if (invalid) {
+    return (
+      <AuthFrame title={t('auth.reset.invalidTitle')}>
+        <p className="text-sm text-ink-2">{t('auth.reset.invalidText')}</p>
+        <Link to="/login" className={OUTLINE + ' mt-5'}>
+          {t('auth.backToLogin')}
+        </Link>
+      </AuthFrame>
+    )
+  }
+  if (done) {
+    return (
+      <AuthFrame title={t('auth.reset.doneTitle')}>
+        <p role="status" className="text-sm text-ink-2">
+          {t('auth.reset.doneText')}
+        </p>
+        <Link to="/login" className="mt-5 flex h-11 w-full items-center justify-center rounded-full bg-accent px-4 font-semibold text-accent-ink hover:brightness-105">
+          {t('auth.login.submit')}
+        </Link>
+      </AuthFrame>
+    )
+  }
+  if (!state) return null
+  return (
+    <AuthFrame title={t('auth.reset.title')} text={t('auth.reset.text', { name: state.name })}>
+      <form
+        className="space-y-4"
+        onSubmit={async (event) => {
+          event.preventDefault()
+          if (password !== again) return setProblem('password_mismatch')
+          setBusy(true)
+          setProblem(null)
+          try {
+            await api<void>(`/api/reset/${encodeURIComponent(token)}`, { method: 'POST', body: { password } })
+            setDone(true)
+          } catch (error) {
+            const found = codeOf(error)
+            if (found === 'reset_invalid') setInvalid(true)
+            else setProblem(found)
+          } finally {
+            setBusy(false)
+          }
+        }}
+      >
+        <Problem code={problem} />
+        <Input label={t('auth.reset.password')} value={password} onChange={setPassword} type="password" autoComplete="new-password" autoFocus hint={t('auth.passwordHint')} />
+        <Input label={t('auth.reset.again')} value={again} onChange={setAgain} type="password" autoComplete="new-password" />
+        <Primary busy={busy}>{t('auth.reset.submit')}</Primary>
+      </form>
     </AuthFrame>
   )
 }

@@ -1,7 +1,9 @@
 """The second factor: time-based one-time codes (RFC 6238) plus recovery codes. Taken over from nextrmnl.
 
-* The seed is stored encrypted with the server secret (``security.encrypt_secret``), the recovery codes as SHA-256
-  hashes. Seed and codes are shown once, at enrolment, and never logged.
+* The seed is stored encrypted with the server secret (``security.encrypt_secret``), the recovery codes as HMACs with
+  a key of the server's (``h1:`` and hex): whoever reads the database alone cannot test guesses against them. Lists
+  made before that hold plain SHA-256 hashes; both forms are accepted, and every new list is made in the new one.
+  Seed and codes are shown once, at enrolment, and never logged.
 * Enrolment takes two steps. ``begin_enrolment`` draws a seed and keeps it in memory for ten minutes; confirming
   needs a code from the app (proves the app holds the seed) and the account's password (proves the person at the
   keyboard is the owner). Only then is the seed stored.
@@ -35,7 +37,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from ..models import SIGN_IN_OIDC, Account, Passkey
-from ..security import decrypt_secret, encrypt_secret
+from ..security import decrypt_secret, encrypt_secret, server_key
 from . import settings_service
 
 ISSUER = "nexdiary"
@@ -130,9 +132,23 @@ def generate_recovery_codes(count: int = RECOVERY_CODES) -> list[str]:
     return codes
 
 
+#: Marks a recovery code stored as an HMAC; a list entry without it is a SHA-256 hash from before.
+RECOVERY_MARK = "h1:"
+
+
+def _cleaned(code: str) -> str:
+    return code.strip().replace("-", "").replace(" ", "").lower()
+
+
 def hash_recovery(code: str) -> str:
-    cleaned = code.strip().replace("-", "").replace(" ", "").lower()
-    return hashlib.sha256(cleaned.encode("utf-8")).hexdigest()
+    """The form a recovery code is stored in: an HMAC-SHA256 with a key derived from the server's secret."""
+    key = hashlib.sha256(b"nexdiary-recovery-codes:" + server_key()).digest()
+    return RECOVERY_MARK + hmac.new(key, _cleaned(code).encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def legacy_hash_recovery(code: str) -> str:
+    """The form before: a plain SHA-256. Only to recognise lists made then."""
+    return hashlib.sha256(_cleaned(code).encode("utf-8")).hexdigest()
 
 
 def recovery_hashes(codes: list[str]) -> str:
@@ -150,8 +166,8 @@ def load_recovery(stored: str) -> list[str]:
 def use_recovery(stored: str, code: str) -> str | None:
     """The stored list without the used code, or None when the code is not in it."""
     hashes = load_recovery(stored)
-    wanted = hash_recovery(code)
-    remaining = [entry for entry in hashes if not hmac.compare_digest(entry, wanted)]
+    wanted = (hash_recovery(code), legacy_hash_recovery(code))
+    remaining = [entry for entry in hashes if not any(hmac.compare_digest(entry, form) for form in wanted)]
     if len(remaining) == len(hashes):
         return None
     return json.dumps(remaining)

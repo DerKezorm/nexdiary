@@ -367,7 +367,8 @@
       "submit": "Anmelden",
       "passwordOff": "Die Anmeldung mit Passwort ist hier abgeschaltet. Nur der Betreiber kann es noch.",
       "oidc": "Mit {{name}} anmelden",
-      "passkey": "Mit Passkey anmelden"
+      "passkey": "Mit Passkey anmelden",
+      "forgot": "Passwort vergessen?"
     },
     "code": {
       "title": "Zweiter Faktor",
@@ -404,6 +405,24 @@
       "title": "Deine Wiederherstellungscodes",
       "text": "Jeder meldet dich einmal an, wenn das Handy nicht zur Hand ist. Sie werden nur jetzt gezeigt: Bewahre sie getrennt vom Handy auf.",
       "done": "Ich habe sie, weiter"
+    },
+    "forgot": {
+      "title": "Passwort vergessen",
+      "text": "Gib deinen Namen oder deine Mailadresse ein. Gibt es dazu ein Konto mit einer Mailadresse, schicken wir einen Link, mit dem du ein neues Passwort wählst.",
+      "label": "Name oder Mailadresse",
+      "submit": "Link schicken",
+      "sent": "Wenn es dazu ein Konto gibt, ist ein Link unterwegs. Er gilt einmal und 24 Stunden."
+    },
+    "reset": {
+      "title": "Neues Passwort",
+      "text": "Wähle ein neues Passwort für {{name}}. Danach melden sich alle Geräte neu an. Dein zweiter Faktor bleibt.",
+      "password": "Neues Passwort",
+      "again": "Noch einmal",
+      "submit": "Passwort speichern",
+      "invalidTitle": "Link nicht gültig",
+      "invalidText": "Dieser Link gilt nicht mehr: Er ist benutzt oder abgelaufen. Frag nach einem neuen, oder tippe bei der Anmeldung auf „Passwort vergessen?“.",
+      "doneTitle": "Passwort gespeichert",
+      "doneText": "Du kannst dich jetzt mit dem neuen Passwort anmelden."
     }
   },
   "whatsNew": {
@@ -680,15 +699,14 @@
     "blocked": "gesperrt",
     "makeOperator": "Zum Betreiber machen",
     "makeMember": "Zum Mitglied machen",
-    "newPassword": "Passwort zurücksetzen",
-    "givePassword": "Passwort geben",
+    "newPassword": "Link zum Zurücksetzen schicken",
+    "givePassword": "Link für ein Passwort schicken",
     "resetTwoFactor": "Zweiten Faktor entfernen",
     "signOutEverywhere": "Überall abmelden",
     "block": "Sperren",
     "unblock": "Entsperren",
     "deleteAccount": "Konto löschen",
     "more": "Mehr für {{name}}",
-    "passwordGiven": "Das neue Passwort für {{name}}, einmal weiterzugeben:",
     "confirm": {
       "role": {
         "title": "Rolle von {{name}} ändern?",
@@ -704,11 +722,6 @@
         "title": "{{name}} löschen?",
         "text": "Das Konto wird mit allem gelöscht, was dazugehört, und lässt sich nicht zurückholen.",
         "button": "Konto löschen"
-      },
-      "password": {
-        "title": "Passwort von {{name}} zurücksetzen?",
-        "text": "Ein zufälliges neues wird erzeugt und einmal gezeigt; jede Anmeldung des Kontos endet.",
-        "button": "Zurücksetzen"
       },
       "reset": {
         "title": "Zweiten Faktor von {{name}} entfernen?",
@@ -759,6 +772,11 @@
         "title": "Dem Anbieter den zweiten Faktor überlassen?",
         "text": "Wer über {{name}} hereinkommt, wird hier nicht mehr nach einem zweiten Faktor gefragt. Das ist nur sicher, wenn {{name}} selbst einen verlangt.",
         "button": "Überlassen"
+      },
+      "link": {
+        "title": "{{name}} einen Link zum Zurücksetzen schicken?",
+        "text": "Die Person wählt ihr Passwort selbst. Der Link geht per Mail an ihre Adresse, wenn Mail eingerichtet ist, sonst bekommst du ihn einmal zum Weitergeben. Der zweite Faktor bleibt.",
+        "button": "Link schicken"
       }
     },
     "signin": "Anmeldung",
@@ -815,7 +833,7 @@
     "send": "Senden",
     "mailSent": "Die Testmail ist raus.",
     "backups": "Sicherung",
-    "backupsHint": "Eine Datei mit allem: Konten, Einstellungen und alles, was ihr schreibt. Wiederherstellen zeigt zuerst einen Probelauf.",
+    "backupsHint": "Eine Datei mit allem: Konten, Einstellungen und alles, was ihr schreibt. Eine Sicherung enthält auch die Server-Geheimnisse; bewahre sie wie ein Passwort auf. Wiederherstellen zeigt zuerst einen Probelauf.",
     "schedule": "Automatisch",
     "off": "aus",
     "daily": "jede Nacht",
@@ -951,7 +969,10 @@
       "savedAt": "Zuletzt gesichert am {{when}}.",
       "never": "Noch nie gesichert.",
       "saved": "Hauptschlüssel als Datei gespeichert. Bewahre ihn getrennt von den Sicherungen auf."
-    }
+    },
+    "linkSent": "Der Link für {{name}} ging an {{email}}. Er gilt einmal und 24 Stunden.",
+    "linkShown": "Der Link für {{name}}, nur jetzt zu sehen, einmal und 24 Stunden gültig. Gib ihn weiter, die Person wählt das Passwort selbst:",
+    "linkLabel": "Link zum Passwort"
   },
   "editor": {
     "tools": "Formatieren",
@@ -1292,7 +1313,10 @@
     "too_many_passkeys": "Mehr als zehn Passkeys je Konto gehen nicht.",
     "passkey_cancelled": "Abgebrochen. Der Browser hat keinen Passkey bekommen.",
     "passkey_unsupported": "Dieser Browser kann hier keine Passkeys.",
-    "immich_tls": "Das Zertifikat deines Immich ist nicht vertrauenswürdig (etwa selbst ausgestellt). Nimm im Heimnetz http, oder gib Immich ein gültiges Zertifikat."
+    "immich_tls": "Das Zertifikat deines Immich ist nicht vertrauenswürdig (etwa selbst ausgestellt). Nimm im Heimnetz http, oder gib Immich ein gültiges Zertifikat.",
+    "reset_invalid": "Dieser Link gilt nicht mehr.",
+    "reset_off": "Das ist auf diesem Server nicht eingerichtet. Frag den Betreiber.",
+    "use_account_page": "Dein eigenes Passwort änderst du unter Mein Konto."
   },
   "entry": {
     "back": "← Tagebuch",
@@ -1356,7 +1380,9 @@
     "brake": {
       "title": "Schutz vor Raten",
       "ok": "Nach 5 falschen Versuchen 15 Minuten Pause, je Konto und je Adresse. Jeder Versuch steht im Log.",
-      "warn": "Alle Besucher kommen über einen Proxy, den nexdiary nicht kennt: Die Pause greift je Konto, je Adresse aber nur grob. Siehe „Hinter dem Proxy“."
+      "warn": "Alle Besucher kommen über einen Proxy, den nexdiary nicht kennt: Die Pause greift je Konto, je Adresse aber nur grob. Siehe „Hinter dem Proxy“.",
+      "bad": "Die Liste der vertrauenswürdigen Proxys enthält öffentliche Netze ({{networks}}). So könnte jeder die Adresse des Absenders erfinden, und die Pause nach falschen Versuchen greift nicht mehr. Trage nur die Adresse deines Proxys ein.",
+      "broken": "Der Schutz vor Raten besteht seinen eigenen Test nicht. Starte nexdiary neu; hilft das nicht, melde es bitte."
     },
     "encryption": {
       "title": "Einträge verschlüsselt",
@@ -1374,7 +1400,8 @@
       "title": "Hinter dem Proxy",
       "ok": "Die echte Adresse der Besucher kommt an (Proxy {{proxies}} als vertrauenswürdig eingetragen). Ohne das sähe der Schutz vor Raten alle als einen.",
       "direct": "Die Besucher kommen direkt an, ohne Proxy dazwischen.",
-      "warn": "Die Anfragen kommen über einen Proxy ({{proxy}}), der nicht als vertrauenswürdig eingetragen ist: Der Schutz vor Raten sieht alle als einen. Setze NEXDIARY_TRUSTED_PROXIES auf seine Adresse."
+      "warn": "Die Anfragen kommen über einen Proxy ({{proxy}}), der nicht als vertrauenswürdig eingetragen ist: Der Schutz vor Raten sieht alle als einen. Setze NEXDIARY_TRUSTED_PROXIES auf seine Adresse.",
+      "bad": "Als vertrauenswürdig eingetragen sind öffentliche Netze ({{networks}}). Setze NEXDIARY_TRUSTED_PROXIES auf die Adresse deines Proxys, nicht auf das ganze Internet."
     },
     "master_key_saved": {
       "title": "Hauptschlüssel gesichert",

@@ -139,7 +139,8 @@ def test_password_sign_in_off_keeps_the_operator_in(client: TestClient) -> None:
     refused = client.post("/api/auth/login", json={"name": "anna", "password": PASSWORD})
     assert refused.status_code == 403 and refused.json()["detail"]["code"] == "password_login_off"
     assert client.post("/api/auth/login", json={"name": "boss", "password": PASSWORD}).status_code == 200
-    assert client.get("/api/auth/methods").json() == {"password": False, "oidc": False, "oidc_name": "", "passkeys": True}
+    # No passkeys offered: no public address is set, and the test server is not called "localhost".
+    assert client.get("/api/auth/methods").json() == {"password": False, "oidc": False, "oidc_name": "", "passkeys": False, "forgot": False}
 
 
 def test_changing_the_password_ends_the_other_sessions(client: TestClient) -> None:
@@ -185,10 +186,9 @@ def test_the_operator_manages_accounts(client: TestClient, operator: Account) ->
     anna_client = TestClient(client.app, headers={"X-Nexdiary-Client": "tab-anna00000"})
     sign_in(anna_client, anna)
     assert anna_client.get("/api/accounts").status_code == 403
-    assert client.put(f"/api/accounts/{anna.id}/password", json={"password": GOOD, "current_password": PASSWORD}).status_code == 204
-    # A new password from the operator ends the account's sessions.
-    assert anna_client.get("/api/auth/me").status_code == 401
-    sign_in(anna_client, anna)
+    # The operator cannot set a password for anybody (a link is sent instead: ``test_password_links.py``).
+    assert client.put(f"/api/accounts/{anna.id}/password", json={"password": GOOD, "current_password": PASSWORD}).status_code in (404, 405)
+    assert anna_client.get("/api/auth/me").status_code == 200
     assert client.post(f"/api/accounts/{anna.id}/sign-out").status_code == 204
     assert anna_client.get("/api/auth/me").status_code == 401
     assert client.put(f"/api/accounts/{anna.id}/role", json={"role": "operator", "current_password": PASSWORD}).json()["role"] == OPERATOR

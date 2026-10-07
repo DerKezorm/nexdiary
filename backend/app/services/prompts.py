@@ -29,7 +29,7 @@ from sqlalchemy.orm import Session
 
 from ..errors import error
 from ..models import Account, WritingPrompts
-from . import diary, vault
+from . import diary, quota, vault
 
 #: The own questions a person may keep, and how long one may be (as long as the question a note keeps).
 OWN_MAX = 50
@@ -199,12 +199,13 @@ def _change(db: Session, account_id: int, dek: bytes, apply: Any) -> dict[str, A
         row = _row(db, account_id)
         if row is None:
             content = _clean(apply(default_choice()))
+            sealed = vault.seal_json(dek, content, _aad(account_id))
             written = db.execute(
                 sqlite_insert(WritingPrompts)
-                .values(user_id=account_id, revision=0, updated_at=diary.now(),
-                        content_enc=vault.seal_json(dek, content, _aad(account_id)))
+                .values(user_id=account_id, revision=0, updated_at=diary.now(), content_enc=sealed)
                 .on_conflict_do_nothing(index_elements=[WritingPrompts.user_id])
             )
+            growth = len(sealed)
         else:
             try:
                 standing = _clean(vault.open_json(dek, row.content_enc, _aad(account_id)))
@@ -212,12 +213,15 @@ def _change(db: Session, account_id: int, dek: bytes, apply: Any) -> dict[str, A
                 diary.unreadable("writing_prompts")
                 standing = default_choice()
             content = _clean(apply(standing))
+            sealed = vault.seal_json(dek, content, _aad(account_id))
             written = db.execute(
                 update(WritingPrompts)
                 .where(WritingPrompts.user_id == account_id, WritingPrompts.revision == row.revision)
-                .values(content_enc=vault.seal_json(dek, content, _aad(account_id)), revision=row.revision + 1,
-                        updated_at=diary.now())
+                .values(content_enc=sealed, revision=row.revision + 1, updated_at=diary.now())
             )
+            growth = len(sealed) - len(row.content_enc)
+        if written.rowcount == 1:
+            quota.check_after_write(db, account_id, growth)
         db.commit()
         if written.rowcount == 1:
             return content

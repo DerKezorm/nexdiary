@@ -432,3 +432,60 @@ def test_an_account_from_a_provider_changes_its_factor_only_soon_after_signing_i
     begun = other.post("/api/auth/totp/begin")
     stale = other.post("/api/auth/totp/confirm", json={"code": current_code(begun.json()["secret"])})
     assert stale.status_code == 403 and stale.json()["detail"]["code"] == "sign_in_again"
+
+
+# --- Recovery codes are kept as keyed hashes (B10) ------------------------------------------------------------------
+
+
+def test_recovery_codes_are_stored_as_keyed_hashes_not_plain_sha256() -> None:
+    import hashlib
+
+    codes = totp.generate_recovery_codes()
+    stored = totp.recovery_hashes(codes)
+    for code in codes:
+        plain = hashlib.sha256(code.replace("-", "").encode()).hexdigest()
+        assert plain not in stored, "whoever reads the database alone can test no guess against it"
+    entries = totp.load_recovery(stored)
+    assert all(entry.startswith(totp.RECOVERY_MARK) and len(entry) == len(totp.RECOVERY_MARK) + 64 for entry in entries)
+    assert len(set(entries)) == len(codes)
+    # Typed the way people type them from paper, and counted once.
+    remaining = totp.use_recovery(stored, codes[1].upper().replace("-", " "))
+    assert remaining is not None and len(totp.load_recovery(remaining)) == len(codes) - 1
+    assert totp.use_recovery(remaining, codes[1]) is None
+    assert totp.use_recovery(stored, "abcde-fghjk") is None
+
+
+def test_the_key_comes_from_the_server_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.config import get_settings
+
+    codes = totp.generate_recovery_codes()
+    stored = totp.recovery_hashes(codes)
+    assert totp.use_recovery(stored, codes[0]) is not None
+    monkeypatch.setattr(get_settings(), "secret_key", "another key entirely")
+    assert totp.use_recovery(stored, codes[0]) is None, "another server secret: the list does not match, it fails closed"
+    assert totp.recovery_hashes(codes) != stored
+
+
+def test_a_list_made_before_still_signs_in_and_each_code_counts_once(client: TestClient, operator: Account, clock: Clock) -> None:
+    secret, _codes = enrol(client)
+    codes = totp.generate_recovery_codes()
+    mixed = [totp.legacy_hash_recovery(code) for code in codes[:4]] + [totp.hash_recovery(code) for code in codes[4:]]
+    import json
+
+    with SessionLocal() as db:
+        row = db.get(Account, operator.id)
+        assert row is not None
+        row.totp_recovery = json.dumps(mixed)
+        db.commit()
+    for number in (0, 5):
+        sign_out(client)
+        password_step(client)
+        used = code_step(client, codes[number])
+        assert used.status_code == 200, used.text
+        sign_out(client)
+        password_step(client)
+        assert code_step(client, codes[number]).status_code == 401, "once, in either form"
+    with SessionLocal() as db:
+        row = db.get(Account, operator.id)
+        assert row is not None and len(totp.load_recovery(row.totp_recovery)) == 6
+    assert secret

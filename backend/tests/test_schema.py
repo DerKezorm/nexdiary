@@ -48,9 +48,16 @@ def fresh_schema_sql() -> str:
     return "".join(" ".join(row[0].split()) + ";\n" for row in rows)
 
 
+def drop_v9(connection: sqlite3.Connection) -> None:
+    """Takes away what version 9 added (the links to set a new password, the sealed name of an API token)."""
+    connection.execute("DROP TABLE password_resets")
+    connection.execute("ALTER TABLE api_tokens DROP COLUMN name_enc")
+
+
 def drop_v8(connection: sqlite3.Connection) -> None:
-    """Takes away what version 8 added (sessions with a name, a length and a stage; passkeys): the migration tests of
-    older versions go back to the state before them."""
+    """Takes away what version 8 and everything after it added (sessions with a name, a length and a stage; passkeys;
+    the links to set a new password): the migration tests of older versions go back to the state before them."""
+    drop_v9(connection)
     connection.execute("DROP TABLE passkeys")
     connection.execute("DROP INDEX uq_auth_sessions_uid")
     for column in ("uid", "remember", "stage"):

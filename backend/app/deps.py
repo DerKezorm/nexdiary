@@ -282,10 +282,16 @@ def address_failed(request: Request, *extra: str) -> None:
         brake.failed(key, free)
 
 
-def confirm_operator(request: Request, db: Session, operator: AccountRow, password: str) -> None:
+def confirm_operator(
+    request: Request, db: Session, operator: AccountRow, password: str, *, settle: bool = True
+) -> None:
     """The operator's password once more, before an act a stolen session must not be enough for: carrying a backup
     away, giving another account a password, taking its second factor, changing a role, deleting an account. An
-    operator who signs in through the provider has no password here and is not asked."""
+    operator who signs in through the provider has no password here and is not asked.
+
+    A right password counts as a success (the failures so far are forgotten) only when ``settle`` is set. An act that
+    asks for a second factor on top passes ``settle=False`` and calls ``reauth_succeeded`` itself once the factor
+    passed too: else a right password would wipe the count before each guess at the code."""
     row = db.get(AccountRow, operator.id)
     assert row is not None
     if row.sign_in != SIGN_IN_PASSWORD:
@@ -294,4 +300,5 @@ def confirm_operator(request: Request, db: Session, operator: AccountRow, passwo
     if not accounts.check_password(row, password):
         reauth_failed(request, db, row)
         raise error("wrong_password", "The current password is wrong.", 401)
-    reauth_succeeded(request, db, row)
+    if settle:
+        reauth_succeeded(request, db, row)

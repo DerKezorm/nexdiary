@@ -17,7 +17,7 @@ from ..deps import Account, DbSession, OperatorAccount
 from ..errors import error
 from ..models import Account as AccountRow
 from ..models import ApiToken, utcnow
-from ..services import apitokens
+from ..services import apitokens, vault
 from ..services.apitokens import TokenError
 
 logger = logging.getLogger("nexdiary.api")
@@ -56,15 +56,17 @@ class MadeOut(BaseModel):
     secret: str
 
 
-def _out(row: ApiToken) -> TokenOut:
-    return TokenOut(id=row.id, name=row.name, level=row.level, prefix=row.prefix, created_at=row.created_at,
-                    last_used_at=row.last_used_at, expires_at=row.expires_at, blocked=row.blocked_at is not None)
+def _out(row: ApiToken, dek: bytes | None = None) -> TokenOut:
+    return TokenOut(id=row.id, name=apitokens.name_of(row, dek), level=row.level, prefix=row.prefix,
+                    created_at=row.created_at, last_used_at=row.last_used_at, expires_at=row.expires_at,
+                    blocked=row.blocked_at is not None)
 
 
 @router.get("/api-tokens", response_model=TokensOut, summary="The own API tokens")
 def own_tokens(account: Account, db: DbSession) -> TokensOut:
     rows = db.scalars(select(ApiToken).where(ApiToken.account_id == account.id).order_by(ApiToken.id)).all()
-    return TokensOut(allowed=apitokens.allowed(db), tokens=[_out(row) for row in rows])
+    dek = vault.dek_for(account.id) if rows else None
+    return TokensOut(allowed=apitokens.allowed(db), tokens=[_out(row, dek) for row in rows])
 
 
 @router.post("/api-tokens", response_model=MadeOut, status_code=201, summary="Make an API token; shown once")
@@ -92,9 +94,10 @@ def delete_token(token_id: Annotated[int, Path(ge=1)], account: Account, db: DbS
 
 
 class AnyTokenOut(BaseModel):
+    """No name: what a person calls their token is theirs (sealed with their data key)."""
+
     id: int
     account: str
-    name: str
     level: str
     prefix: str
     created_at: datetime
@@ -107,7 +110,7 @@ class AnyTokenOut(BaseModel):
 def every_token(_operator: OperatorAccount, db: DbSession) -> list[AnyTokenOut]:
     names = dict(db.execute(select(AccountRow.id, AccountRow.name)).all())
     rows = db.scalars(select(ApiToken).order_by(ApiToken.account_id, ApiToken.id)).all()
-    return [AnyTokenOut(id=row.id, account=names.get(row.account_id, ""), name=row.name, level=row.level,
+    return [AnyTokenOut(id=row.id, account=names.get(row.account_id, ""), level=row.level,
                         prefix=row.prefix, created_at=row.created_at, last_used_at=row.last_used_at,
                         expires_at=row.expires_at, blocked=row.blocked_at is not None) for row in rows]
 
@@ -123,6 +126,6 @@ def block_token(token_id: Annotated[int, Path(ge=1)], _operator: OperatorAccount
         db.commit()
         logger.info("API token blocked by the operator token_id=%s", token_id)
     owner = db.get(AccountRow, row.account_id)
-    return AnyTokenOut(id=row.id, account=owner.name if owner else "", name=row.name, level=row.level,
+    return AnyTokenOut(id=row.id, account=owner.name if owner else "", level=row.level,
                        prefix=row.prefix, created_at=row.created_at, last_used_at=row.last_used_at,
                        expires_at=row.expires_at, blocked=True)

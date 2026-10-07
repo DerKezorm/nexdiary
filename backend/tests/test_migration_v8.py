@@ -57,7 +57,7 @@ def test_a_v7_database_comes_to_v8_whole_and_nobody_is_locked_out(
     assert made == [f"before schema {database.SCHEMA_VERSION}"]
     assert counts(path) == before, "no row lost, no session ended"
     with closing(sqlite3.connect(path)) as connection:
-        assert int(connection.execute("PRAGMA user_version").fetchone()[0]) == database.SCHEMA_VERSION == 8
+        assert int(connection.execute("PRAGMA user_version").fetchone()[0]) == database.SCHEMA_VERSION
         migrated = schema_of(connection)
         sessions = connection.execute("SELECT uid, remember, stage FROM auth_sessions").fetchall()
         foreign = connection.execute("PRAGMA foreign_key_list(passkeys)").fetchall()

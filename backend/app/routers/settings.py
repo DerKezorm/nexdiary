@@ -185,7 +185,9 @@ def master_key(payload: MasterKeyIn, request: Request, operator: OperatorAccount
     internet?"."""
     row = db.get(AccountRow, operator.id)
     assert row is not None
-    confirm_operator(request, db, row, payload.current_password)
+    # The password counts as passed only together with the factor: a right password must not wipe the failures before
+    # each guess at the code, or the code could be guessed without limit.
+    confirm_operator(request, db, row, payload.current_password, settle=False)
     if not totp.has_second_factor(db, row):
         raise error("own_second_factor_first", "Set up your own second factor first.", 409)
     reauth_guard(request, row)

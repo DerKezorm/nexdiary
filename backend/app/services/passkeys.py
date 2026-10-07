@@ -7,7 +7,9 @@ face or PIN), and it counts as a second factor.
   Without a public address passkeys work on ``localhost`` only. On plain ``http`` elsewhere browsers do not offer them.
 * **Challenges** are 32 random bytes, kept in memory for five minutes and taken out when used: each counts once. The
   challenge of a sign-in is bound to a short-lived cookie of that browser, the one of adding a passkey or of
-  confirming an act to the session that asked.
+  confirming an act to the session that asked. Two stores, so that nobody who is not signed in can crowd out the
+  rest: the challenges of sign-ins (no account needed, so at most ``PER_ADDRESS`` open per sender, and the oldest
+  go when the whole store is full) and the challenges of signed-in people (``PER_ACCOUNT`` per account).
 * **The counter** an authenticator keeps is checked: an answer that does not count up is refused (a copied key), and
   it is written only where it still stood as read.
 
@@ -56,8 +58,14 @@ CHALLENGE_SECONDS = 300
 MAX_PASSKEYS = 10
 NAME_MAX = 64
 LOCALHOST = "localhost"
-#: Challenges waiting at once, all kinds together: a flood of "begin" cannot fill the memory.
-MAX_WAITING = 10_000
+#: Sign-in challenges waiting at once, from everybody: a flood of "begin" cannot fill the memory. Past it the oldest go.
+MAX_ANONYMOUS = 10_000
+#: Sign-in challenges one sender may have open, and how many times it may ask before it rests (every "begin" counts,
+#: see the route).
+PER_ADDRESS = 20
+BEGINS_PER_ADDRESS = 30
+#: Challenges one signed-in account may have open (adding, confirming; one per session and kind).
+PER_ACCOUNT = 20
 
 
 class PasskeyError(Exception):
@@ -77,10 +85,15 @@ class Party:
 class _Challenge:
     value: bytes
     expires: float
+    #: Who asked, for the limit per sender (sign-ins only).
+    owner: str = ""
 
 
 _lock = threading.Lock()
-_waiting: dict[str, _Challenge] = {}
+#: Sign-ins: key -> challenge, oldest first. Nobody is signed in, so the sender is all there is to count by.
+_anonymous: dict[str, _Challenge] = {}
+#: Signed-in people: account id -> (kind and session -> challenge).
+_accounts: dict[int, dict[str, _Challenge]] = {}
 
 
 def party(db: Session) -> Party:
@@ -97,11 +110,15 @@ def party(db: Session) -> Party:
     return Party(rp_id=host, origin=f"{parts.scheme}://{parts.netloc.lower()}")
 
 
-def available(db: Session) -> bool:
+def available(db: Session, host: str | None = None) -> bool:
+    """Whether the sign-in page offers passkeys. Under a public https address always; without one only where the page
+    is open on ``localhost`` (``host``), as browsers offer nothing for another name."""
     try:
         party(db)
     except PasskeyError:
         return False
+    if not settings_service.public_url(db):
+        return (host or "").lower() == LOCALHOST
     return True
 
 
@@ -129,22 +146,54 @@ def _expected_origin(where: Party, credential: dict[str, Any]) -> str:
     return "https://" + LOCALHOST
 
 
-def _keep(key: str) -> bytes:
+def _keep_anonymous(key: str, owner: str) -> bytes:
+    """A challenge for a sign-in. A sender holds at most ``PER_ADDRESS`` open ones (``PasskeyError`` 429 past that);
+    when the whole store is full the oldest go, so that sign-ins never stop for want of room."""
     value = secrets.token_bytes(32)
     now = time.monotonic()
     with _lock:
-        if len(_waiting) >= MAX_WAITING:
-            for stale in [k for k, entry in _waiting.items() if entry.expires <= now]:
-                del _waiting[stale]
-            if len(_waiting) >= MAX_WAITING:
-                raise PasskeyError("busy", "The server is busy. Try again in a moment.", 503)
-        _waiting[key] = _Challenge(value, now + CHALLENGE_SECONDS)
+        mine = [k for k, entry in _anonymous.items() if entry.owner == owner and entry.expires > now]
+        if len(mine) >= PER_ADDRESS:
+            raise PasskeyError("too_many_attempts", "Too many attempts. Try again later.", 429)
+        if len(_anonymous) >= MAX_ANONYMOUS:
+            for stale in [k for k, entry in _anonymous.items() if entry.expires <= now]:
+                del _anonymous[stale]
+            while len(_anonymous) >= MAX_ANONYMOUS:
+                del _anonymous[next(iter(_anonymous))]
+        _anonymous[key] = _Challenge(value, now + CHALLENGE_SECONDS, owner)
     return value
 
 
-def _take(key: str) -> bytes | None:
+def _keep_for_account(account_id: int, key: str) -> bytes:
+    """A challenge for adding a passkey or confirming an act: in the account's own place. A session asking again
+    replaces its own; past ``PER_ACCOUNT`` the account's expired ones go, then its oldest."""
+    value = secrets.token_bytes(32)
+    now = time.monotonic()
     with _lock:
-        entry = _waiting.pop(key, None)
+        mine = _accounts.setdefault(account_id, {})
+        mine.pop(key, None)
+        for stale in [k for k, entry in mine.items() if entry.expires <= now]:
+            del mine[stale]
+        while len(mine) >= PER_ACCOUNT:
+            del mine[next(iter(mine))]
+        mine[key] = _Challenge(value, now + CHALLENGE_SECONDS)
+    return value
+
+
+def _take_anonymous(key: str) -> bytes | None:
+    with _lock:
+        entry = _anonymous.pop(key, None)
+    if entry is None or entry.expires <= time.monotonic():
+        return None
+    return entry.value
+
+
+def _take_for_account(account_id: int, key: str) -> bytes | None:
+    with _lock:
+        mine = _accounts.get(account_id)
+        entry = mine.pop(key, None) if mine else None
+        if mine is not None and not mine:
+            del _accounts[account_id]
     if entry is None or entry.expires <= time.monotonic():
         return None
     return entry.value
@@ -178,7 +227,7 @@ def begin_registration(db: Session, account: Account, session_uid: str) -> str:
     keys = listing(db, account.id)
     if len(keys) >= MAX_PASSKEYS:
         raise PasskeyError("too_many_passkeys", f"At most {MAX_PASSKEYS} passkeys per account.", 409)
-    challenge = _keep("add:" + session_uid)
+    challenge = _keep_for_account(account.id, "add:" + session_uid)
     options = generate_registration_options(
         rp_id=where.rp_id,
         rp_name="nexdiary",
@@ -201,7 +250,7 @@ def finish_registration(
     db: Session, account: Account, session_uid: str, credential: dict[str, Any], name: str
 ) -> Passkey:
     where = party(db)
-    challenge = _take("add:" + session_uid)
+    challenge = _take_for_account(account.id, "add:" + session_uid)
     if challenge is None:
         raise PasskeyError("passkey_expired", "That took too long. Start again.", 410)
     try:
@@ -293,12 +342,12 @@ def _check(db: Session, where: Party, challenge: bytes, key: Passkey, account: A
         raise Refused("raced", account)
 
 
-def begin_sign_in(db: Session) -> tuple[str, str]:
+def begin_sign_in(db: Session, address: str) -> tuple[str, str]:
     """A sign-in with a passkey and nothing else: the token for the browser's cookie, and the options. The browser
-    offers whichever passkey of this site it holds."""
+    offers whichever passkey of this site it holds. ``address`` is the sender, for the limit of open challenges."""
     where = party(db)
     token = secrets.token_urlsafe(32)
-    challenge = _keep(_sign_in_key(token))
+    challenge = _keep_anonymous(_sign_in_key(token), address)
     options = generate_authentication_options(
         rp_id=where.rp_id,
         challenge=challenge,
@@ -311,7 +360,7 @@ def begin_sign_in(db: Session) -> tuple[str, str]:
 def finish_sign_in(db: Session, token: str | None, credential: dict[str, Any]) -> Account:
     """The account whose passkey answered, or ``Refused``. The challenge counts once, whatever the answer."""
     where = party(db)
-    challenge = _take(_sign_in_key(token)) if token else None
+    challenge = _take_anonymous(_sign_in_key(token)) if token else None
     if challenge is None:
         raise Refused("expired")
     credential_id = _credential_id(credential)
@@ -343,7 +392,7 @@ def begin_confirm(db: Session, account: Account, session_uid: str) -> str:
     keys = listing(db, account.id)
     if not keys:
         raise PasskeyError("passkey_none", "This account has no passkey.", 409)
-    challenge = _keep("confirm:" + session_uid)
+    challenge = _keep_for_account(account.id, "confirm:" + session_uid)
     options = generate_authentication_options(
         rp_id=where.rp_id,
         challenge=challenge,
@@ -360,7 +409,7 @@ def confirm(db: Session, account: Account, session_uid: str, credential: dict[st
         where = party(db)
     except PasskeyError:
         return False
-    challenge = _take("confirm:" + session_uid)
+    challenge = _take_for_account(account.id, "confirm:" + session_uid)
     credential_id = _credential_id(credential)
     if challenge is None or credential_id is None:
         return False
@@ -407,14 +456,22 @@ def view(row: Passkey) -> dict[str, Any]:
 def sweep() -> int:
     """Challenges nobody answered go from memory."""
     now = time.monotonic()
+    count = 0
     with _lock:
-        stale = [key for key, entry in _waiting.items() if entry.expires <= now]
-        for key in stale:
-            del _waiting[key]
-    return len(stale)
+        for key in [key for key, entry in _anonymous.items() if entry.expires <= now]:
+            del _anonymous[key]
+            count += 1
+        for account_id, mine in list(_accounts.items()):
+            for key in [key for key, entry in mine.items() if entry.expires <= now]:
+                del mine[key]
+                count += 1
+            if not mine:
+                del _accounts[account_id]
+    return count
 
 
 def forget() -> None:
     """For the tests: nothing waits."""
     with _lock:
-        _waiting.clear()
+        _anonymous.clear()
+        _accounts.clear()

@@ -201,9 +201,11 @@ class Brake:
     FORGET_AFTER = 3600
     MAX_KEYS = 50_000
 
-    def __init__(self) -> None:
+    def __init__(self, *, quiet: bool = False) -> None:
         self._lock = threading.Lock()
         self._fails: dict[str, tuple[int, float]] = {}
+        #: Says nothing to the log when it engages: for the self-check of "Ready for the internet?".
+        self._quiet = quiet
 
     def _current(self, key: str, now: float) -> tuple[int, float]:
         count, last = self._fails.get(key, (0, 0.0))
@@ -220,13 +222,25 @@ class Brake:
         remaining = last + self.PAUSE - now
         return max(0, int(remaining + 0.999))
 
+    def claim(self, key: str, free: int | None = None) -> int:
+        """Counts one more for ``key`` unless it must rest: the seconds to wait, or 0 when it was counted. Looking and
+        counting in one step, so that of many at the same moment only ``free`` get through."""
+        free = self.FREE if free is None else free
+        now = clock.monotonic()
+        with self._lock:
+            count, last = self._current(key, now)
+            if count >= free:
+                return max(1, int(last + self.PAUSE - now + 0.999))
+            self._fails[key] = (count + 1, now)
+        return 0
+
     def failed(self, key: str, free: int | None = None) -> None:
         free = self.FREE if free is None else free
         now = clock.monotonic()
         with self._lock:
             count, _ = self._current(key, now)
             self._fails[key] = (count + 1, now)
-            if count + 1 == free:
+            if count + 1 == free and not self._quiet:
                 # The key names the kind and the sender (an address, never a password).
                 logger.warning("Brake engaged after %s failures, %s minutes of rest key=%s", free, LOCK_MINUTES, key)
             if len(self._fails) > self.MAX_KEYS:
@@ -253,9 +267,11 @@ _AAD = b"nexdiary-server-secret-v1"
 _NONCE = 12
 
 
-def _server_key() -> bytes:
+def server_key() -> bytes:
+    """The key derived from ``secret.key`` for what the server seals or signs for itself."""
     secret = get_settings().resolved_secret_key().encode("utf-8")
     return hashlib.sha256(b"nexdiary-secrets:" + secret).digest()
+
 
 
 DEVICE_COOKIE = "nexdiary_device" + get_settings().cookie_name_suffix()
@@ -266,7 +282,7 @@ DEVICE_ACCOUNTS_MAX = 5
 
 def _device_entry(account_id: int) -> str:
     nonce = secrets.token_urlsafe(12)
-    mark = hashlib.sha256(_server_key() + f"device:{account_id}:{nonce}".encode()).hexdigest()[:32]
+    mark = hashlib.sha256(server_key() + f"device:{account_id}:{nonce}".encode()).hexdigest()[:32]
     return f"{account_id}.{nonce}.{mark}"
 
 
@@ -276,7 +292,7 @@ def _entry_account(entry: str) -> int | None:
     account, nonce, mark = entry.split(".")
     if not account.isdigit() or len(account) > 12:
         return None
-    expected = hashlib.sha256(_server_key() + f"device:{account}:{nonce}".encode()).hexdigest()[:32]
+    expected = hashlib.sha256(server_key() + f"device:{account}:{nonce}".encode()).hexdigest()[:32]
     return int(account) if secrets.compare_digest(mark, expected) else None
 
 
@@ -318,7 +334,7 @@ def encrypt_secret(text: str, context: str = "") -> str:
     if not text:
         return ""
     nonce = os.urandom(_NONCE)
-    return (nonce + AESGCM(_server_key()).encrypt(nonce, text.encode("utf-8"), _aad(context))).hex()
+    return (nonce + AESGCM(server_key()).encrypt(nonce, text.encode("utf-8"), _aad(context))).hex()
 
 
 def decrypt_secret(stored: str, context: str = "") -> str:
@@ -326,7 +342,7 @@ def decrypt_secret(stored: str, context: str = "") -> str:
         return ""
     try:
         sealed = bytes.fromhex(stored)
-        return AESGCM(_server_key()).decrypt(sealed[:_NONCE], sealed[_NONCE:], _aad(context)).decode("utf-8")
+        return AESGCM(server_key()).decrypt(sealed[:_NONCE], sealed[_NONCE:], _aad(context)).decode("utf-8")
     except (InvalidTag, ValueError):
         # A different secret.key than the one that encrypted it: the value is lost, not the app.
         return ""

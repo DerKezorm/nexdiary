@@ -38,7 +38,9 @@ import zipfile
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
+
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, ValidationError, field_validator
 
 from .. import __version__, private
 from ..config import get_settings
@@ -98,6 +100,46 @@ class Manifest:
     bytes: int = 0
     #: name in the media folder -> [size, sha256]
     media: dict[str, list[Any]] = field(default_factory=dict)
+
+
+class ManifestInvalid(BackupError):
+    """The manifest is there and is JSON, but says things of the wrong kind (``media`` that is no list of files, a count
+    that is a word). Such an archive is listed as unusable, never trusted and never a cause of a server error."""
+
+
+_Text = Annotated[StrictStr, Field(max_length=500)]
+_Count = Annotated[StrictInt, Field(ge=0, le=2**62)]
+
+
+class _ManifestFile(BaseModel):
+    """What the manifest says about its own shape, strictly: no value is taken for another type."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    version: Annotated[StrictStr, Field(max_length=64)]
+    created: Annotated[StrictStr, Field(max_length=64)]
+    kind: Annotated[StrictStr, Field(max_length=32)]
+    note: _Text = ""
+    accounts: _Count = 0
+    files: _Count = 0
+    bytes: _Count = 0
+    #: name in the media folder -> [size, sha256]
+    media: dict[StrictStr, list[Any]] = Field(default_factory=dict)
+
+    @field_validator("media")
+    @classmethod
+    def _files(cls, media: dict[str, list[Any]]) -> dict[str, list[Any]]:
+        for name, entry in media.items():
+            if not MEDIA_NAME.match(name):
+                raise ValueError("not a media file name")
+            if len(entry) != 2:
+                raise ValueError("a file is [size, sha256]")
+            size, digest = entry
+            if type(size) is not int or not 0 <= size <= 2**62:
+                raise ValueError("a size is a whole number of bytes")
+            if type(digest) is not str or not re.fullmatch(r"[0-9a-f]{64}", digest):
+                raise ValueError("a checksum is 64 hexadecimal digits")
+        return media
 
 
 @dataclass
@@ -300,11 +342,17 @@ def create(*, kind: str = MANUAL, note: str = "") -> Path:
 
 
 def _manifest(archive: zipfile.ZipFile) -> Manifest:
+    """The manifest of an archive. ``BackupError`` when there is none or it is no JSON, ``ManifestInvalid`` when it is
+    JSON that does not have the shape (types are checked strictly, see ``_ManifestFile``)."""
     try:
         raw = json.loads(archive.read(MANIFEST).decode("utf-8"))
-        return Manifest(**raw)
-    except (KeyError, ValueError, TypeError) as exc:
+    except (KeyError, ValueError, TypeError, RuntimeError, zipfile.BadZipFile) as exc:
         raise BackupError("backup_invalid", "the archive has no readable manifest") from exc
+    try:
+        checked = _ManifestFile.model_validate(raw)
+    except ValidationError as exc:
+        raise ManifestInvalid("backup_invalid", "the manifest of the archive is not a manifest") from exc
+    return Manifest(**checked.model_dump())
 
 
 def entries() -> list[Entry]:
@@ -419,6 +467,12 @@ def _safe_member(name: str) -> str | None:
     return rel if MEDIA_NAME.match(rel) else None
 
 
+def _unusable(name: str) -> Brief:
+    """What a trial run says of an archive that cannot be trusted at all: nothing in it, and not usable."""
+    return Brief(name=name, version="", created="", kind="", accounts=0, files=0, database_ok=False, files_ok=False,
+                 damaged=[], schema=0, too_new=False, would_add=0, would_change=0, would_remove=0)
+
+
 def check(name: str) -> Brief:
     """The trial run: is the archive whole, and what would a restore change in the media folder?"""
     path = path_of(name)
@@ -427,7 +481,11 @@ def check(name: str) -> Brief:
     except zipfile.BadZipFile as exc:
         raise BackupError("backup_invalid", "not a ZIP archive") from exc
     with archive:
-        manifest = _manifest(archive)
+        try:
+            manifest = _manifest(archive)
+        except ManifestInvalid:
+            logger.warning("A backup with a manifest of the wrong shape was looked at")
+            return _unusable(name)
         members = {info.filename: info for info in archive.infolist()}
         from .. import db
 

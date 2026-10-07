@@ -55,7 +55,9 @@ export function useServerSettings() {
 
 type AccountRow = Me & { locked: boolean; blocked?: boolean; has_password?: boolean; created_at: string; last_seen_at: string | null }
 type OpenInvite = { id: number; email: string; expires_at: string }
-type Asking = 'role' | 'delete' | 'password' | 'reset' | 'signout' | 'block' | 'unblock'
+type Asking = 'role' | 'delete' | 'link' | 'reset' | 'signout' | 'block' | 'unblock'
+/** What came of sending a link to set a new password: by mail, or to pass on once. */
+type LinkMade = { name: string; sent: boolean; email?: string; link?: string }
 const DAYS = ['1', '7', '30'] as const
 
 /** Every account, and the invitations that bring new ones. */
@@ -67,7 +69,7 @@ export function AccountsCard() {
   const [invites, setInvites] = useState<OpenInvite[]>([])
   const [menu, setMenu] = useState<number | null>(null)
   const [asking, setAsking] = useState<{ kind: Asking; account: AccountRow } | null>(null)
-  const [given, setGiven] = useState<{ name: string; password: string } | null>(null)
+  const [made, setMade] = useState<LinkMade | null>(null)
   const { busy, problem, done, run } = useAction()
   const load = useCallback(() => {
     api<AccountRow[]>('/api/accounts').then(setList, () => undefined)
@@ -116,7 +118,7 @@ export function AccountsCard() {
             </span>
             {row.id !== me?.id && (
               <span className="relative flex items-center gap-1.5" data-account-actions>
-                <Button small onClick={() => setAsking({ kind: 'password', account: row })}>
+                <Button small onClick={() => setAsking({ kind: 'link', account: row })}>
                   {row.has_password === false ? t('server.givePassword') : t('server.newPassword')}
                 </Button>
                 <button
@@ -180,10 +182,17 @@ export function AccountsCard() {
           <Plus size={16} /> {t('server.invite')}
         </Button>
       </div>
-      {given && (
-        <p className="text-sm text-ink-2" role="status">
-          {t('server.passwordGiven', { name: given.name })} <code className="rounded bg-sheet-2 px-1.5 py-0.5 font-mono">{given.password}</code>
-        </p>
+      {made && (
+        <div className="space-y-2 text-sm text-ink-2" role="status">
+          {made.sent ? (
+            <p>{t('server.linkSent', { name: made.name, email: made.email })}</p>
+          ) : (
+            <>
+              <p>{t('server.linkShown', { name: made.name })}</p>
+              {made.link && <CopyLink value={made.link} label={t('server.linkLabel')} />}
+            </>
+          )}
+        </div>
       )}
       <Feedback problem={problem} done={done} />
       {inviting && (
@@ -210,10 +219,10 @@ export function AccountsCard() {
             if (asking.kind === 'signout') await api(`/api/accounts/${id}/sign-out`, { method: 'POST' })
             if (asking.kind === 'unblock') await api(`/api/accounts/${id}/unblock`, { method: 'POST', body: { current_password: password } })
             if (asking.kind === 'block') await api(`/api/accounts/${id}/block`, { method: 'POST', body: { current_password: password } })
-            if (asking.kind === 'password') {
-              const fresh = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => 'abcdefghjkmnpqrstuvwxyz23456789'[b % 31]).join('')
-              await api(`/api/accounts/${id}/password`, { method: 'PUT', body: { password: fresh, current_password: password } })
-              setGiven({ name: asking.account.name, password: fresh })
+            if (asking.kind === 'link') {
+              // The operator sets no password: the person does, through a link that goes by mail or is shown here once.
+              const sent = await api<{ sent: boolean; email?: string; link?: string }>(`/api/accounts/${id}/reset-link`, { method: 'POST', body: { current_password: password } })
+              setMade({ name: asking.account.name, ...sent })
             }
             setAsking(null)
             load()
@@ -476,7 +485,7 @@ export function ApiTokensCard({ server }: { server: Server }) {
           {tokens.map((token) => (
             <li key={token.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
               <span className="min-w-0 flex-1">
-                <span className="font-semibold">{token.name}</span> <code className="font-mono text-xs text-muted">{token.prefix}…</code>
+                <code className="font-mono text-xs font-semibold">{token.prefix}…</code>
                 <span className="block text-xs text-muted">
                   {token.account} · {token.last_used_at ? new Date(token.last_used_at).toLocaleString(i18n.language, { dateStyle: 'short', timeStyle: 'short' }) : t('apiTokens.unused')}
                 </span>
@@ -484,7 +493,7 @@ export function ApiTokensCard({ server }: { server: Server }) {
               {token.blocked ? (
                 <span className="text-xs font-semibold text-bad">{t('server.apiTokens.blocked')}</span>
               ) : (
-                <Button small danger busy={busy} onClick={() => setBlocking(token)} label={t('server.apiTokens.blockNamed', { name: token.name, account: token.account })}>
+                <Button small danger busy={busy} onClick={() => setBlocking(token)} label={t('server.apiTokens.blockNamed', { name: token.prefix, account: token.account })}>
                   {t('server.apiTokens.block')}
                 </Button>
               )}
@@ -496,7 +505,7 @@ export function ApiTokensCard({ server }: { server: Server }) {
       <Feedback problem={problem ?? server.problem} done={server.done} />
       {blocking && (
         <Confirm
-          title={t('server.apiTokens.blockTitle', { name: blocking.name, account: blocking.account })}
+          title={t('server.apiTokens.blockTitle', { name: blocking.prefix, account: blocking.account })}
           text={t('server.apiTokens.blockText')}
           confirm={t('server.apiTokens.block')}
           danger

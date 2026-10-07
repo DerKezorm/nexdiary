@@ -19,6 +19,7 @@ function sentence(point: Point): string {
   const { key, state, values } = point
   if (key === 'encryption' && state === 'bad') return values.missing ? 'ready.encryption.missing' : 'ready.encryption.bad'
   if (key === 'proxy' && state === 'ok') return values.forwarded ? 'ready.proxy.ok' : 'ready.proxy.direct'
+  if (key === 'brake' && state === 'bad') return values.broken ? 'ready.brake.broken' : 'ready.brake.bad'
   return `ready.${key}.${state}`
 }
 

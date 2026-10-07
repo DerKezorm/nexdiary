@@ -4,7 +4,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AppShell } from './components/AppShell'
 import { AboutPage } from './pages/AboutPage'
 import { AccountPage } from './pages/AccountPage'
-import { InvitePage, LoginPage, SetupPage } from './pages/AuthPages'
+import { ForgotPage, InvitePage, LoginPage, ResetPage, SetupPage } from './pages/AuthPages'
 import { EntryPage } from './pages/EntryPage'
 import { JournalPage } from './pages/JournalPage'
 import { QuickPage } from './pages/QuickPage'
@@ -37,6 +37,8 @@ export default function App() {
       <Route path="setup" element={<SetupPage />} />
       <Route path="login" element={<LoginPage />} />
       <Route path="invite/:token" element={<InvitePage />} />
+      <Route path="forgot" element={<ForgotPage />} />
+      <Route path="reset/:token" element={<ResetPage />} />
       {/* The quick note stands alone, without the menus of the app. */}
       <Route
         path="schnell"

@@ -8,9 +8,9 @@ Kept in memory, per process: a restart forgets them, which is fine for a brake.
 from __future__ import annotations
 
 import threading
-import time
 from collections import deque
 
+from .. import clock
 from ..errors import error
 
 #: Per person and minute.
@@ -48,7 +48,7 @@ _seen: dict[tuple[str, int], deque[float]] = {}
 
 def take(kind: str, account_id: int) -> None:
     """One more of ``kind`` for this person, or ``429`` with ``Retry-After`` when the minute is full."""
-    moment = time.monotonic()
+    moment = clock.monotonic()
     with _lock:
         seen = _seen.setdefault((kind, account_id), deque())
         while seen and moment - seen[0] > 60:

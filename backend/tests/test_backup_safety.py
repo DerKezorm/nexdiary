@@ -225,3 +225,94 @@ def test_a_backup_without_any_data_key_fits_every_server(client: TestClient, ope
         assert brief.usable and not brief.other_master_key
     finally:
         vault._master = kept
+
+
+# --- A manifest of the wrong shape (B10) -----------------------------------------------------------------------------------
+
+
+GOOD_DIGEST = "a" * 64
+
+
+@pytest.mark.parametrize(
+    "media",
+    [
+        {"x": "y"},
+        {"photo00001": "y"},
+        {"photo00001": [5]},
+        {"photo00001": [5, GOOD_DIGEST, "extra"]},
+        {"photo00001": ["5", GOOD_DIGEST]},
+        {"photo00001": [True, GOOD_DIGEST]},
+        {"photo00001": [-1, GOOD_DIGEST]},
+        {"photo00001": [5.5, GOOD_DIGEST]},
+        {"photo00001": [5, 7]},
+        {"photo00001": [5, "xyz"]},
+        {"photo00001": [5, GOOD_DIGEST.upper()]},
+        {"../escape": [5, GOOD_DIGEST]},
+        {"x" * 100: [5, GOOD_DIGEST]},
+        ["photo00001"],
+        "photo00001",
+        None,
+        7,
+    ],
+)
+def test_a_manifest_with_media_of_the_wrong_shape_is_unusable_and_never_a_server_error(
+    client: TestClient, operator: Account, media: object
+) -> None:
+    entries = made_here()
+    manifest = json.loads(entries[backups.MANIFEST])
+    manifest["media"] = media
+    name = write_archive({**entries, backups.MANIFEST: json.dumps(manifest).encode()})
+    answer = client.post(f"/api/backups/{name}/check")
+    assert answer.status_code == 200, (media, answer.text)
+    assert answer.json()["usable"] is False and answer.json()["database_ok"] is False
+    refused = client.post(f"/api/backups/{name}/restore", json={"password": PASSWORD})
+    assert refused.status_code == 400 and refused.json()["detail"]["code"] == "backup_damaged"
+    assert not backups.pending_folder().exists()
+    listed = [entry["name"] for entry in client.get("/api/backups").json()]
+    assert name not in listed, "it does not pass for one of ours in the list"
+
+
+@pytest.mark.parametrize(
+    "change",
+    [{"accounts": "3"}, {"files": 1.5}, {"bytes": True}, {"accounts": -1}, {"version": 7}, {"created": None}, {"kind": ["manual"]},
+     {"note": {"a": 1}}, {"unknown": 1}, {"kind": "k" * 100}],
+)
+def test_a_manifest_with_a_field_of_the_wrong_kind_is_unusable(client: TestClient, operator: Account, change: dict) -> None:
+    entries = made_here()
+    manifest = {**json.loads(entries[backups.MANIFEST]), **change}
+    name = write_archive({**entries, backups.MANIFEST: json.dumps(manifest).encode()})
+    answer = client.post(f"/api/backups/{name}/check")
+    assert answer.status_code == 200 and answer.json()["usable"] is False, change
+
+
+def test_a_manifest_that_is_not_json_or_not_an_object_is_refused_as_invalid(client: TestClient, operator: Account) -> None:
+    entries = made_here()
+    for broken in (b"not json", b"[]", b"7", b'"x"', b"null"):
+        name = write_archive({**entries, backups.MANIFEST: broken})
+        answer = client.post(f"/api/backups/{name}/check")
+        assert answer.status_code in (200, 400), (broken, answer.status_code)
+        if answer.status_code == 200:
+            assert answer.json()["usable"] is False
+        else:
+            assert answer.json()["detail"]["code"] == "backup_invalid"
+
+
+def test_an_uploaded_archive_with_a_manifest_of_the_wrong_shape_is_turned_away(
+    client: TestClient, operator: Account, tmp_path: Path
+) -> None:
+    import base64
+
+    entries = made_here()
+    manifest = json.loads(entries[backups.MANIFEST])
+    manifest["media"] = {"x": "y"}
+    name = write_archive({**entries, backups.MANIFEST: json.dumps(manifest).encode()}, "nexdiary-2020-01-02-000000.zip")
+    data = (backups.folder() / name).read_bytes()
+    sent = client.post("/api/backups/upload", content=data,
+                       headers={"X-Nexdiary-Password": base64.b64encode(PASSWORD.encode()).decode()})
+    assert sent.status_code == 400 and sent.json()["detail"]["code"] == "backup_invalid"
+
+
+def test_a_good_manifest_still_passes(client: TestClient, operator: Account) -> None:
+    name = write_archive(with_media(made_here(), {"photo00001": b"abc"}))
+    answer = client.post(f"/api/backups/{name}/check")
+    assert answer.status_code == 200 and answer.json()["usable"] is True

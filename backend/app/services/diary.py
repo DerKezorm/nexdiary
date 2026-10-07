@@ -314,6 +314,7 @@ def create_value(db: Session, account_id: int, dek: bytes, fields: dict[str, Any
     if not data["name"]:
         raise error("value_name_missing", "A value needs a name.", 422)
     uid = _new_value_id()
+    sealed = vault.seal_json(dek, data, _value_aad(account_id, uid))
     # Counting and adding in one statement: two adds at the same moment cannot pass the limit together.
     inserted = db.execute(
         text(
@@ -321,9 +322,10 @@ def create_value(db: Session, account_id: int, dek: bytes, fields: dict[str, Any
             "SELECT :uid, :user, (SELECT coalesce(max(position), -1) + 1 FROM value_defs WHERE user_id = :user), "
             ":data, :now WHERE (SELECT count(*) FROM value_defs WHERE user_id = :user) < :limit"
         ).bindparams(bindparam("now", type_=UtcDateTime())),
-        {"uid": uid, "user": account_id, "data": vault.seal_json(dek, data, _value_aad(account_id, uid)),
-         "now": now(), "limit": VALUE_DEFS_MAX},
+        {"uid": uid, "user": account_id, "data": sealed, "now": now(), "limit": VALUE_DEFS_MAX},
     )
+    if inserted.rowcount == 1:
+        quota.check_after_write(db, account_id, len(sealed))
     db.commit()
     if inserted.rowcount != 1:
         raise error("too_many_values", "There are as many values as there may be.", 409, max=VALUE_DEFS_MAX)
@@ -343,11 +345,14 @@ def change_value(db: Session, account_id: int, dek: bytes, uid: str, fields: dic
         data = {"name": "", "low": "", "high": "", "hint": "", "active": True,
                 **(_value_data(account_id, dek, row) or {}), **changes}
         # Written only onto what was read: a change in between makes this one read again.
+        sealed = vault.seal_json(dek, data, _value_aad(account_id, uid))
         written = db.execute(
             update(ValueDef)
             .where(ValueDef.user_id == account_id, ValueDef.uid == uid, ValueDef.data_enc == row.data_enc)
-            .values(data_enc=vault.seal_json(dek, data, _value_aad(account_id, uid)))
+            .values(data_enc=sealed)
         )
+        if written.rowcount == 1:
+            quota.check_after_write(db, account_id, len(sealed) - len(row.data_enc))
         db.commit()
         if written.rowcount == 1:
             return _value_view(account_id, dek, db.execute(
@@ -464,6 +469,12 @@ def add_note(db: Session, account_id: int, dek: bytes, uid: str, day: str, note_
     existing = _note_row(db, account_id, uid)
     if existing is not None:
         return _same_note(account_id, dek, existing, note_text, photo_id), False
+    sealed = {
+        "text": vault.seal_text(dek, note_text, _note_aad(account_id, uid, day, "text")),
+        "prompt": vault.seal_text(dek, prompt, _note_aad(account_id, uid, day, "prompt")) if prompt else None,
+        "prompt_ref": vault.seal_text(dek, prompt_id, _note_aad(account_id, uid, day, "prompt_ref"))
+        if prompt_id else None,
+    }
     inserted = db.execute(
         text(
             "INSERT INTO notes (uid, user_id, date, created_at, text_enc, prompt_enc, prompt_ref_enc, photo_id) "
@@ -472,12 +483,10 @@ def add_note(db: Session, account_id: int, dek: bytes, uid: str, day: str, note_
             "ON CONFLICT (user_id, uid) DO NOTHING"
         ).bindparams(bindparam("now", type_=UtcDateTime())),
         {"uid": uid, "user": account_id, "date": day, "now": now(), "limit": NOTES_PER_DAY, "photo": photo_id,
-         "text": vault.seal_text(dek, note_text, _note_aad(account_id, uid, day, "text")),
-         "prompt": vault.seal_text(dek, prompt, _note_aad(account_id, uid, day, "prompt")) if prompt else None,
-         "prompt_ref": vault.seal_text(dek, prompt_id, _note_aad(account_id, uid, day, "prompt_ref"))
-         if prompt_id else None},
+         **sealed},
     )
     if inserted.rowcount == 1:
+        quota.check_after_write(db, account_id, sum(len(value) for value in sealed.values() if value))
         # In the same transaction: a photo on a note is a note's for good, never a photo of the day.
         _mark_on_note(db, account_id, photo_id)
     db.commit()
@@ -510,10 +519,11 @@ def change_note(db: Session, account_id: int, dek: bytes, uid: str, note_text: s
     photo = row.photo_id if photo_id is _KEEP else check_own_photo(db, account_id, photo_id)
     if not note_text and photo is None:
         raise error("note_empty", "A note needs a text.", 422)
+    sealed = vault.seal_text(dek, note_text, _note_aad(account_id, uid, row.date, "text"))
     changed = db.execute(update(Note).where(Note.user_id == account_id, Note.uid == uid, Note.date == row.date).values(
-        text_enc=vault.seal_text(dek, note_text, _note_aad(account_id, uid, row.date, "text")),
-        photo_id=photo, updated_at=now()))
+        text_enc=sealed, photo_id=photo, updated_at=now()))
     if changed.rowcount == 1:
+        quota.check_after_write(db, account_id, len(sealed) - len(row.text_enc))
         _mark_on_note(db, account_id, photo)
     db.commit()
     # Deleted in between (another tab): gone, like any note that is not there.
@@ -654,24 +664,29 @@ def change_day(db: Session, account_id: int, dek: bytes, day: str,
         moment = now()
         if row is None:
             content = apply(empty_day())
+            sealed = vault.seal_json(dek, content, _day_aad(account_id, day))
             written = db.execute(
                 sqlite_insert(Day)
                 .values(user_id=account_id, date=day, revision=0, created_at=moment, updated_at=moment,
-                        content_enc=vault.seal_json(dek, content, _day_aad(account_id, day)))
+                        content_enc=sealed)
                 .on_conflict_do_nothing(index_elements=[Day.user_id, Day.date])
             )
+            growth = len(sealed)
         else:
             standing = _readable_content(account_id, dek, day, row.content_enc)
             if standing is None:
                 # Merging into what cannot be read would throw it away unseen; deleting the day stays possible.
                 raise error("day_unreadable", "This day cannot be read; it can only be deleted.", 409)
             content = apply(standing)
+            sealed = vault.seal_json(dek, content, _day_aad(account_id, day))
             written = db.execute(
                 update(Day)
                 .where(Day.id == row.id, Day.revision == row.revision)
-                .values(content_enc=vault.seal_json(dek, content, _day_aad(account_id, day)),
-                        revision=row.revision + 1, updated_at=moment)
+                .values(content_enc=sealed, revision=row.revision + 1, updated_at=moment)
             )
+            growth = len(sealed) - len(row.content_enc)
+        if written.rowcount == 1:
+            quota.check_after_write(db, account_id, growth)
         if written.rowcount == 1 and discard_draft:
             db.execute(delete(Draft).where(Draft.user_id == account_id, Draft.date == day))
         db.commit()

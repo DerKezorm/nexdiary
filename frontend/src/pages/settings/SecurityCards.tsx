@@ -242,7 +242,12 @@ export function PasskeysCard({ me }: { me: Me }) {
     passkeyApi.list().then(setList, () => undefined)
   }, [])
   useEffect(load, [load])
-  const available = passkeysAvailable()
+  // The browser has the API, and the server offers passkeys here (under its public https address, or on localhost).
+  const [offered, setOffered] = useState(true)
+  useEffect(() => {
+    authApi.methods().then((found) => setOffered(found.passkeys !== false), () => undefined)
+  }, [])
+  const available = passkeysAvailable() && offered
   return (
     <Card icon={Fingerprint} title={t('me.passkeys.title')} text={t('me.passkeys.text')}>
       {list.length > 0 && (

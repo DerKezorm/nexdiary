@@ -31,7 +31,7 @@ from ..deps import (
 from ..errors import error
 from ..models import STAGE_CODES, STAGE_SETUP, AuthSession
 from ..models import Account as AccountRow
-from ..security import SESSION_COOKIE, end_all_sessions, hash_token
+from ..security import DEVICE_COOKIE, SESSION_COOKIE, devices_of, end_all_sessions, hash_token
 from ..services import accounts, notices, passkeys, settings_service, totp
 from .auth import PENDING_COOKIE, OperatorConfirmIn, account_view, sign_in
 
@@ -210,7 +210,10 @@ def login_code(payload: CodeIn, request: Request, response: Response, db: DbSess
     row = db.get(AccountRow, pending.account_id)
     if row is None or not totp.has_second_factor(db, row) or row.blocked_at is not None:
         raise _expired(response, token)
-    if accounts.is_locked(row):
+    # A browser that signed in as this account before is not kept out by a lock that strangers caused, here as at the
+    # password step. What holds for it all the same: five codes per sign-in and the brake per address.
+    known_device = row.id in devices_of(request.cookies.get(DEVICE_COOKIE))
+    if accounts.is_locked(row) and not known_device:
         # Wrong codes count against the account like wrong passwords, whatever address they come from.
         totp.finish_pending(token)
         _clear_pending_cookie(response)
@@ -240,8 +243,10 @@ def login_code(payload: CodeIn, request: Request, response: Response, db: DbSess
     if not accepted:
         address_failed(request)
         db.refresh(row)
-        accounts.note_failure(db, row)
-        still_pending = totp.fail_pending(token) and not accounts.is_locked(row)
+        if not known_device:
+            # Failures of a browser the account knows do not count towards the lock (see ``accounts.authenticate``).
+            accounts.note_failure(db, row)
+        still_pending = totp.fail_pending(token) and (known_device or not accounts.is_locked(row))
         logger.warning("Second factor failed name=%s", row.name)
         if not still_pending:
             raise _expired(response, token, "Too many wrong codes. Start again with your password.")

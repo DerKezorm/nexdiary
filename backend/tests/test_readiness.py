@@ -19,6 +19,7 @@ from app.config import get_settings
 from app.db import SessionLocal
 from app.main import app
 from app.models import Account
+from app.security import brake
 from app.services import backups, notices, readiness, settings_service, totp, vault
 
 from .conftest import PASSWORD, TAB, make_account, sign_in
@@ -186,6 +187,63 @@ def test_a_passkey_confirms_saving_the_master_key(client: TestClient, operator: 
     assert replay.status_code == 401
 
 
+def test_a_right_password_does_not_wipe_the_failures_before_the_next_guess_at_the_code(
+    client: TestClient, operator: Account
+) -> None:
+    """The password counted as a success and reset the count before the code was looked at, so the code could be
+    guessed for ever. Now only password and factor together reset it, and a wrong code counts into the lock."""
+    seed = enrol(client)
+    for _ in range(4):
+        wrong = client.post("/api/settings/master-key", json={"current_password": PASSWORD, "code": "000000"})
+        assert wrong.status_code == 401 and wrong.json()["detail"]["code"] == "second_factor_wrong"
+    with SessionLocal() as db:
+        row = db.get(Account, operator.id)
+        assert row is not None and row.failed_logins == 4 and row.locked_until is None
+    # The fifth wrong code locks the account; then even the right one is refused.
+    assert client.post("/api/settings/master-key",
+                       json={"current_password": PASSWORD, "code": "000000"}).status_code == 401
+    brake.forget()
+    refused = client.post("/api/settings/master-key", json={"current_password": PASSWORD, "code": next_code(seed)})
+    assert refused.status_code == 429 and refused.json()["detail"]["code"] == "account_locked"
+
+
+def test_password_and_factor_together_forgive_the_failures_before(client: TestClient, operator: Account) -> None:
+    seed = enrol(client)
+    for _ in range(3):
+        assert client.post("/api/settings/master-key",
+                           json={"current_password": PASSWORD, "code": "000000"}).status_code == 401
+    assert client.post("/api/settings/master-key",
+                       json={"current_password": PASSWORD, "code": next_code(seed)}).status_code == 200
+    with SessionLocal() as db:
+        row = db.get(Account, operator.id)
+        assert row is not None and row.failed_logins == 0
+    # Three more wrong ones are three, not six.
+    for _ in range(3):
+        assert client.post("/api/settings/master-key",
+                           json={"current_password": PASSWORD, "code": "000000"}).status_code == 401
+    with SessionLocal() as db:
+        row = db.get(Account, operator.id)
+        assert row is not None and row.failed_logins == 3 and row.locked_until is None
+
+
+def test_a_wrong_passkey_answer_counts_like_a_wrong_code(client: TestClient, operator: Account) -> None:
+    save({"public_url": ORIGIN})
+    key = SoftKey()
+    assert add_key(client, key).status_code == 201
+    for _ in range(5):
+        begun = client.post("/api/auth/passkeys/confirm/begin")
+        answer = key.get(json.loads(begun.json()["options"]))
+        key.counter = 0  # the next answer will not count up
+        answer["response"]["signature"] = answer["response"]["signature"][::-1]
+        wrong = client.post("/api/settings/master-key", json={"current_password": PASSWORD, "credential": answer})
+        assert wrong.status_code == 401
+    brake.forget()
+    begun = client.post("/api/auth/passkeys/confirm/begin")
+    good = client.post("/api/settings/master-key",
+                       json={"current_password": PASSWORD, "credential": key.get(json.loads(begun.json()["options"]))})
+    assert good.status_code == 429 and good.json()["detail"]["code"] == "account_locked"
+
+
 def run_probe(archive: Path, key_file: Path, folder: Path) -> subprocess.CompletedProcess[str]:
     env = {**os.environ, "NEXDIARY_DATA_DIR": str(folder), "NEXDIARY_MEDIA_DIR": str(folder / "media"),
            "NEXDIARY_LOCALES_DIR": str(folder / "locales")}
@@ -247,3 +305,58 @@ def test_the_operators_reset_tells_the_person(client: TestClient, operator: Acco
     assert told == []
     assert client.post(f"/api/accounts/{member.id}/totp/reset", json={"current_password": PASSWORD}).status_code == 200
     assert told == [("anna", "tester")]
+
+
+# --- The list of proxies is looked at, and so is the brake (B10) ----------------------------------------------------
+
+
+@pytest.mark.parametrize("spec", ["0.0.0.0/0", "::/0", "203.0.113.5", "8.8.8.0/24", "10.0.0.0/8, 0.0.0.0/0", "2001:db8::/32",
+                                  "172.32.0.0/12", "::ffff:0.0.0.0/96", "192.0.0.0/8"])
+def test_a_list_of_proxies_with_a_public_network_is_red(
+    client: TestClient, operator: Account, monkeypatch: pytest.MonkeyPatch, spec: str
+) -> None:
+    monkeypatch.setattr(get_settings(), "trusted_proxies", spec)
+    found = points(client)
+    assert found["proxy"]["state"] == "bad" and found["brake"]["state"] == "bad", spec
+    assert found["proxy"]["values"]["networks"] and found["brake"]["values"]["networks"]
+    assert client.get("/api/settings/readiness").json()["open"] >= 2
+
+
+@pytest.mark.parametrize("spec", ["", "127.0.0.1", "172.16.0.0/12", "172.18.0.2", "10.0.0.0/8, 192.168.0.0/16", "::1", "fd00::/8",
+                                  "100.64.0.0/10", "not an address, 172.19.0.0/16", "192.168.1.1, "])
+def test_a_list_of_private_networks_is_green(
+    client: TestClient, operator: Account, monkeypatch: pytest.MonkeyPatch, spec: str
+) -> None:
+    monkeypatch.setattr(get_settings(), "trusted_proxies", spec)
+    found = points(client)
+    assert found["proxy"]["state"] == "ok" and found["brake"]["state"] == "ok", spec
+
+
+def test_the_brake_point_tries_the_mechanism_and_not_the_one_in_use(
+    client: TestClient, operator: Account, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app import security
+
+    # A brake that never rests anybody: the check says so.
+    monkeypatch.setattr(security.Brake, "wait_seconds", lambda *_args, **_kwargs: 0)
+    broken = points(client)["brake"]
+    assert broken["state"] == "bad" and broken["values"] == {"broken": True}
+    monkeypatch.undo()
+    # Nor does one that cannot forget a sender after a success.
+    monkeypatch.setattr(security.Brake, "succeeded", lambda *_args, **_kwargs: None)
+    assert points(client)["brake"]["state"] == "bad"
+    monkeypatch.undo()
+    # And a check does not leave anything behind in the brake that sign-ins use.
+    before = dict(security.brake._fails)
+    assert points(client)["brake"]["state"] == "ok"
+    assert security.brake._fails == before
+
+
+def test_the_probe_of_the_brake_is_quiet(
+    client: TestClient, operator: Account, caplog: pytest.LogCaptureFixture
+) -> None:
+    import logging
+
+    with caplog.at_level(logging.DEBUG):
+        points(client)
+    assert "Brake engaged" not in caplog.text

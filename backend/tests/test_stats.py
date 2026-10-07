@@ -392,6 +392,7 @@ def test_the_main_value_is_the_first_active_one_and_the_names_are_free(client: T
 def test_the_statistics_are_braked_per_person(client: TestClient, account: Account,
                                               monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(brakes.LIMITS, "stats", 3)
+    monkeypatch.setattr(clock, "monotonic", lambda: 1000.0)  # the minute stands still, however slow the machine is
     for _ in range(3):
         assert client.get("/api/stats").status_code == 200
     slow = client.get("/api/stats")
@@ -410,9 +411,10 @@ def test_3000_days_are_worked_out_in_good_time(client: TestClient, account: Acco
                      "values": {ids["Mood"]: 1 + n % 10, ids["Sleep"]: 1 + (n * 3) % 10},
                      "written_by": "ai" if n % 3 else "self"}
     seed(account, days)
-    started = time.perf_counter()
+    # The time this process worked, not the time that passed: another job on the machine cannot make it longer.
+    started = time.process_time()
     found = get(client)
-    took = time.perf_counter() - started
-    print(f"3000 days: {took:.3f} s")
+    took = time.process_time() - started
+    print(f"3000 days: {took:.3f} s of work")
     assert found["tiles"]["days_total"] == 3000 and found["tiles"]["current"] == 3000
     assert took < 3.0, took

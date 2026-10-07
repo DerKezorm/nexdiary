@@ -14,11 +14,11 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Path, Request, Response
 from pydantic import BaseModel, Field
 
-from ..deps import Account, DbSession, address_failed, address_guard, confirm_self, session_of
+from ..deps import Account, DbSession, address_failed, address_guard, client_ip, confirm_self, session_of, too_many
 from ..errors import error
 from ..models import STAGE_SETUP
 from ..models import Account as AccountRow
-from ..security import DEVICE_COOKIE, devices_of
+from ..security import DEVICE_COOKIE, brake, devices_of
 from ..services import accounts, passkeys, totp
 from .auth import PENDING_COOKIE, account_view, secure_cookie, sign_in
 from .totp import enrolled, last_factor_guard
@@ -120,8 +120,15 @@ def remove(uid: Uid, payload: PasswordIn, request: Request, account: Account, db
 @router.post("/auth/passkey/begin", summary="Sign in with a passkey: the browser gets a challenge (no sign-in needed)")
 def sign_in_begin(request: Request, response: Response, db: DbSession) -> dict[str, Any]:
     address_guard(request)
+    # Every "begin" counts for the sender, whether anything follows or not: asking for challenges is no way to fill
+    # the server's memory. A sender has room for ``BEGINS_PER_ADDRESS`` before it rests like after a failed password.
+    key = "passkey-begin:" + client_ip(request)
+    wait = brake.wait_seconds(key, passkeys.BEGINS_PER_ADDRESS)
+    if wait:
+        raise too_many(wait)
+    brake.failed(key, passkeys.BEGINS_PER_ADDRESS)
     try:
-        token, options = passkeys.begin_sign_in(db)
+        token, options = passkeys.begin_sign_in(db, client_ip(request))
     except passkeys.PasskeyError as exc:
         raise _fail(exc) from exc
     response.set_cookie(CHALLENGE_COOKIE, token, max_age=passkeys.CHALLENGE_SECONDS, httponly=True, samesite="strict",

@@ -7,6 +7,7 @@ when the master key was last saved.
 
 from __future__ import annotations
 
+import ipaddress
 import os
 import stat
 from dataclasses import dataclass, field
@@ -18,11 +19,20 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..models import Account
+from ..security import Brake
 from . import settings_service, totp, vault
 
 OK, WARN, BAD = "ok", "warn", "bad"
 #: Whether file modes say anything here: Windows has no owner-only mode to read, the folder's rights decide there.
 CHECK_MODE = os.name != "nt"
+
+
+#: Networks a reverse proxy may sit in: the machine itself, a home or office network, a container network, a VPN.
+#: ``X-Forwarded-For`` from anywhere else is not to be believed, whatever the operator wrote.
+PRIVATE_NETWORKS = tuple(ipaddress.ip_network(network) for network in (
+    "127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "100.64.0.0/10",
+    "::1/128", "fc00::/7", "fe80::/10",
+))
 
 
 @dataclass
@@ -58,9 +68,48 @@ def _own_account(db: Session, operator: Account) -> Point:
     return Point("own_account", OK if totp.has_second_factor(db, operator) else BAD)
 
 
+def public_proxy_networks(spec: str) -> list[str]:
+    """The entries of the list of trusted proxies that are not inside a private network: ``0.0.0.0/0``, ``::/0``, any
+    public address or network. Whoever sends from there could write any sender into ``X-Forwarded-For``, and the
+    brake against guessing would count a made-up one. Entries that are no address are ignored, as at sign-in."""
+    found = []
+    for entry in spec.split(","):
+        entry = entry.strip()
+        if not entry:
+            continue
+        try:
+            network = ipaddress.ip_network(entry, strict=False)
+        except ValueError:
+            continue
+        if not any(network.version == private.version and network.subnet_of(private) for private in PRIVATE_NETWORKS):
+            found.append(str(network))
+    return found
+
+
+def brake_works() -> bool:
+    """Whether the brake against guessing does what it is for, tried on a copy of its own: after the failures it lets
+    pass, the sender waits; another sender does not; and the wait ends the sender's count when it is told of a
+    success. The brake sign-ins use is not touched."""
+    probe = Brake(quiet=True)
+    guesser, other = "probe:guesser", "probe:other"
+    for _ in range(Brake.FREE):
+        if probe.wait_seconds(guesser):
+            return False
+        probe.failed(guesser)
+    held = probe.wait_seconds(guesser) > 0 and probe.wait_seconds(other) == 0
+    probe.succeeded(guesser)
+    return held and probe.wait_seconds(guesser) == 0
+
+
 def _brake(unknown_proxy: bool) -> Point:
-    # Always on, not to be switched off; but behind a proxy nexdiary was not told about, every sender looks alike
-    # and only the lock per account is left.
+    # Checked, not taken for granted: the mechanism is tried on a copy, and the list of proxies must not let a
+    # stranger choose the sender the brake counts. Behind a proxy nexdiary was not told about, every sender looks
+    # alike and only the lock per account is left.
+    public = public_proxy_networks(get_settings().trusted_proxies)
+    if public:
+        return Point("brake", BAD, {"networks": ", ".join(public)})
+    if not brake_works():
+        return Point("brake", BAD, {"broken": True})
     return Point("brake", WARN if unknown_proxy else OK)
 
 
@@ -91,6 +140,9 @@ def _proxy(request: Request, unknown_proxy: bool) -> Point:
         peer = request.client.host if request.client else ""
         return Point("proxy", WARN, {"proxy": peer})
     trusted = get_settings().trusted_proxies.strip()
+    public = public_proxy_networks(trusted)
+    if public:
+        return Point("proxy", BAD, {"proxies": trusted, "networks": ", ".join(public)})
     return Point("proxy", OK, {"proxies": trusted, "forwarded": bool(request.headers.get("x-forwarded-for"))})
 
 

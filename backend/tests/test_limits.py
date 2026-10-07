@@ -29,6 +29,8 @@ NOON = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
 @pytest.fixture(autouse=True)
 def fixed_clock(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setattr(clock, "now", lambda: NOON)
+    # The minute of the brakes stands still: a slow machine cannot let it run out in the middle of a test.
+    monkeypatch.setattr(clock, "monotonic", lambda: 1000.0)
     yield
 
 
@@ -191,3 +193,120 @@ def test_when_every_place_is_taken_an_upload_is_turned_away_before_its_body_is_r
         assert avatar.status_code == 503
     assert read == []
     assert upload(client, png(8)).status_code == 201 and read == [1]
+
+
+# --- Texts count towards the storage (B10) ---------------------------------------------------------------------------------
+
+
+def set_room(held_plus: int) -> None:
+    """The limit: what one person holds now (every account here holds the same) and ``held_plus`` bytes more."""
+    with SessionLocal() as db:
+        settings_service.save(db, {"storage_per_person_gb": held_plus / quota.GB})
+
+
+def test_days_notes_values_and_own_questions_count_as_the_bytes_of_their_sealed_texts(
+    client: TestClient, account: Account
+) -> None:
+    with SessionLocal() as db:
+        empty = quota.used(db, account.id)
+    assert client.put("/api/days/2026-10-06", json={"title": "Kastanien", "text": "Ein langer Tag. " * 40}).status_code == 200
+    with SessionLocal() as db:
+        after_day = quota.used(db, account.id)
+    assert after_day > empty + 600
+    assert client.post("/api/notes", json={"id": str(uuid.uuid4()), "text": "mit mia " * 50}).status_code == 201
+    with SessionLocal() as db:
+        after_note = quota.used(db, account.id)
+    assert after_note > after_day + 400
+    assert client.post("/api/values", json={"name": "Garten", "low": "kahl", "high": "bunt"}).status_code in (200, 201)
+    with SessionLocal() as db:
+        after_value = quota.used(db, account.id)
+    assert after_value > after_note
+    assert client.post("/api/prompts/own", json={"text": "Was war heute schön?"}).status_code in (200, 201)
+    with SessionLocal() as db:
+        assert quota.used(db, account.id) > after_value
+    # Somebody else's texts are somebody else's.
+    with new_client(_member("bert")) as bert:
+        bert.put("/api/days/2026-10-06", json={"text": "x" * 5000})
+    with SessionLocal() as db:
+        assert quota.used(db, account.id) > after_value
+        assert quota.used(db, account.id) < after_value + 2000
+
+
+def test_a_page_past_the_storage_limit_is_refused_and_leaves_the_page_as_it_was(
+    client: TestClient, account: Account
+) -> None:
+    assert client.put("/api/days/2026-10-06", json={"title": "Kastanien", "text": "kurz"}).status_code == 200
+    before = client.get("/api/days/2026-10-06").json()
+    with SessionLocal() as db:
+        set_room(quota.used(db, account.id) + 2000)
+    refused = client.put("/api/days/2026-10-06", json={"text": "x" * 5000})
+    assert refused.status_code == 409 and refused.json()["detail"]["code"] == "storage_full"
+    assert client.get("/api/days/2026-10-06").json() == before, "nothing of it was kept"
+    # A new day, a note, a value: the same.
+    assert client.put("/api/days/2026-10-05", json={"text": "x" * 5000}).status_code == 409
+    assert client.get("/api/days/2026-10-05").status_code == 404
+    note = client.post("/api/notes", json={"id": str(uuid.uuid4()), "text": "y" * 4000})
+    assert note.status_code == 409 and note.json()["detail"]["code"] == "storage_full"
+    assert client.get("/api/notes", params={"date": "2026-10-06"}).json() == []
+    # What fits still goes in.
+    assert client.put("/api/days/2026-10-06", json={"text": "etwas mehr"}).status_code == 200
+    assert client.post("/api/notes", json={"id": str(uuid.uuid4()), "text": "klein"}).status_code == 201
+
+
+def test_a_note_changed_past_the_limit_is_refused_and_a_shorter_one_is_not(client: TestClient, account: Account) -> None:
+    note = client.post("/api/notes", json={"id": str(uuid.uuid4()), "text": "z" * 3000}).json()
+    with SessionLocal() as db:
+        set_room(quota.used(db, account.id) + 500)
+    longer = client.put(f"/api/notes/{note['id']}", json={"text": "z" * 4900})
+    assert longer.status_code == 409 and longer.json()["detail"]["code"] == "storage_full"
+    assert client.get("/api/notes", params={"date": note["date"]}).json()[0]["text"] == "z" * 3000
+    # A person above a lowered limit can still make a page shorter.
+    with SessionLocal() as db:
+        set_room(1000)
+    assert client.put(f"/api/notes/{note['id']}", json={"text": "z" * 1000}).status_code == 200
+    assert client.put(f"/api/notes/{note['id']}", json={"text": "z" * 2000}).status_code == 409
+
+
+def test_writes_of_texts_at_the_same_moment_cannot_pass_the_limit_together(
+    client: TestClient, account: Account, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(brakes.LIMITS, "new_note", 100)
+    with SessionLocal() as db:
+        set_room(quota.used(db, account.id) + 2700)
+    start = threading.Barrier(6, timeout=10)
+    codes: list[int] = []
+
+    def send(number: int) -> None:
+        with new_client(account) as browser:
+            start.wait()
+            answer = browser.post("/api/notes", json={"id": str(uuid.uuid4()), "text": f"{number}" * 1000})
+            codes.append(answer.status_code)
+
+    threads = [threading.Thread(target=send, args=(number,)) for number in range(6)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert 1 <= codes.count(201) <= 2 and codes.count(201) + codes.count(409) == 6, codes
+    with SessionLocal() as db:
+        assert quota.used(db, account.id) <= quota.limit_bytes(db)  # type: ignore[operator]
+
+
+def test_values_and_own_questions_stop_at_the_limit_too(client: TestClient, account: Account) -> None:
+    created = client.post("/api/values", json={"name": "Garten", "low": "kahl", "high": "bunt"})
+    assert created.status_code == 201
+    value_id = created.json()["id"]
+    assert client.post("/api/prompts/own", json={"text": "Was war heute schön?"}).status_code == 201
+    with SessionLocal() as db:
+        set_room(quota.used(db, account.id) + 60)
+    big = {"name": "N" * 40, "low": "l" * 30, "high": "h" * 30, "hint": "i" * 80}
+    refused = client.post("/api/values", json=big)
+    assert refused.status_code == 409 and refused.json()["detail"]["code"] == "storage_full"
+    changed = client.put(f"/api/values/{value_id}", json=big)
+    assert changed.status_code == 409 and changed.json()["detail"]["code"] == "storage_full"
+    own = client.post("/api/prompts/own", json={"text": "Wer hat dich heute zum Lachen gebracht, und worüber genau? " * 3})
+    assert own.status_code == 409 and own.json()["detail"]["code"] == "storage_full"
+    assert [item["name"] for item in client.get("/api/values").json()].count("N" * 40) == 0
+    assert len(client.get("/api/prompts").json()["own"]) == 1
+    # What fits still goes in.
+    assert client.put(f"/api/values/{value_id}", json={"name": "Gärtchen"}).status_code == 200

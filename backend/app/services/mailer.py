@@ -77,6 +77,19 @@ def send_invite(db: Session, to: str, link: str, *, by: str, until: str = "") ->
     _send(db, message)
 
 
+def send_reset(db: Session, to: str, link: str, *, name: str, hours: int) -> None:
+    message = EmailMessage()
+    message["To"] = to
+    message["Subject"] = "Set a new password for nexdiary"
+    message.set_content(
+        f"A link was asked for to set a new password for your nexdiary account {name}.\n\n"
+        f"Open it to choose the new password:\n{link}\n\n"
+        f"The link works once and for {hours} hours. If you did not ask for it, ignore this mail: your password "
+        "stays as it is.\n"
+    )
+    _send(db, message)
+
+
 def send_test(db: Session, to: str) -> None:
     message = EmailMessage()
     message["To"] = formataddr(("", to))

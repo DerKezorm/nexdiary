@@ -219,16 +219,6 @@ def change_password(db: Session, account: Account, current: str, new: str) -> No
     logger.info("Password changed name=%s", account.name)
 
 
-def set_password(db: Session, account: Account, new: str) -> None:
-    """The operator gives an account a new password (it forgot its own); it signs in with a password from now on."""
-    account.password_hash = hash_password(new)
-    account.sign_in = SIGN_IN_PASSWORD
-    account.failed_logins = 0
-    account.locked_until = None
-    db.commit()
-    logger.info("Password set by the operator name=%s", account.name)
-
-
 # --- Invitations ---------------------------------------------------------------------------------------------------
 
 
