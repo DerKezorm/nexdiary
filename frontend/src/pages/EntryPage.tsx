@@ -13,21 +13,14 @@ import { ApiError, diaryApi, journalApi, photosApi, photoUrl, sharingApi, type D
 import { Avatar } from '../components/Avatar'
 import { Markdown } from '../components/Markdown'
 import { ShareDialog } from '../components/ShareDialog'
+import { YearAgo } from '../components/YearAgo'
 import { CoverImage, CoverPicker } from '../covers/Cover'
-import { longDate, timeOf } from '../lib/dates'
+import { addDays, longDate, timeOf, yearBefore } from '../lib/dates'
 import { errorText } from '../lib/errors'
 import { nameOf } from '../lib/people'
 import { uploadPhoto } from '../lib/upload'
 import { useAuth } from '../state/auth'
 import { useImmichDay } from '../state/immich'
-
-/** A calendar day `n` days away, as `YYYY-MM-DD`. */
-// eslint-disable-next-line react-refresh/only-export-components
-export function addDays(date: string, n: number): string {
-  const moment = new Date(`${date}T12:00:00Z`)
-  moment.setUTCDate(moment.getUTCDate() + n)
-  return moment.toISOString().slice(0, 10)
-}
 
 type Loaded = { day: DayPage; notes: Note[]; photos: Photo[]; values: ValueDef[]; shares: DayShares }
 
@@ -63,14 +56,15 @@ export function EntryPage() {
     setData(null)
     setRaw(false)
     void load()
-    // A year ago today: the newest day before the one a year and a day later, if it is that very day.
-    const before = addDays(date, -364)
+    // A year ago today: the newest day before the one after the same calendar day a year earlier, if it is that day.
     setYearAgo(null)
-    if (/^\d{4}-\d{2}-\d{2}$/.test(date))
-      journalApi.page(before, undefined, 1).then(
-        (page) => setYearAgo(page.days[0]?.date === addDays(date, -365) ? page.days[0] : null),
+    if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      const ago = yearBefore(date)
+      journalApi.page(addDays(ago, 1), undefined, 1).then(
+        (page) => setYearAgo(page.days[0]?.date === ago ? page.days[0] : null),
         () => undefined,
       )
+    }
   }, [date, load])
 
   const say = (notice: string) => navigate(location.pathname, { replace: true, state: { notice } })
@@ -235,15 +229,7 @@ export function EntryPage() {
           )}
         </div>
       </article>
-      {yearAgo && (
-        <Link to={`/tag/${yearAgo.date}`} className="card mt-6 flex items-center gap-4 p-4 hover:border-accent">
-          <CoverImage cover={yearAgo.cover} className="h-16 w-20 shrink-0 rounded-lg" />
-          <div className="min-w-0">
-            <div className="text-xs font-bold tracking-wide text-accent uppercase">{t('entry.yearAgo')}</div>
-            <div className="truncate font-display text-lg font-semibold">{yearAgo.title || t('journal.untitled')}</div>
-          </div>
-        </Link>
-      )}
+      {yearAgo && <YearAgo day={yearAgo} />}
       {share && (
         <ShareDialog
           date={date}

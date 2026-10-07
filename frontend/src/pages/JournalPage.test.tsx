@@ -25,6 +25,8 @@ const SECOND = [day('2026-09-20', 'Weiter zurück')]
 
 type Call = { method: string; url: string; body: unknown }
 let calls: Call[] = []
+/** What the server finds as the newest day before the one a year back (a year-ago request has a limit of one). */
+let yearAgoOf: JournalDay | null = null
 /** The cover of 4 October is a photo that came with a note. */
 let coverOnNote = false
 const NOTE_PHOTO = 'd'.repeat(32)
@@ -44,10 +46,13 @@ function serve(): void {
       if (address.pathname === '/api/journal' && method === 'POST') {
         if (body.tag) return json({ days: [FIRST[1]], more: false })
         if (body.before === '2026-09-30') return json({ days: SECOND, more: false })
-        if (body.limit === 1) return json({ days: [], more: false })
+        if (body.limit === 1) return json({ days: yearAgoOf ? [yearAgoOf] : [], more: false })
         return json({ days: FIRST, more: true })
       }
       if (url === '/api/search') return json({ results: [{ date: '2026-10-06', kind: 'note', snippet: 'mit mia kastanien gesammelt' }, { date: '2026-10-04', kind: 'text', snippet: '… am See kastanien …' }], more: false, days: { '2026-10-04': FIRST[1] } })
+      // The days of the leap year 2028: a plain page each.
+      if (/^\/api\/days\/2028-\d\d-\d\d$/.test(url)) return json({ date: url.slice(-10), title: 'Schaltjahr', text: 'Text', tags: [], values: {}, cover: 'illu:baum.abend.herbst', cover_chosen: false, written_by: 'self', words: 1, revision: 0, created_at: '', updated_at: '' })
+      if (/^\/api\/days\/2028-\d\d-\d\d\/shares$/.test(url) && method === 'GET') return json({ date: url.slice(10, 20), people: [], with_values: false, with_notes: false })
       if (url === '/api/days/2026-10-04') return json({ date: '2026-10-04', title: 'Sonntag', text: 'Am **See**.', tags: ['familie'], values: { v1: 9 }, cover: coverOnNote ? `photo:${NOTE_PHOTO}` : 'illu:baum.abend.herbst', cover_chosen: false, written_by: 'ai', words: 2, revision: 0, created_at: '', updated_at: '' })
       if (url === '/api/notes?date=2026-10-04') return json([{ id: 'n1', date: '2026-10-04', text: 'see! wasser kalt', unreadable: false, prompt: null, photo_id: null, created_at: '2026-10-04T10:00:00+00:00', updated_at: null }])
       if (url === '/api/photos?date=2026-10-04')
@@ -103,6 +108,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   coverOnNote = false
+  yearAgoOf = null
   me.profile = { journal: 'blog', timezone: 'Europe/Berlin' }
   serve()
 })
@@ -187,6 +193,24 @@ describe('a day read', () => {
     await click(box.querySelector('button[aria-expanded]'))
     expect(box.textContent).toContain('see! wasser kalt')
     expect(box.querySelector('a[href="/tag/2026-10-04/schreiben"]')?.textContent).toContain('Bearbeiten')
+  })
+
+  it('offers the same calendar day a year back, also after a leap day, and only if it is that very day', async () => {
+    yearAgoOf = day('2027-03-01', 'Vor einem Jahr')
+    await show('/tag/2028-03-01')
+    expect(calls.find((call) => call.url === '/api/journal' && (call.body as { limit?: number }).limit === 1)?.body).toMatchObject({ before: '2027-03-02' })
+    expect(box.querySelector('a[href="/tag/2027-03-01"]')?.textContent).toContain('Vor einem Jahr')
+    act(() => root.unmount())
+    box.remove()
+    // 29 February is met by 28 February; a newer day than that is no year-ago day.
+    yearAgoOf = day('2027-02-28', 'Am 28.')
+    await show('/tag/2028-02-29')
+    expect(box.querySelector('a[href="/tag/2027-02-28"]')).not.toBeNull()
+    act(() => root.unmount())
+    box.remove()
+    yearAgoOf = day('2027-02-20', 'Zu früh')
+    await show('/tag/2028-02-29')
+    expect(box.querySelector('a[href="/tag/2027-02-20"]')).toBeNull()
   })
 
   it('shares with exactly whom was chosen, and what', async () => {

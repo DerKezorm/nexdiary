@@ -47,3 +47,38 @@ export function dayOfMoment(moment: string, language: string, timeZone?: string)
     return new Intl.DateTimeFormat(language, options).format(new Date(moment))
   }
 }
+
+/** A calendar day `n` days away, as `YYYY-MM-DD`. */
+export function addDays(day: string, n: number): string {
+  const moment = new Date(`${day}T12:00:00Z`)
+  moment.setUTCDate(moment.getUTCDate() + n)
+  return moment.toISOString().slice(0, 10)
+}
+
+/** The same calendar day one year earlier; 29 February has no such day then and is met by 28 February. The server
+ * reads it the same way (`stats.year_before`). */
+export function yearBefore(day: string): string {
+  const [year, month, date] = parts(day)
+  const back = new Date(Date.UTC(year - 1, month - 1, date, 12))
+  // 29 February does not exist a year earlier and rolls over into March: take the last day of February instead.
+  if (back.getUTCMonth() !== month - 1) return new Date(Date.UTC(year - 1, month, 0, 12)).toISOString().slice(0, 10)
+  return back.toISOString().slice(0, 10)
+}
+
+/** 0 for Monday up to 6 for Sunday: the weekday of a calendar day. */
+export function weekdayOf(day: string): number {
+  const [year, month, date] = parts(day)
+  return (new Date(Date.UTC(year, month - 1, date)).getUTCDay() + 6) % 7
+}
+
+/** "Oktober" or "Oktober 2025": the month of a calendar day, with the year when asked. */
+export function monthName(day: string, language: string, withYear = false): string {
+  const [year, month, date] = parts(day)
+  return new Intl.DateTimeFormat(language, { month: 'long', ...(withYear ? { year: 'numeric' } : {}), timeZone: 'UTC' }).format(new Date(Date.UTC(year, month - 1, date)))
+}
+
+/** The name of a weekday (0 for Monday), in the language. */
+export function weekdayName(index: number, language: string): string {
+  // 1 January 2024 was a Monday.
+  return new Intl.DateTimeFormat(language, { weekday: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(2024, 0, 1 + index)))
+}

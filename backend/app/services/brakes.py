@@ -26,6 +26,8 @@ LIMITS = {
     #: Signing a device up for Web Push (its push service is looked up), a probe (it goes out to every device).
     "push": 20,
     "push_test": 10,
+    #: A look at the statistics opens every sealed day of the person.
+    "stats": 30,
 }
 #: The code and the sentence of the answer.
 CODES = {
@@ -37,6 +39,7 @@ CODES = {
     "immich_thumb": ("immich_too_often", "Too many requests to Immich. Wait a minute."),
     "push": ("push_too_often", "Too many at once. Wait a minute."),
     "push_test": ("push_too_often", "Too many at once. Wait a minute."),
+    "stats": ("stats_too_often", "Too many looks at the statistics. Wait a minute."),
 }
 
 _lock = threading.Lock()

@@ -79,7 +79,104 @@
     "unreadable": "This day cannot be read."
   },
   "stats": {
-    "title": "Statistics"
+    "title": "Statistics",
+    "intro": "Made only from your own days. Nobody else sees this page.",
+    "loading": "Loading …",
+    "empty": "No page written yet. Once you have written up your first day, your streak, your half year and more show up here.",
+    "unreadable_one": "{{count}} day could not be read and is missing here.",
+    "unreadable_other": "{{count}} days could not be read and are missing here.",
+    "noValue": "nexdiary is not asking for any value right now. You can switch values on under Settings.",
+    "needValue": "That takes a few days with {{name}}.",
+    "tiles": {
+      "streak": "Streak",
+      "days_one": "{{count}} day",
+      "days_other": "{{count}} days",
+      "todayDone": "already written today",
+      "todayOpen": "today is still open",
+      "longest": "Longest streak",
+      "longestIn": "in {{month}}",
+      "stillOn": "still going",
+      "daysYear": "Days {{year}}",
+      "inTotal": "{{count}} in total",
+      "words": "Words",
+      "perDay": "about {{count}} a day"
+    },
+    "calendar": {
+      "title": "Your half year",
+      "textValue": "One square per day. The darker, the higher {{name}} is.",
+      "textWritten": "One square per day you wrote.",
+      "written": "Written",
+      "label": "Calendar of the last {{count}} weeks",
+      "nothing": "nothing",
+      "nothingWritten": "nothing written",
+      "withValue": "{{name}} {{value}}",
+      "legendWritten": "written"
+    },
+    "series": {
+      "titleNone": "A value over time",
+      "title": "{{name}} over time",
+      "text": "Dots are single days, the line is the average over seven days. On average {{mean}} out of 10.",
+      "textNone": "Dots are single days, the line is the average over seven days. There is no value in this period yet.",
+      "range30": "30 days",
+      "range90": "90",
+      "range180": "180",
+      "pick": "Choose a value",
+      "label": "{{name}} over the last {{count}} days",
+      "noValue": "no value",
+      "mean": "average {{mean}}"
+    },
+    "weekdays": {
+      "title": "Your weekdays",
+      "text": "{{name}} on average, for each weekday.",
+      "best": "{{name}} is highest on {{day}}.",
+      "thin": "To compare, it takes three days with a value on at least two weekdays."
+    },
+    "together": {
+      "title": "What goes together",
+      "text": "{{name}} on days like these, compared with the other days.",
+      "highValue": "{{name}} at least 7",
+      "lowValue": "{{name}} under 7",
+      "weekend": "Weekend",
+      "workdays": "Weekdays",
+      "withTag": "Days with #{{tag}}",
+      "without": "without",
+      "these": "these",
+      "similar": "hardly any difference",
+      "sentence": "{{a}}: {{aMean}} on average over {{aDays}} days. {{b}}: {{bMean}} on average over {{bDays}} days.",
+      "note": "Together does not mean because. It only shows what often happens together for you.",
+      "thin": "That takes more days: at least {{min}} on each side of a comparison."
+    },
+    "tags": {
+      "title": "Most used tags",
+      "none": "No tags yet."
+    },
+    "writing": {
+      "title": "Writing",
+      "text": "How your pages come about.",
+      "ai": "Written out with the AI",
+      "self": "Written myself",
+      "photos": "With photos",
+      "shared": "Shared with the family"
+    },
+    "extremes": {
+      "title": "My best and my worst day",
+      "text": "By {{name}}. With a tie the more recent day counts.",
+      "span30": "30 days",
+      "span365": "One year",
+      "spanAll": "All time",
+      "best": "Best day",
+      "worst": "Worst day",
+      "badge": "{{name}} {{value}}/10"
+    },
+    "weekdayShort": {
+      "mo": "Mo",
+      "tu": "Tu",
+      "we": "We",
+      "th": "Th",
+      "fr": "Fr",
+      "sa": "Sa",
+      "su": "Su"
+    }
   },
   "shared": {
     "title": "Shared",
@@ -1080,6 +1177,7 @@
     "sign_in_required": "Sign in first.",
     "slow_down": "Too many requests with this token. Wait a minute.",
     "slow_down_writing": "Too much is coming in at once. Wait a minute and try again.",
+    "stats_too_often": "Too many looks at the statistics. Wait a minute.",
     "storage_full": "Your storage is full (at most {{max_gb}} GB). Delete photos or ask the operator for more room.",
     "tag_too_long": "A tag is too long (at most {{max}} characters).",
     "text_too_long": "The text is too long (at most {{max}} characters).",

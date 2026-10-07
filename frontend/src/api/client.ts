@@ -497,6 +497,41 @@ export const journalApi = {
   search: (q: string) => api<SearchResult>('/api/search', { method: 'POST', body: { q } }),
 }
 
+// ---- The statistics -------------------------------------------------------------------------------------------------
+
+/** A value as the statistics name it, with the words at its two ends. */
+export type StatsValue = { id: string; name: string; low: string; high: string }
+/** A day the statistics point to: the best or the worst one, or the one a year ago. */
+export type StatsDay = { date: string; title: string; excerpt: string; cover: string; value?: number }
+/** A comparison of two groups of days by the main value: how many days each, their means, the difference. */
+export type StatsCompare = { a_n: number; b_n: number; a_mean: number; b_mean: number; diff: number; similar: boolean }
+export type StatsTogether = ({ kind: 'value'; name: string } | { kind: 'weekend' } | { kind: 'tag'; tag: string }) & StatsCompare
+export type StatsExtremes = { count: number; best: StatsDay | null; worst: StatsDay | null }
+export type StatsSpan = '30' | '365' | 'all'
+export type StatsRange = '30' | '90' | '180'
+
+export type Stats = {
+  today: string
+  pages: number
+  unreadable: number
+  /** The value most of the page is about (the first one asked); null while none is asked. */
+  value: StatsValue | null
+  values: StatsValue[]
+  tiles: { current: number; longest: number; longest_end: string | null; today_done: boolean; year: number; days_year: number; days_total: number; words: number; words_per_day: number }
+  calendar: { start: string; weeks: number; days: { date: string; written: boolean; value: number | null; title: string }[] }
+  series: { days: number; end: string; values: Record<string, { values: (number | null)[]; means: (number | null)[]; mean: Record<StatsRange, number | null> }> }
+  weekdays: { days: { n: number; mean: number | null }[]; best: number | null }
+  together: StatsTogether[]
+  tags: { tag: string; count: number }[]
+  extremes: Record<StatsSpan, StatsExtremes>
+  writing: { total: number; ai: number; self: number; photos: number; shared: number }
+  year_ago: StatsDay | null
+}
+
+export const statsApi = {
+  get: () => api<Stats>('/api/stats'),
+}
+
 const shared = (owner: number, date: string) => `/api/shared/${encodeURIComponent(String(owner))}/${encodeURIComponent(date)}`
 
 export const sharingApi = {

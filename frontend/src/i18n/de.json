@@ -79,7 +79,104 @@
     "unreadable": "Dieser Tag lässt sich nicht lesen."
   },
   "stats": {
-    "title": "Statistik"
+    "title": "Statistik",
+    "intro": "Nur aus deinen eigenen Tagen. Niemand sonst sieht diese Seite.",
+    "loading": "Lädt …",
+    "empty": "Noch keine Seite geschrieben. Sobald du den ersten Tag aufgeschrieben hast, siehst du hier deine Serie, dein halbes Jahr und mehr.",
+    "unreadable_one": "{{count}} Tag ließ sich nicht lesen und fehlt hier.",
+    "unreadable_other": "{{count}} Tage ließen sich nicht lesen und fehlen hier.",
+    "noValue": "Im Moment fragt nexdiary nach keinem Wert. Unter Einstellungen kannst du Werte einschalten.",
+    "needValue": "Dafür braucht es ein paar Tage mit {{name}}.",
+    "tiles": {
+      "streak": "Serie",
+      "days_one": "{{count}} Tag",
+      "days_other": "{{count}} Tage",
+      "todayDone": "heute schon geschrieben",
+      "todayOpen": "heute noch offen",
+      "longest": "Längste Serie",
+      "longestIn": "im {{month}}",
+      "stillOn": "läuft noch",
+      "daysYear": "Tage {{year}}",
+      "inTotal": "{{count}} insgesamt",
+      "words": "Wörter",
+      "perDay": "etwa {{count}} je Tag"
+    },
+    "calendar": {
+      "title": "Dein halbes Jahr",
+      "textValue": "Ein Kästchen je Tag. Je dunkler, desto höher liegt {{name}}.",
+      "textWritten": "Ein Kästchen je Tag, an dem du geschrieben hast.",
+      "written": "Geschrieben",
+      "label": "Kalender der letzten {{count}} Wochen",
+      "nothing": "nichts",
+      "nothingWritten": "nichts geschrieben",
+      "withValue": "{{name}} {{value}}",
+      "legendWritten": "geschrieben"
+    },
+    "series": {
+      "titleNone": "Ein Wert im Verlauf",
+      "title": "{{name}} im Verlauf",
+      "text": "Punkte sind einzelne Tage, die Linie der Schnitt über sieben Tage. Im Schnitt {{mean}} von 10.",
+      "textNone": "Punkte sind einzelne Tage, die Linie der Schnitt über sieben Tage. In diesem Zeitraum gibt es noch keinen Wert.",
+      "range30": "30 Tage",
+      "range90": "90",
+      "range180": "180",
+      "pick": "Wert wählen",
+      "label": "{{name}} der letzten {{count}} Tage",
+      "noValue": "kein Wert",
+      "mean": "Schnitt {{mean}}"
+    },
+    "weekdays": {
+      "title": "Deine Wochentage",
+      "text": "{{name}} im Schnitt, je Wochentag.",
+      "best": "Am höchsten liegt {{name}} am {{day}}.",
+      "thin": "Für einen Vergleich braucht es an mindestens zwei Wochentagen je drei Tage mit Wert."
+    },
+    "together": {
+      "title": "Was zusammenhängt",
+      "text": "{{name}} an solchen Tagen, verglichen mit den anderen.",
+      "highValue": "{{name}} mindestens 7",
+      "lowValue": "{{name}} unter 7",
+      "weekend": "Wochenende",
+      "workdays": "Arbeitstage",
+      "withTag": "Tage mit #{{tag}}",
+      "without": "ohne",
+      "these": "diese",
+      "similar": "kaum Unterschied",
+      "sentence": "{{a}}: im Schnitt {{aMean}} an {{aDays}} Tagen. {{b}}: im Schnitt {{bMean}} an {{bDays}} Tagen.",
+      "note": "Zusammen heißt nicht wegen. Es zeigt nur, was bei dir oft gemeinsam auftritt.",
+      "thin": "Dafür braucht es mehr Tage: mindestens {{min}} auf jeder Seite eines Vergleichs."
+    },
+    "tags": {
+      "title": "Häufigste Tags",
+      "none": "Noch keine Tags."
+    },
+    "writing": {
+      "title": "Schreiben",
+      "text": "Wie deine Seiten entstehen.",
+      "ai": "Mit KI ausformuliert",
+      "self": "Selbst geschrieben",
+      "photos": "Mit Fotos",
+      "shared": "Mit der Familie geteilt"
+    },
+    "extremes": {
+      "title": "Mein bester und mein schlimmster Tag",
+      "text": "Nach {{name}}. Bei Gleichstand zählt der jüngere Tag.",
+      "span30": "30 Tage",
+      "span365": "Ein Jahr",
+      "spanAll": "Immer",
+      "best": "Bester Tag",
+      "worst": "Schlimmster Tag",
+      "badge": "{{name}} {{value}}/10"
+    },
+    "weekdayShort": {
+      "mo": "Mo",
+      "tu": "Di",
+      "we": "Mi",
+      "th": "Do",
+      "fr": "Fr",
+      "sa": "Sa",
+      "su": "So"
+    }
   },
   "shared": {
     "title": "Geteilt",
@@ -1080,6 +1177,7 @@
     "sign_in_required": "Bitte erst anmelden.",
     "slow_down": "Zu viele Anfragen mit diesem Token. Eine Minute warten.",
     "slow_down_writing": "Gerade kommt zu viel auf einmal. Warte eine Minute und versuch es dann noch einmal.",
+    "stats_too_often": "Zu oft in die Statistik geschaut. Warte eine Minute.",
     "storage_full": "Dein Speicher ist voll (höchstens {{max_gb}} GB). Lösche Fotos oder frag den Betreiber nach mehr Platz.",
     "tag_too_long": "Ein Tag ist zu lang (höchstens {{max}} Zeichen).",
     "text_too_long": "Der Text ist zu lang (höchstens {{max}} Zeichen).",
