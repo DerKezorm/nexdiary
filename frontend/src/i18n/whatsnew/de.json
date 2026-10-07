@@ -38,6 +38,21 @@
         "body": "Täglich zu deiner Uhrzeit oder erst nach ein paar Tagen Pause, auf Wunsch mit einer Frage."
       },
       {
+        "title": "Fotos groß und an ihrem Platz",
+        "where": "Heute, Schreiben, Meine Fotos",
+        "body": "Fotos öffnen sich groß, und du wischst durch den Tag. Setz sie in den Text, wähl den Ausschnitt des Titelbilds, schneide ein Bild zu oder dreh es. Meine Fotos zeigt alle samt ihrem Platz und löscht, was du nicht mehr brauchst."
+      },
+      {
+        "title": "Späte Nächte und Tage zum Nachholen",
+        "where": "Heute",
+        "body": "Nach Mitternacht fragt nexdiary einmal, ob die Nacht noch zu gestern gehört. Tage mit Notizen, aber ohne Seite, stehen in einer Liste zum Nachholen, und auf Wunsch ordnet die KI sie am nächsten Morgen zu einem Entwurf, der auf dich wartet."
+      },
+      {
+        "title": "Einen Tag für immer verschließen",
+        "where": "Tag lesen",
+        "body": "Einen geschriebenen Tag kannst du verschließen. Danach ändert oder löscht ihn niemand mehr, auch du nicht."
+      },
+      {
         "title": "Sicher und nur deins",
         "where": "Mein Konto, Sicherheit",
         "body": "Alles, was du schreibst, liegt verschlüsselt in der Datenbank, und der Betreiber sieht keine Einträge. Zum Passwort kommt ein zweiter Faktor, Passkeys gibt es auch. Du siehst deine angemeldeten Geräte und meldest sie einzeln ab."
@@ -52,7 +67,7 @@
     "small": [
       "Konten per Einladung, Anmeldung auch über authentik oder einen anderen OpenID-Anbieter.",
       "Sicherungen mit Hochladen und Prüfen, Deutsch und Englisch, ein Log in vier Stufen.",
-      "Die App lässt sich auf dem Handy installieren und nimmt Texte und Fotos aus anderen Apps an."
+      "Die App lässt sich auf dem Handy installieren und nimmt Texte aus anderen Apps an."
     ]
   }
 }

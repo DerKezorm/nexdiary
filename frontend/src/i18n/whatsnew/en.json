@@ -38,6 +38,21 @@
         "body": "Daily at your time or only after a few days of pause, with a question if you like."
       },
       {
+        "title": "Photos, large and in their place",
+        "where": "Today, writing, My photos",
+        "body": "Photos open large and swipe through the day. Put them into the text, choose the part of a cover you want to see, crop or turn an image. My photos shows all of them and where they are used, and deletes what you no longer need."
+      },
+      {
+        "title": "Late nights and days to catch up",
+        "where": "Today",
+        "body": "After midnight nexdiary asks once whether the night still belongs to yesterday. Days with notes but no page yet are listed, so you can write them later, and if you like the AI puts them in order the next morning as a draft that waits for you."
+      },
+      {
+        "title": "Lock a day for good",
+        "where": "Reading a day",
+        "body": "A written day can be locked. After that nobody changes or deletes it any more, you neither."
+      },
+      {
         "title": "Safe, and yours alone",
         "where": "My account, Security",
         "body": "Everything you write is encrypted in the database, and the operator sees no entries. Besides the password there is a second factor, and passkeys too. You see your signed-in devices and sign them out one by one."
@@ -52,7 +67,7 @@
     "small": [
       "Accounts by invitation, sign-in through authentik or another OpenID provider too.",
       "Backups with upload and check, German and English, a log in four levels.",
-      "The app installs on the phone and takes texts and photos from other apps."
+      "The app installs on the phone and takes texts from other apps."
     ]
   }
 }
