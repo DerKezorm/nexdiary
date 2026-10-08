@@ -127,6 +127,53 @@ afterEach(() => {
   delete (window as { __xss?: number }).__xss
 })
 
+describe('the streak with a goal and shields', () => {
+  const tiles = () => [...box.querySelectorAll('.card')].slice(0, 2).map((tile) => tile.textContent?.trim())
+  const rescues = () => [...box.querySelectorAll('[data-testid="rescues"] li')].map((item) => item.textContent)
+
+  it('counts weeks below goal 7, says where the week stands and names the shields', async () => {
+    reply.body = stats({
+      tiles: { ...stats().tiles, unit: 'weeks', goal: 3, current: 6, longest: 9, shields: 2, week: { count: 2, goal: 3 }, rescues: [] },
+    })
+    await show()
+    expect(tiles()).toEqual(['Serie6 Wochen2 von 3 diese Woche 2 Schilde', 'Längste Serie9 Wochenim Juli'])
+    expect(box.querySelector('[title="Schützt deine Serie in einer verfehlten Woche"]')).not.toBeNull()
+    expect(box.querySelector('[data-testid="rescues"]')).toBeNull()
+  })
+
+  it('names one shield in the singular and has no shield line for none', async () => {
+    reply.body = stats({ tiles: { ...stats().tiles, unit: 'days', goal: 7, shields: 1, week: { count: 1, goal: 7 }, rescues: [] } })
+    await show()
+    expect(tiles()[0]).toBe('Serie2 Tageheute noch offen 1 Schild')
+    expect(box.querySelector('[title="Schützt deine Serie an einem verpassten Tag"]')).not.toBeNull()
+    act(() => root.unmount())
+    box.remove()
+    reply.body = stats({ tiles: { ...stats().tiles, shields: 0 } })
+    await show()
+    expect(tiles()[0]).toBe('Serie2 Tageheute noch offen')
+  })
+
+  it('tells of the last days the streak was saved, newest first, at most three', async () => {
+    reply.body = stats({ tiles: { ...stats().tiles, unit: 'days', goal: 7, shields: 0, rescues: ['2026-10-03', '2026-09-28', '2026-09-20', '2026-09-01', '2025-12-30'] } })
+    await show()
+    expect(rescues()).toEqual(['Serie gerettet am Samstag, 3. Oktober', 'Serie gerettet am Montag, 28. September', 'Serie gerettet am Sonntag, 20. September'])
+  })
+
+  it('tells of saved weeks by the Monday they began and shows an older year with the year', async () => {
+    reply.body = stats({ tiles: { ...stats().tiles, unit: 'weeks', goal: 2, week: { count: 0, goal: 2 }, rescues: ['2026-09-28', '2025-12-29'] } })
+    await show()
+    expect(rescues()).toEqual(['Serie gerettet in der Woche ab Montag, 28. September', 'Serie gerettet in der Woche ab Montag, 29. Dezember 2025'])
+  })
+
+  it('speaks English in English', async () => {
+    await changeLanguage('en', false)
+    reply.body = stats({ tiles: { ...stats().tiles, unit: 'weeks', goal: 3, current: 1, longest: 1, shields: 3, week: { count: 3, goal: 3 }, rescues: ['2026-09-28'] } })
+    await show()
+    expect(tiles()[0]).toBe('Streak1 week3 of 3 this week 3 shields')
+    expect(rescues()).toEqual(['Streak saved in the week of Monday, September 28'])
+  })
+})
+
 describe('the figures at the top', () => {
   it('draws the four tiles from the server, in German', async () => {
     await show()

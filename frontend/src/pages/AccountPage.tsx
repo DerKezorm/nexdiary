@@ -18,7 +18,7 @@ import { providerName } from '../lib/aiProviders'
 import { useAiState } from '../state/ai'
 import { useAuth } from '../state/auth'
 import { ImmichCard } from './settings/ImmichCards'
-import { JournalCard, LanguageCard, LayoutCard, LooksCard, PhoneCard } from './settings/PersonalCards'
+import { GoalCard, JournalCard, LanguageCard, LayoutCard, LooksCard, PhoneCard } from './settings/PersonalCards'
 import { PromptsCard } from './settings/PromptsCard'
 import { RemindersPart } from './settings/PushCards'
 import { DevicesCard, PasskeysCard, SecondFactorCard } from './settings/SecurityCards'
@@ -67,6 +67,7 @@ export function AccountPage() {
         )}
         {part === 'writing' && (
           <>
+            <GoalCard />
             <ValuesCard />
             <PromptsCard />
           </>

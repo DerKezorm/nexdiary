@@ -1255,26 +1255,6 @@ def list_days(db: Session, account_id: int, dek: bytes, *, before: str | None, l
     return out
 
 
-def streak(db: Session, account_id: int, dek: bytes, today: date) -> int:
-    """Days in a row with a written page, up to today, or up to yesterday while today is still open."""
-    dates = set(db.scalars(select(Day.date).where(Day.user_id == account_id, Day.date <= today.isoformat())))
-
-    def written(day: date) -> bool:
-        key = day.isoformat()
-        if key not in dates:
-            return False
-        sealed = db.scalar(select(Day.content_enc).where(Day.user_id == account_id, Day.date == key))
-        content = _readable_content(account_id, dek, key, sealed) if sealed is not None else None
-        return content is not None and bool(content["text"].strip())
-
-    cursor = today if written(today) else today - timedelta(days=1)
-    count = 0
-    while written(cursor):
-        count += 1
-        cursor -= timedelta(days=1)
-    return count
-
-
 # --- Catching up -----------------------------------------------------------------------------------------------------
 
 #: How far back "days with notes and without a page" look, and how much of the first note is shown of each.

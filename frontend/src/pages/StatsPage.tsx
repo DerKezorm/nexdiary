@@ -4,7 +4,7 @@
  * about. Everything is worked out by the server from the own days only; this page draws it. The value most of it is
  * about is the first one the person asks for, under whatever name they gave it.
  */
-import { BookOpen, CalendarDays, Flame, Heart, Image, PenLine, Sparkles, Trophy } from 'lucide-react'
+import { BookOpen, CalendarDays, Flame, Heart, Image, PenLine, Shield, Sparkles, Trophy } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
@@ -19,7 +19,7 @@ import type { Box } from '../lib/tip'
 import { Segment } from './settings/ui'
 
 
-function Tile({ icon: Icon, label, value, sub }: { icon: typeof Flame; label: string; value: ReactNode; sub?: string }) {
+function Tile({ icon: Icon, label, value, sub, extra }: { icon: typeof Flame; label: string; value: ReactNode; sub?: string; extra?: ReactNode }) {
   return (
     <div className="card p-5">
       <div className="flex items-center gap-2 text-sm font-semibold text-muted">
@@ -27,6 +27,7 @@ function Tile({ icon: Icon, label, value, sub }: { icon: typeof Flame; label: st
       </div>
       <div className="mt-2 font-display text-4xl font-semibold tracking-tight">{value}</div>
       {sub && <div className="mt-1 text-xs text-muted">{sub}</div>}
+      {extra}
     </div>
   )
 }
@@ -88,6 +89,9 @@ export function StatsPage() {
     )
 
   const { tiles } = data
+  const unit = tiles.unit ?? 'days'
+  const shields = tiles.shields ?? 0
+  const rescues = (tiles.rescues ?? []).slice(0, 3)
   const longestSub = tiles.longest === 0 ? undefined : tiles.current === tiles.longest ? t('stats.tiles.stillOn') : t('stats.tiles.longestIn', { month: monthName(tiles.longest_end ?? data.today, i18n.language, (tiles.longest_end ?? data.today).slice(0, 4) !== data.today.slice(0, 4)) })
 
   return (
@@ -95,11 +99,34 @@ export function StatsPage() {
       {head}
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Tile icon={Flame} label={t('stats.tiles.streak')} value={t('stats.tiles.days', { count: tiles.current })} sub={tiles.today_done ? t('stats.tiles.todayDone') : t('stats.tiles.todayOpen')} />
-        <Tile icon={Trophy} label={t('stats.tiles.longest')} value={t('stats.tiles.days', { count: tiles.longest })} sub={longestSub} />
+        <Tile
+          icon={Flame}
+          label={t('stats.tiles.streak')}
+          value={t(`stats.tiles.${unit}`, { count: tiles.current })}
+          sub={unit === 'weeks' && tiles.week ? t('stats.tiles.week', { count: tiles.week.count, goal: tiles.week.goal }) : tiles.today_done ? t('stats.tiles.todayDone') : t('stats.tiles.todayOpen')}
+          extra={
+            shields > 0 && (
+              <div className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-accent" title={t(unit === 'days' ? 'stats.tiles.shieldDays' : 'stats.tiles.shieldWeeks')}>
+                <Shield size={14} aria-hidden /> {t('stats.tiles.shields', { count: shields })}
+              </div>
+            )
+          }
+        />
+        <Tile icon={Trophy} label={t('stats.tiles.longest')} value={t(`stats.tiles.${unit}`, { count: tiles.longest })} sub={longestSub} />
         <Tile icon={CalendarDays} label={t('stats.tiles.daysYear', { year: tiles.year })} value={format.whole(tiles.days_year)} sub={t('stats.tiles.inTotal', { count: tiles.days_total })} />
         <Tile icon={BookOpen} label={t('stats.tiles.words')} value={format.whole(tiles.words)} sub={t('stats.tiles.perDay', { count: tiles.words_per_day })} />
       </div>
+
+      {rescues.length > 0 && (
+        <ul className="space-y-1 text-sm text-ink-2" data-testid="rescues">
+          {rescues.map((day) => (
+            <li key={day} className="flex items-center gap-2">
+              <Shield size={14} className="text-accent" aria-hidden />
+              {t(unit === 'days' ? 'stats.tiles.rescuedDay' : 'stats.tiles.rescuedWeek', { date: longDate(day, i18n.language, day.slice(0, 4) !== data.today.slice(0, 4)) })}
+            </li>
+          ))}
+        </ul>
+      )}
 
       {data.unreadable > 0 && <p className="text-sm text-muted">{t('stats.unreadable', { count: data.unreadable })}</p>}
 

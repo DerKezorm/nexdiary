@@ -6,7 +6,7 @@
  * Above the field stands the question of the day: tapped, the next note is the answer and keeps the question; the
  * cross puts it away for this visit.
  */
-import { ArrowUp, Check, Flame, LayoutGrid, MessageCircleQuestion, PenLine, X } from 'lucide-react'
+import { ArrowUp, Check, LayoutGrid, MessageCircleQuestion, PenLine, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
@@ -18,6 +18,7 @@ import { useOwnPhotoViewer } from '../components/ownPhotoViewer'
 import { PendingPhoto, usePendingPhoto } from '../components/PendingPhoto'
 import { PhotoTile } from '../components/PhotoViews'
 import { PhotoSourceButton } from '../components/PhotoSource'
+import { StreakBadges } from '../components/Streak'
 import { longDate, timeOf } from '../lib/dates'
 import { errorText } from '../lib/errors'
 import { sharedText } from '../lib/shared'
@@ -84,17 +85,16 @@ export function QuickPage() {
           <p className="truncate text-sm font-bold">{today.data ? longDate(today.data.date, i18n.language) : ' '}</p>
           <p className="text-xs text-muted">{notes.length === 0 ? t('quick.nothingYet') : t('quick.notesToday', { count: notes.length })}</p>
         </div>
-        {today.data && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-2.5 py-1 text-xs font-bold text-accent" title={t('today.streak')}>
-            <Flame size={13} aria-hidden /> <span className="sr-only">{t('today.streak')}: </span>
-            {today.data.streak}
-          </span>
-        )}
         <Link to="/" className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-sm font-semibold text-ink-2">
           <LayoutGrid size={15} aria-hidden /> {t('quick.all')}
         </Link>
       </header>
 
+      {today.data && (
+        <div className="shrink-0 px-4 pt-2.5">
+          <StreakBadges data={today.data} compact />
+        </div>
+      )}
       <NightHint today={today} className="mx-4 mt-3 shrink-0" />
       <div ref={list} className="flex-1 overflow-y-auto px-4 py-4">
         {notes.length === 0 ? (

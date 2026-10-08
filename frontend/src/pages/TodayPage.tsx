@@ -8,7 +8,7 @@
  * the day stands under the field; its answer becomes a note with the question. With Immich connected, the photos taken
  * there today are suggested in "Fotos von heute" and copied only when chosen.
  */
-import { ArrowUp, Check, Flame, ImagePlus, Images, Loader2, MessageCircleQuestion, PenLine, Shuffle, Sparkles, Trash2, X } from 'lucide-react'
+import { ArrowUp, Check, ImagePlus, Images, Loader2, MessageCircleQuestion, PenLine, Shuffle, Sparkles, Trash2, X } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
@@ -23,6 +23,7 @@ import { NoteMenu } from '../components/NoteMenu'
 import { useOwnPhotoViewer } from '../components/ownPhotoViewer'
 import { useDeletePhotos } from '../components/PhotoDelete'
 import { PhotoTile } from '../components/PhotoViews'
+import { StreakBadges } from '../components/Streak'
 import { Scale } from '../components/Scale'
 import { TagPicker } from '../components/TagPicker'
 import { longDate, timeOf } from '../lib/dates'
@@ -456,7 +457,7 @@ function Header({ now, today, onDay }: { now?: Date; today: TodayState; onDay?: 
   const date = today.data?.date
   const name = me?.display_name || me?.name || ''
   return (
-    <header className="flex items-end justify-between gap-4 pt-8 pb-6">
+    <header className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3 pt-8 pb-6">
       <div>
         <p className="text-sm font-semibold tracking-wide text-muted uppercase">
           {date ? longDate(date, i18n.language) : new Intl.DateTimeFormat(i18n.language, { weekday: 'long', day: 'numeric', month: 'long' }).format(moment)}
@@ -469,12 +470,7 @@ function Header({ now, today, onDay }: { now?: Date; today: TodayState; onDay?: 
             {t('today.yourDay')}
           </button>
         )}
-        {today.data && (
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-3 py-1.5 text-sm font-bold text-accent" title={t('today.streak')}>
-            <Flame size={16} aria-hidden /> <span className="sr-only">{t('today.streak')}: </span>
-            {today.data.streak}
-          </span>
-        )}
+        {today.data && <StreakBadges data={today.data} />}
       </div>
     </header>
   )

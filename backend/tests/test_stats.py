@@ -18,7 +18,7 @@ from sqlalchemy import update
 from app import clock
 from app.db import SessionLocal
 from app.models import Account, Day
-from app.services import apitokens, brakes, diary, stats, vault
+from app.services import apitokens, brakes, diary, stats, streaks, vault
 
 from .conftest import person
 
@@ -73,24 +73,29 @@ def get(client: TestClient) -> dict[str, Any]:
 # --- The rules, with fixed days -------------------------------------------------------------------------------------
 
 
+def streak(days: set[date], goal: int = 7) -> dict[str, Any]:
+    return streaks.compute({day: 3 for day in days}, TODAY, goal)
+
+
 def test_the_streak_counts_written_days_in_a_row_and_waits_for_today() -> None:
     done = {d(0), d(1), d(2), d(4)}
-    assert stats.streaks(done, TODAY)["current"] == 3 and stats.streaks(done, TODAY)["today_done"] is True
+    assert streak(done)["current"] == 3 and streak(done)["today_done"] is True
     open_today = {d(1), d(2), d(3), d(5)}
-    found = stats.streaks(open_today, TODAY)
+    found = streak(open_today)
     assert found["current"] == 3 and found["today_done"] is False
     # Yesterday missing as well: the streak is over.
-    assert stats.streaks({d(2), d(3)}, TODAY)["current"] == 0
-    assert stats.streaks(set(), TODAY) == {"current": 0, "longest": 0, "longest_end": None, "today_done": False}
+    assert streak({d(2), d(3)})["current"] == 0
+    found = streak(set())
+    assert (found["current"], found["longest"], found["longest_end"], found["today_done"]) == (0, 0, None, False)
 
 
 def test_the_longest_streak_takes_the_later_of_equal_runs() -> None:
     days = {d(40), d(39), d(38), d(20), d(19), d(18), d(10)}
-    found = stats.streaks(days, TODAY)
+    found = streak(days)
     assert found["longest"] == 3 and found["longest_end"] == d(18).isoformat()
     longer = days | {d(41)}
-    assert stats.streaks(longer, TODAY)["longest_end"] == d(38).isoformat()
-    assert stats.streaks(longer, TODAY)["longest"] == 4
+    assert streak(longer)["longest_end"] == d(38).isoformat()
+    assert streak(longer)["longest"] == 4
 
 
 def test_a_year_before_keeps_the_calendar_day_and_meets_a_leap_day_with_the_28th() -> None:
@@ -230,8 +235,9 @@ def test_an_empty_diary_gives_zeros_and_nothing_divides_by_nothing(client: TestC
     setup(client)
     found = get(client)
     assert found["pages"] == 0 and found["unreadable"] == 0
-    assert found["tiles"] == {"current": 0, "longest": 0, "longest_end": None, "today_done": False, "year": 2026,
-                              "days_year": 0, "days_total": 0, "words": 0, "words_per_day": 0}
+    assert found["tiles"] == {"unit": "days", "goal": 7, "current": 0, "longest": 0, "longest_end": None,
+                              "today_done": False, "shields": 0, "week": {"count": 0, "goal": 7}, "rescues": [],
+                              "year": 2026, "days_year": 0, "days_total": 0, "words": 0, "words_per_day": 0}
     assert found["value"] == {"id": value_ids(client)["Mood"], "name": "Mood", "low": "awful", "high": "great"}
     assert found["values"][0]["name"] == "Mood"
     assert found["writing"] == {"total": 0, "ai": 0, "self": 0, "photos": 0, "shared": 0}

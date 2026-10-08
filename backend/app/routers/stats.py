@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Request
 
 from ..deps import Account, DbSession
-from ..services import brakes, diary, stats, vault
+from ..services import brakes, diary, stats, streaks, vault
 
 router = APIRouter(prefix="/api", tags=["statistics"])
 
@@ -19,7 +19,7 @@ def get_stats(request: Request, account: Account, db: DbSession) -> dict[str, An
     dek = vault.dek_for(account.id)
     # The starting values are laid out on the first look at the diary, so a person who opens this page first has them.
     diary.ensure_values(db, account, dek, _language(account, request))
-    return stats.compute(db, account.id, dek, diary.today_of(account))
+    return stats.compute(db, account.id, dek, diary.today_of(account), streaks.goal_of(account.profile))
 
 
 def _language(account: Any, request: Request) -> str:

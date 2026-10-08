@@ -9,7 +9,8 @@ with fixed days.
 
 Words used here:
 
-* a *page* is a day that opens and exists; a *written* day is a page with text (that is what the streak counts);
+* a *page* is a day that opens and exists; a *written* day is a page with text (that is what the streak counts,
+  see ``streaks.py``);
 * the *main value* is the first value the person asks for (the first active one in their order: mood, ab werk);
 * a *group* of days is only compared with another when each holds at least ``MIN_GROUP`` days.
 """
@@ -25,7 +26,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import Day, Photo, Share
-from . import diary, journal
+from . import diary, journal, streaks
 
 #: The calendar of the year shows this many weeks, Monday to Sunday, the last one the week of today.
 CALENDAR_WEEKS = 26
@@ -115,27 +116,6 @@ def load_pages(db: Session, account_id: int, dek: bytes, today: date) -> tuple[l
 
 
 # --- The pieces -----------------------------------------------------------------------------------------------------
-
-
-def streaks(written: set[date], today: date) -> dict[str, Any]:
-    """The streak now (up to today, or up to yesterday while today is still open), the longest one ever and the day
-    it ended. A longer or an equally long streak further back loses to the later one."""
-    cursor = today if today in written else today - timedelta(days=1)
-    current = 0
-    while cursor in written:
-        current += 1
-        cursor -= timedelta(days=1)
-    longest = 0
-    longest_end: date | None = None
-    run = 0
-    previous: date | None = None
-    for day in sorted(written):
-        run = run + 1 if previous is not None and day - previous == timedelta(days=1) else 1
-        if run >= longest:
-            longest, longest_end = run, day
-        previous = day
-    return {"current": current, "longest": longest, "longest_end": longest_end.isoformat() if longest_end else None,
-            "today_done": today in written}
 
 
 def calendar(pages: list[Page], main: str | None, today: date) -> dict[str, Any]:
@@ -282,18 +262,17 @@ def _day_card(item: dict[str, Any] | None, rating: int | None = None) -> dict[st
     return card
 
 
-def compute(db: Session, account_id: int, dek: bytes, today: date) -> dict[str, Any]:
-    """All the statistics of the person, as of ``today`` in their time zone."""
+def compute(db: Session, account_id: int, dek: bytes, today: date, goal: int = streaks.DAILY) -> dict[str, Any]:
+    """All the statistics of the person, as of ``today`` in their time zone and with their weekly ``goal``."""
     defs = [value for value in diary.list_values(db, account_id, dek) if value["active"] and not value["unreadable"]]
     main = defs[0]["id"] if defs else None
     pages, unreadable = load_pages(db, account_id, dek, today)
     written = [page for page in pages if page.written]
-    written_days = {page.day for page in written}
 
     this_year = sum(1 for page in written if page.day.year == today.year)
     words = sum(page.words for page in written)
     tiles = {
-        **streaks(written_days, today),
+        **streaks.compute({page.day: page.words for page in written}, today, goal),
         "year": today.year,
         "days_year": this_year,
         "days_total": len(written),

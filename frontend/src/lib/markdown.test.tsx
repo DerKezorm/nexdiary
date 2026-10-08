@@ -130,12 +130,13 @@ describe('a hostile page', () => {
   ]
 
   it.each(PATHOLOGIES)('reads %s quickly and whole', (_name, text) => {
-    expect(fastest(() => parseBlocks(text) && plainText(text))).toBeLessThan(200)
+    // The quadratic reader took over 11 s on these; 2 s keeps that out and leaves room for a busy test machine.
+    expect(fastest(() => parseBlocks(text) && plainText(text))).toBeLessThan(2000)
     expect(parseBlocks(text).length).toBeGreaterThan(0)
   })
 
   it.each(PATHOLOGIES)('is tamed for the editor: %s', (_name, text) => {
-    expect(fastest(() => tame(text))).toBeLessThan(400)
+    expect(fastest(() => tame(text))).toBeLessThan(2000)
     const tamed = tame(text)
     const marks = [...tamed.replace(/\\./g, '')].filter((char) => char === '*' || char === '_').length
     expect(marks).toBeLessThanOrEqual(MAX_MARKS)

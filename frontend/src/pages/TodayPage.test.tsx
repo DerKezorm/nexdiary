@@ -6,7 +6,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { MemoryRouter } from 'react-router-dom'
 
-import type { Profile } from '../api/client'
+import type { Profile, StreakView } from '../api/client'
 import '../i18n'
 import { changeLanguage } from '../i18n'
 import { greetingOf, TodayPage } from './TodayPage'
@@ -33,6 +33,8 @@ const TODAY = {
 type Call = { method: string; url: string; body: unknown }
 let calls: Call[] = []
 let failNext = false
+/** What the server says of the streak; none: only the number, as an older server does. */
+let series: StreakView | undefined
 /** The server keeps the note but the answer never arrives (a dropped connection). */
 let loseNext = false
 /** What the server holds by note id, to answer like it does (same text: the note; other text: 409). */
@@ -48,7 +50,7 @@ function serve(): void {
       const body = init?.body ? JSON.parse(String(init.body)) : undefined
       calls.push({ method, url, body })
       const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
-      if (url.startsWith('/api/today')) return json(TODAY)
+      if (url.startsWith('/api/today')) return json(series ? { ...TODAY, series } : TODAY)
       if (url === '/api/notes' && method === 'POST') {
         // Slow enough that a second Enter arrives while the first is on its way.
         await new Promise((resolve) => setTimeout(resolve, 20))
@@ -92,6 +94,7 @@ async function show(layout: Profile['layout']): Promise<void> {
 
 beforeEach(async () => {
   await changeLanguage('de', false)
+  series = undefined
   serve()
 })
 
@@ -226,6 +229,27 @@ describe('today', () => {
     const ratings = calls.filter((call) => call.url.endsWith('/values')).map((call) => call.body)
     expect(ratings).toEqual([{ values: { v1: 6 } }, { values: { v1: null } }])
     expect(six.getAttribute('aria-pressed')).toBe('false')
+  })
+})
+
+describe('the streak next to the flame', () => {
+  it('counts days with no shield and no week line at goal 7', async () => {
+    await show('page')
+    const streak = box.querySelector('[data-testid="streak"]')!
+    expect(streak.textContent?.replace(/\s+/g, ' ').trim()).toBe('Tage in Folge: 4 Tage')
+    expect(box.querySelector('[data-testid="shields"]')).toBeNull()
+  })
+
+  it('counts weeks below goal 7 with the week so far and the shields in hand, in every layout', async () => {
+    series = { unit: 'weeks', goal: 3, current: 6, longest: 6, longest_end: null, today_done: false, shields: 2, week: { count: 2, goal: 3 }, rescues: [] }
+    for (const layout of ['page', 'columns', 'chat'] as const) {
+      await show(layout)
+      expect(box.querySelector('[data-testid="streak"]')!.textContent).toContain('6 Wochen')
+      expect(box.querySelector('[data-testid="week-standing"]')!.textContent).toBe('2 von 3 diese Woche')
+      expect(box.querySelector<HTMLElement>('[data-testid="shields"]')!.title).toBe('Schützt deine Serie in einer verfehlten Woche')
+      act(() => root.unmount())
+      box.remove()
+    }
   })
 })
 

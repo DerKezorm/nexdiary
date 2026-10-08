@@ -2,7 +2,10 @@
 
 Each person chooses (``profile.reminder``): never, every day at a time, or after a pause of a few days without an
 entry, always at that time; not on a day with a note already (every day only); with the question of the day or
-without.
+without. On top of that a person can ask to hear when their weekly goal is in danger (``goal_risk``, off from the
+start, independent of the mode): at the chosen time, when nothing is written today, pages are still missing and the days
+left in the week, today included, are at most one more than the pages missing (``services/streaks.py`` has the goal).
+It says how many pages are missing and nothing of the diary, and it takes the place of the other reminder of that day.
 
 The planner looks once a minute (``run_forever``). For each person it reads the clock in the person's own time zone:
 a reminder is due from its time on, for ``CATCH_UP`` after it. Summer time cannot make one fall out or come twice:
@@ -29,7 +32,7 @@ from sqlalchemy.orm import Session
 from .. import clock
 from ..errors import error
 from ..models import Account, Day, Note, PushDevice, ReminderMark
-from . import diary, prompts, push, vault
+from . import diary, prompts, push, streaks, vault
 
 logger = logging.getLogger("nexdiary.reminders")
 
@@ -38,7 +41,8 @@ DAYS_MIN, DAYS_MAX = 1, 30
 #: How long after its time a reminder still goes out: a server that was down at the time, or the hour that summer
 #: time skips. Later than that, the day is left alone.
 CATCH_UP = timedelta(hours=2)
-DEFAULT: dict[str, Any] = {"mode": "daily", "time": "20:30", "days": 2, "skip_if_written": True, "with_prompt": True}
+DEFAULT: dict[str, Any] = {"mode": "daily", "time": "20:30", "days": 2, "skip_if_written": True, "with_prompt": True,
+                           "goal_risk": False}
 _TIME = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 
 #: What a reminder says, in the language of the device; the interface shows the same in its preview.
@@ -48,12 +52,16 @@ TEXTS = {
         "pause_one": "Seit gestern nichts geschrieben. Magst du kurz?",
         "pause": "Seit {n} Tagen nichts geschrieben. Magst du kurz?",
         "asked": " Heute gefragt: {question}",
+        "goal_one": "Noch 1 Eintrag für dein Wochenziel.",
+        "goal": "Noch {n} Einträge für dein Wochenziel.",
     },
     "en": {
         "daily": "How was your day?",
         "pause_one": "Nothing written since yesterday. Fancy a few lines?",
         "pause": "Nothing written for {n} days. Fancy a few lines?",
         "asked": " Today's question: {question}",
+        "goal_one": "1 more entry for your weekly goal.",
+        "goal": "{n} more entries for your weekly goal.",
     },
 }
 TITLE = "nexdiary"
@@ -82,7 +90,7 @@ def of(profile: Any) -> dict[str, Any]:
     days = stored.get("days")
     if type(days) is int and DAYS_MIN <= days <= DAYS_MAX:
         out["days"] = days
-    for flag in ("skip_if_written", "with_prompt"):
+    for flag in ("skip_if_written", "with_prompt", "goal_risk"):
         if type(stored.get(flag)) is bool:
             out[flag] = stored[flag]
     return out
@@ -98,7 +106,7 @@ def check(current: dict[str, Any], change: dict[str, Any]) -> dict[str, Any]:
             valid = isinstance(value, str) and bool(_TIME.match(value))
         elif key == "days":
             valid = type(value) is int and DAYS_MIN <= value <= DAYS_MAX
-        elif key in ("skip_if_written", "with_prompt"):
+        elif key in ("skip_if_written", "with_prompt", "goal_risk"):
             valid = type(value) is bool
         else:
             valid = False
@@ -124,7 +132,9 @@ def passed_today(account: Account, reminder: dict[str, Any], now: datetime) -> d
 def after_saving(db: Session, account: Account, before: dict[str, Any], after: dict[str, Any], now: datetime) -> None:
     """A reminder switched on or moved to a time already past today does not go out at once: the person is in the
     app right now. Today counts as reminded."""
-    if after["mode"] == "never" or (before["mode"], before["time"]) == (after["mode"], after["time"]):
+    if after["mode"] == "never" and not after["goal_risk"]:
+        return
+    if (before["mode"], before["time"], before["goal_risk"]) == (after["mode"], after["time"], after["goal_risk"]):
         return
     today = passed_today(account, after, now)
     if today is None:
@@ -179,6 +189,35 @@ def due(db: Session, account: Account, reminder: dict[str, Any], now: datetime) 
     return today, reminder["days"], pause
 
 
+def goal_missing(db: Session, account: Account, goal: int, today: date) -> int | None:
+    """How many pages are still missing this week when the goal is in danger today, else None. In danger: nothing is
+    written today, pages are missing, and the days left (today included) are at most one more than the pages missing.
+    With fewer days left than pages missing the week is lost already and there is nothing to warn of."""
+    monday = streaks.monday_of(today)
+    written = streaks.written_days(db, account.id, vault.dek_for(account.id), today, monday)
+    if today in written:
+        return None
+    missing = goal - len(written)
+    days_left = 7 - today.weekday()
+    if missing <= 0 or days_left < missing or days_left > missing + 1:
+        return None
+    return missing
+
+
+def goal_due(db: Session, account: Account, reminder: dict[str, Any], now: datetime) -> tuple[date, int] | None:
+    """Whether the weekly goal is in danger and its reminder is due now: the person's day and the pages missing. The
+    time is the same as for the other reminder, with the same two hours of grace."""
+    if not reminder["goal_risk"]:
+        return None
+    local = now.astimezone(diary.zone_of(account))
+    today = local.date()
+    late = local.replace(tzinfo=None) - _target(today, reminder["time"])
+    if late < timedelta(0) or late >= CATCH_UP:
+        return None
+    missing = goal_missing(db, account, streaks.goal_of(account.profile), today)
+    return None if missing is None else (today, missing)
+
+
 def _mark(db: Session, account_id: int, day: str, limit: str) -> bool:
     db.execute(sqlite_insert(ReminderMark).values(user_id=account_id, sent_for="")
                .on_conflict_do_nothing(index_elements=[ReminderMark.user_id]))
@@ -200,8 +239,11 @@ def claim(db: Session, account_id: int, day: date, step: int) -> bool:
 
 
 def text(lang: str, mode: str, pause: int, question: str | None) -> str:
+    """What a reminder says. For the mode ``goal`` ``pause`` is the number of pages missing this week."""
     words = TEXTS[language_of(lang)]
-    if mode == "pause":
+    if mode == "goal":
+        out = words["goal_one"] if pause == 1 else words["goal"].format(n=pause)
+    elif mode == "pause":
         out = words["pause_one"] if pause == 1 else words["pause"].format(n=pause)
     else:
         out = words["daily"]
@@ -263,10 +305,16 @@ def run_once(now: datetime | None = None) -> int:
                 if account is None or account.blocked_at is not None:
                     continue
                 reminder = of(account.profile)
-                found = due(db, account, reminder, moment)
-                if found is None:
-                    continue
-                day, step, pause = found
+                at_risk = goal_due(db, account, reminder, moment)
+                if at_risk is not None:
+                    # The goal in danger takes the place of the other reminder: one a day.
+                    day, step, pause = at_risk[0], 1, at_risk[1]
+                    reminder = {**reminder, "mode": "goal"}
+                else:
+                    found = due(db, account, reminder, moment)
+                    if found is None:
+                        continue
+                    day, step, pause = found
                 if not claim(db, account_id, day, step):
                     continue
                 send = message(db, account, reminder, day, pause)

@@ -239,11 +239,51 @@ describe('when to remind', () => {
     expect(box.textContent).not.toContain('Nicht erinnern, wenn ich heute schon geschrieben habe')
     await type(box.querySelector<HTMLInputElement>('input[type="number"]')!, '1')
     expect(preview()).toContain('Seit gestern nichts geschrieben.')
-    await click(box.querySelector<HTMLButtonElement>('button[role="switch"]')!)
+    await click(box.querySelector<HTMLButtonElement>('button[role="switch"][aria-label="Mit einer Frage des Tages"]')!)
     expect(calls.filter((call) => call.url === '/api/me/reminder').map((call) => call.body).at(-1)).toEqual({ with_prompt: false })
     expect(preview()).not.toContain('Heute gefragt')
     await click(button('Nie'))
     expect(box.querySelector('[data-testid="reminder-preview"]')).toBeNull()
+  })
+})
+
+describe('the weekly goal in danger', () => {
+  const goalSwitch = () => box.querySelector<HTMLButtonElement>('button[role="switch"][aria-label="Erinnern, wenn mein Wochenziel in Gefahr ist"]')!
+
+  it('is off from the start and saves the one choice it changes', async () => {
+    browserPush()
+    await show(<RemindersPart me={me} />)
+    expect(goalSwitch().getAttribute('aria-checked')).toBe('false')
+    expect(box.querySelector('[data-testid="reminder-preview-goal"]')).toBeNull()
+    await click(goalSwitch())
+    expect(calls.filter((call) => call.url === '/api/me/reminder').map((call) => call.body)).toEqual([{ goal_risk: true }])
+    expect(goalSwitch().getAttribute('aria-checked')).toBe('true')
+    expect(box.querySelector('[data-testid="reminder-preview-goal"]')!.textContent).toContain('Noch 2 Einträge für dein Wochenziel. Heute gefragt: Was hat dich glücklich gemacht?')
+    // The other reminder keeps its own preview beside it.
+    expect(box.querySelector('[data-testid="reminder-preview"]')!.textContent).toContain('Wie war dein Tag?')
+  })
+
+  it('stands alone when the other reminder is never: the time stays, the other preview goes', async () => {
+    browserPush()
+    reminder = { ...reminder, mode: 'never', goal_risk: true }
+    await show(<RemindersPart me={{ ...me, profile: { ...me.profile, reminder: { mode: 'never', time: '18:00', days: 2, skip_if_written: true, with_prompt: false, goal_risk: true } } }} />)
+    expect(box.querySelector('[data-testid="reminder-preview"]')).toBeNull()
+    const preview = box.querySelector('[data-testid="reminder-preview-goal"]')!
+    expect(preview.textContent).toContain('Noch 2 Einträge für dein Wochenziel.')
+    expect(preview.textContent).not.toContain('Heute gefragt')
+    expect(preview.textContent).toContain('18:00')
+    expect(box.querySelector<HTMLInputElement>('input[type="time"]')!.value).toBe('18:00')
+  })
+
+  it('says it in English, with the hint and the example', async () => {
+    browserPush()
+    await changeLanguage('en', false)
+    await show(<RemindersPart me={me} />)
+    const toggle = box.querySelector<HTMLButtonElement>('button[role="switch"][aria-label="Remind me when my weekly goal is in danger"]')!
+    expect(toggle).toBeTruthy()
+    expect(box.textContent).toContain('For example: goal 3, 2 still open, Friday.')
+    await click(toggle)
+    expect(box.querySelector('[data-testid="reminder-preview-goal"]')!.textContent).toContain('2 more entries for your weekly goal.')
   })
 })
 

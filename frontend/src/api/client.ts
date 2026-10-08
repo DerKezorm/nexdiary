@@ -130,6 +130,8 @@ export type Profile = {
   ai: boolean
   /** A push and a mail when the account signs in from a new device. */
   notify_login?: boolean
+  /** Pages a week the person wants to write, 1 to 7 (7: every day). */
+  goal?: number
   /** When and how to be reminded (changed with `pushApi.reminder`). */
   reminder?: Reminder
   /** Having yesterday written up in the morning on its own (changed with `aiApi.autowrite`). */
@@ -150,6 +152,8 @@ export type Reminder = {
   skip_if_written: boolean
   /** The question of the day comes along. */
   with_prompt: boolean
+  /** Also say so when the weekly goal is in danger (off from the start). */
+  goal_risk?: boolean
 }
 
 export type Me = {
@@ -315,6 +319,20 @@ export type Night = { active: false } | { active: true; today: string; yesterday
 /** Days with notes and no page in the last sixty days, newest first. */
 export type CatchUp = { count: number; auto?: number; days: { date: string; notes: number; start: string; auto?: boolean }[] }
 
+/** The streak as the server works it out: counted in days at goal 7, else in weeks that reached the goal. `week` is
+ * this week's pages against the goal, `rescues` the days or weeks (Mondays) a shield saved, newest first. */
+export type StreakView = {
+  unit: 'days' | 'weeks'
+  goal: number
+  current: number
+  longest: number
+  longest_end: string | null
+  today_done: boolean
+  shields: number
+  week: { count: number; goal: number }
+  rescues: string[]
+}
+
 /** `question`: the question of the day (writing prompts), null when the person switched questions off. `date` is
  * the day being kept: today, or after midnight the day the person said their notes belong to. */
 export type TodayData = {
@@ -323,6 +341,8 @@ export type TodayData = {
   day: DayPage | null
   values: ValueDef[]
   streak: number
+  /** The streak with its unit, the goal, this week's count and the shields in hand. */
+  series?: StreakView
   photos: Photo[]
   question?: Question | null
   night?: Night
@@ -604,7 +624,7 @@ export type Stats = {
   /** The value most of the page is about (the first one asked); null while none is asked. */
   value: StatsValue | null
   values: StatsValue[]
-  tiles: { current: number; longest: number; longest_end: string | null; today_done: boolean; year: number; days_year: number; days_total: number; words: number; words_per_day: number }
+  tiles: Partial<StreakView> & Pick<StreakView, 'current' | 'longest' | 'longest_end' | 'today_done'> & { year: number; days_year: number; days_total: number; words: number; words_per_day: number }
   calendar: { start: string; weeks: number; days: { date: string; written: boolean; value: number | null; title: string }[] }
   series: { days: number; end: string; values: Record<string, { values: (number | null)[]; means: (number | null)[]; mean: Record<StatsRange, number | null> }> }
   weekdays: { days: { n: number; mean: number | null }[]; best: number | null }

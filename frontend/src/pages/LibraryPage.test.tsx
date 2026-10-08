@@ -90,6 +90,9 @@ const tile = (n: number) => box.querySelector<HTMLElement>(`li[data-photo="${id(
 const button = (label: string) => [...box.querySelectorAll('button')].find((item) => item.textContent?.trim() === label || item.getAttribute('aria-label') === label)
 
 beforeEach(async () => {
+  // The notes of "today" are those of 7 October: only the date is set, every timer stays real.
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date('2026-10-07T12:00:00Z'))
   await changeLanguage('de', false)
   storage = { used: 1288490189, limit: 5 * 1024 ** 3, count: 5 }
   failLibrary = null
@@ -101,6 +104,7 @@ afterEach(async () => {
   await act(async () => root.unmount())
   box.remove()
   vi.unstubAllGlobals()
+  vi.useRealTimers()
 })
 
 describe('the storage line', () => {

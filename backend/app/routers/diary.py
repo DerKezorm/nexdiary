@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..deps import Account, DbSession
 from ..errors import error
-from ..services import brakes, diary, journal, photos, prompts, vault
+from ..services import brakes, diary, journal, photos, prompts, streaks, vault
 
 router = APIRouter(prefix="/api", tags=["diary"])
 logger = logging.getLogger("nexdiary.diary")
@@ -146,6 +146,7 @@ def today(request: Request, account: Account, db: DbSession) -> dict[str, Any]:
     night = diary.night_of(account)
     day = diary.note_day(account)
     key = day.isoformat()
+    series = streaks.state(db, account.id, dek, day, streaks.goal_of(account.profile))
     return {
         "date": key,
         # Between 0:00 and 3:59: which two days the notes may belong to and what the person answered; else inactive.
@@ -154,7 +155,9 @@ def today(request: Request, account: Account, db: DbSession) -> dict[str, Any]:
         "notes": diary.list_notes(db, account.id, dek, key),
         "day": diary.get_day(db, account.id, dek, key),
         "values": diary.list_values(db, account.id, dek),
-        "streak": diary.streak(db, account.id, dek, day),
+        "streak": series["current"],
+        # The streak with its unit, the weekly goal, the week so far and the shields in hand.
+        "series": series,
         "photos": photos.list_of_day(db, account.id, key),
         # The question of the day (writing prompts); null when the person switched questions off.
         "question": prompts.question_of_day(db, account.id, dek, day, _language(account, request)),

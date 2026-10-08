@@ -1,9 +1,10 @@
 /**
  * What is personal, as cards for "My account": the language, the colour and light or dark, where a phone starts, the
- * layout of "Today" and of the journal. Each is kept with the account (never only in this browser).
+ * layout of "Today" and of the journal, and the writing goal. Each is kept with the account (never only in this
+ * browser).
  */
-import { Database, Globe, ListChecks, Palette, Smartphone } from 'lucide-react'
-import { useEffect, useState, type ReactNode } from 'react'
+import { Database, Globe, ListChecks, Palette, Smartphone, Target } from 'lucide-react'
+import { useEffect, useId, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { authApi, type JournalLook, type Layout, type Me, type Profile } from '../../api/client'
@@ -144,6 +145,54 @@ function useProfileChoice() {
     }).then((worked) => worked || void authApi.me().then(setMe, () => undefined))
   }
   return { profile: me?.profile, choose, problem: action.problem }
+}
+
+/** How many pages a week the person wants to write, 1 to 7: a slider that is kept when it is let go. What it means for
+ * the streak, the shields and the reminder is said below it. */
+export function GoalCard() {
+  const { t } = useTranslation()
+  const { profile, choose, problem } = useProfileChoice()
+  const stored = profile?.goal ?? 7
+  const [goal, setGoal] = useState(stored)
+  const id = useId()
+  useEffect(() => setGoal(stored), [stored])
+  const keep = () => {
+    if (goal !== stored) choose({ goal })
+  }
+  const said = goal === 7 ? t('settings.goal.daily', { count: goal }) : t('settings.goal.perWeek', { count: goal })
+  return (
+    <Card icon={Target} title={t('settings.goal.title')} text={t('settings.goal.text')}>
+      <label htmlFor={id} className="text-sm font-semibold">
+        {t('settings.goal.label')}
+      </label>
+      <input
+        id={id}
+        type="range"
+        min={1}
+        max={7}
+        step={1}
+        value={goal}
+        aria-valuetext={said}
+        onChange={(event) => setGoal(Number(event.target.value))}
+        onPointerUp={keep}
+        onKeyUp={keep}
+        onBlur={keep}
+        className="block w-full accent-accent"
+      />
+      <div className="flex justify-between px-1 text-xs text-muted" aria-hidden>
+        {[1, 2, 3, 4, 5, 6, 7].map((n) => (
+          <span key={n}>{n}</span>
+        ))}
+      </div>
+      <p className="font-display text-xl font-semibold" data-testid="goal-said">
+        {said}
+      </p>
+      <p className="text-sm text-ink-2">{goal === 7 ? t('settings.goal.hintDays') : t('settings.goal.hintWeeks')}</p>
+      <p className="text-sm text-ink-2">{t('settings.goal.hintLong')}</p>
+      <p className="text-xs text-muted">{t('settings.goal.hintChange')}</p>
+      <Feedback problem={problem} />
+    </Card>
+  )
 }
 
 /** Where a phone starts: on the quick note, or in the whole app. */

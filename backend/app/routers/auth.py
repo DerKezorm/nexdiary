@@ -546,6 +546,8 @@ PROFILE: dict[str, tuple[Any, ...]] = {
     "ai": (True, False),
     #: A push and a mail when the account signs in from a new device (``services/notices.py``).
     "notify_login": (True, False),
+    #: Pages a week the person wants to write, 1 to 7 (``services/streaks.py``); 7 is every day.
+    "goal": (7, 1, 2, 3, 4, 5, 6),
 }
 
 

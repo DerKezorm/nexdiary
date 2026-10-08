@@ -17,7 +17,7 @@ import { currentSubscription, installed, readiness, subscribe, unsubscribe, type
 import { useAuth } from '../../state/auth'
 import { Button, Card, Confirm, Feedback, Input, Segment, SubHead, Toggle, useAction } from './ui'
 
-const DEFAULT_REMINDER: Reminder = { mode: 'daily', time: '20:30', days: 2, skip_if_written: true, with_prompt: true }
+const DEFAULT_REMINDER: Reminder = { mode: 'daily', time: '20:30', days: 2, skip_if_written: true, with_prompt: true, goal_risk: false }
 
 export function RemindersPart({ me }: { me: Me }) {
   return (
@@ -202,9 +202,10 @@ function WhenCard({ me }: { me: Me }) {
     }).then((worked) => worked || setReminder(stored))
   }
 
-  const preview =
-    (reminder.mode === 'pause' ? t('me.remind.pauseText', { count: reminder.days }) : t('me.remind.dailyText')) +
-    (reminder.with_prompt ? t('me.remind.asked', { question: t('me.remind.example') }) : '')
+  const goalRisk = reminder.goal_risk === true
+  const asked = reminder.with_prompt ? t('me.remind.asked', { question: t('me.remind.example') }) : ''
+  const preview = (reminder.mode === 'pause' ? t('me.remind.pauseText', { count: reminder.days }) : t('me.remind.dailyText')) + asked
+  const goalPreview = t('me.remind.goalText', { count: 2 }) + asked
 
   return (
     <Card icon={Bell} title={t('me.remind.title')} text={t('me.remind.text')}>
@@ -218,7 +219,8 @@ function WhenCard({ me }: { me: Me }) {
           { value: 'pause', label: t('me.remind.pause') },
         ]}
       />
-      {reminder.mode !== 'never' && (
+      <Toggle label={t('me.remind.goalRisk')} hint={t('me.remind.goalRiskHint')} checked={goalRisk} onChange={(goal_risk) => change({ goal_risk })} />
+      {(reminder.mode !== 'never' || goalRisk) && (
         <div className="space-y-3 pt-1">
           <div className="flex flex-wrap items-end gap-4">
             {reminder.mode === 'pause' && (
@@ -255,23 +257,30 @@ function WhenCard({ me }: { me: Me }) {
             <Toggle label={t('me.remind.skip')} hint={t('me.remind.skipHint')} checked={reminder.skip_if_written} onChange={(skip_if_written) => change({ skip_if_written })} />
           )}
           <Toggle label={t('me.remind.withPrompt')} hint={t('me.remind.withPromptHint')} checked={reminder.with_prompt} onChange={(with_prompt) => change({ with_prompt })} />
-          <div>
-            <p className="mb-2 text-xs font-bold tracking-wide text-muted uppercase">{t('me.remind.preview')}</p>
-            <div className="flex max-w-sm items-start gap-3 rounded-2xl bg-sheet-2 p-3.5 shadow-soft" data-testid="reminder-preview">
-              <LogoMark size={36} />
-              <div className="min-w-0 text-sm">
-                <div className="flex justify-between gap-3">
-                  <span className="font-bold">nexdiary</span>
-                  <span className="text-xs text-muted">{reminder.time}</span>
-                </div>
-                <p className="text-ink-2">{preview}</p>
-              </div>
-            </div>
-          </div>
+          {reminder.mode !== 'never' && <Preview title={t('me.remind.preview')} time={reminder.time} text={preview} id="reminder-preview" />}
+          {goalRisk && <Preview title={reminder.mode === 'never' ? t('me.remind.preview') : t('me.remind.previewGoal')} time={reminder.time} text={goalPreview} id="reminder-preview-goal" />}
         </div>
       )}
       <Feedback problem={action.problem} values={action.values} />
     </Card>
+  )
+}
+
+function Preview({ title, time, text, id }: { title: string; time: string; text: string; id: string }) {
+  return (
+    <div>
+      <p className="mb-2 text-xs font-bold tracking-wide text-muted uppercase">{title}</p>
+      <div className="flex max-w-sm items-start gap-3 rounded-2xl bg-sheet-2 p-3.5 shadow-soft" data-testid={id}>
+        <LogoMark size={36} />
+        <div className="min-w-0 text-sm">
+          <div className="flex justify-between gap-3">
+            <span className="font-bold">nexdiary</span>
+            <span className="text-xs text-muted">{time}</span>
+          </div>
+          <p className="text-ink-2">{text}</p>
+        </div>
+      </div>
+    </div>
   )
 }
 

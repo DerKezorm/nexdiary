@@ -252,7 +252,9 @@ export default function WritePage() {
   /** The page as it stands this moment, the newest words of the editor included (its `onChange` comes after a pause
    * in the typing, a tap on "Save" can come before). */
   const settled = (): Page => {
-    const text = editor.current?.getMarkdown()
+    // Trailing white space never counts: the editor's change report ends with a line break that its direct read may
+    // not have, and which of the two came last depended on timing.
+    const text = editor.current?.getMarkdown()?.replace(/\s+$/, '')
     if (text != null && text !== latest.current.page.text.replace(/\s+$/, '')) {
       const page = { ...latest.current.page, text }
       latest.current = { ...latest.current, page }
@@ -260,7 +262,8 @@ export default function WritePage() {
       touched.current.add('text')
       setPage(page)
     }
-    return latest.current.page
+    const page = latest.current.page
+    return { ...page, text: page.text.replace(/\s+$/, '') }
   }
 
   const flush = async (keepalive = false) => {
