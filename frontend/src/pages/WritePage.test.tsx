@@ -366,12 +366,42 @@ describe('writing a day up', () => {
     expect(box.textContent).toContain('Ein Vorschlag.')
   })
 
-  it('writes nothing over a page that is not empty', async () => {
+  it('writes over a saved page only after asking: keep it, or have it written anew from all notes', async () => {
+    dayNotes = [{ id: 'n1', date: DATE, text: 'kastanien nachgetragen', unreadable: false, prompt: null, prompt_id: null, photo_id: null, created_at: '2026-10-06T16:50:00+00:00', updated_at: null }]
     day = page({ title: 'Schon da', text: 'Selbst geschrieben.', revision: 2 })
+    const inDialog = (text: string) => [...box.querySelectorAll<HTMLButtonElement>('[role=dialog] button')].find((item) => item.textContent?.trim() === text)!
     await show({ formulate: 'long' })
     await idle()
+    expect(box.querySelector('[role=dialog]')!.textContent).toContain('Seite neu ausformulieren?')
+    expect(asked()).toHaveLength(0)
+    await act(async () => inDialog('Seite behalten').click())
     expect(asked()).toHaveLength(0)
     expect(title().value).toBe('Schon da')
+    expect(box.querySelector('[contenteditable]')!.textContent).toBe('Selbst geschrieben.')
+    // The bar offers the same for notes added later, and asks the same.
+    await act(async () => button('Neu ausformulieren').click())
+    expect(box.querySelector('[role=dialog]')!.textContent).toContain('Seite neu ausformulieren?')
+    await act(async () => inDialog('Neu ausformulieren').click())
+    await idle()
+    expect(asked().map((call) => call.body)).toEqual([{ date: DATE, length: 'long' }])
+    expect(title().value).toBe('Kastanien')
+    // Nothing is saved over the page until Save.
+    expect(puts()).toHaveLength(0)
+  })
+
+  it('offers "Neu ausformulieren" over a saved page only with notes to write from and the AI on', async () => {
+    const withNote = [{ id: 'n1', date: DATE, text: 'kastanien', unreadable: false, prompt: null, prompt_id: null, photo_id: null, created_at: '2026-10-06T16:50:00+00:00', updated_at: null }]
+    for (const [notes, saved, available, offered] of [[withNote, true, true, true], [[], true, true, false], [withNote, true, false, false], [withNote, false, true, false]] as const) {
+      dayNotes = [...notes]
+      day = saved ? page({ title: 'Tag', text: 'Geschrieben.', revision: 0 }) : null
+      aiState = { provider: 'local', to: '', model: 'm', mine: available, available }
+      await show()
+      await idle()
+      expect(Boolean(button('Neu ausformulieren'))).toBe(offered)
+      act(() => root.unmount())
+      box.remove()
+    }
+    await show()
   })
 
   it('asks anew for "Länger", and over changes to the suggestion only after asking', async () => {

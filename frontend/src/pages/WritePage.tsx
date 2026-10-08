@@ -90,6 +90,13 @@ function nowIn(zone?: string): { date: string; hour: number } {
   }
 }
 
+/** What the question before the AI writes over something says: over a draft, over a changed suggestion, over a saved page. */
+const REDO = {
+  draft: { title: 'write.aiDraftTitle', text: 'write.aiDraftText', keep: 'write.aiDraftKeep', go: 'write.aiDraftAnew' },
+  suggestion: { title: 'write.aiRedoTitle', text: 'write.aiRedoText', keep: 'common.cancel', go: 'write.aiRedoConfirm' },
+  page: { title: 'write.aiPageTitle', text: 'write.aiPageText', keep: 'write.aiPageKeep', go: 'write.aiDraftAnew' },
+} as const
+
 /** The length "Ausformulieren" on "Today" asked for, carried in the history state; anything else is nothing. */
 function askedLength(state: unknown): AiLength | null {
   const asked = state && typeof state === 'object' ? (state as { formulate?: unknown }).formulate : null
@@ -176,7 +183,7 @@ export default function WritePage() {
   const [formulating, setFormulating] = useState(false)
   /** Asking before the AI writes over something: the length asked for, and whether a draft or a changed suggestion
    * stands. */
-  const [redo, setRedo] = useState<{ length: AiLength; over: 'draft' | 'suggestion' } | null>(null)
+  const [redo, setRedo] = useState<{ length: AiLength; over: 'draft' | 'suggestion' | 'page' } | null>(null)
   const [length, setLength] = useState<AiLength>('long')
   /** The person's templates (none: an empty list) and the one the page is written under, by its id. */
   const [templateSet, setTemplateSet] = useState<TemplateSet | null>(null)
@@ -646,18 +653,18 @@ export default function WritePage() {
     const length = wanted.current
     if (!loaded || !length) return
     wanted.current = null
-    // Only onto an empty page; over a draft only after asking; never over a page that was saved.
+    // Only onto an empty page at once; over a saved page, a draft or a suggestion only after asking.
     const now = latest.current.page
     if (isBlank(now)) void formulate(length)
-    else if (!day?.text.trim()) setRedo({ length, over: latest.current.origin.by === 'ai' ? 'suggestion' : 'draft' })
+    else setRedo({ length, over: day?.text.trim() ? 'page' : latest.current.origin.by === 'ai' ? 'suggestion' : 'draft' })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded])
 
-  /** "Ausformulieren" here: onto an empty page at once, over a draft only after asking. */
+  /** "Ausformulieren" here: onto an empty page at once, over a saved page or a draft only after asking. */
   const ask = (asked: AiLength) => {
     const now = latest.current.page
     if (isBlank(now)) void formulate(asked)
-    else setRedo({ length: asked, over: 'draft' })
+    else setRedo({ length: asked, over: day?.text.trim() ? 'page' : 'draft' })
   }
 
   /** "Länger"/"Kürzer": anew from the notes; over changes to the suggestion only when the person confirms. */
@@ -671,8 +678,10 @@ export default function WritePage() {
 
   const aiOn = Boolean(ai?.available)
   // "Ausformulieren" above the text: a day with notes to write from and no saved page, before the AI wrote anything.
-  const offerAi = aiOn && loaded && !formulating && origin.by !== 'ai' && !day?.text.trim()
-    && notes.some((note) => note.text && !note.unreadable) && (isBlank(page) || restored !== null)
+  const usableNotes = notes.some((note) => note.text && !note.unreadable)
+  const offerAi = aiOn && loaded && !formulating && origin.by !== 'ai' && !day?.text.trim() && usableNotes && (isBlank(page) || restored !== null)
+  // A saved page, for notes added later: "Neu ausformulieren" in the bar, asked before it writes over the page.
+  const offerAnew = aiOn && loaded && origin.by !== 'ai' && Boolean(day?.text.trim()) && usableNotes
 
   // The line "Vorlage": only for a person with templates, and only while nothing of theirs is on the page yet.
   const showTemplates =
@@ -747,6 +756,16 @@ export default function WritePage() {
                 className="inline-flex h-8 items-center justify-center gap-2 rounded-full px-3.5 text-sm font-semibold text-ink-2 transition hover:bg-sheet-2 disabled:pointer-events-none disabled:opacity-50"
               >
                 <Sparkles size={15} aria-hidden /> {origin.length === 'short' ? t('write.longer') : t('write.shorter')}
+              </button>
+            )}
+            {offerAnew && (
+              <button
+                type="button"
+                onClick={() => ask(length)}
+                disabled={formulating}
+                className="inline-flex h-8 items-center justify-center gap-2 rounded-full px-3.5 text-sm font-semibold text-ink-2 transition hover:bg-sheet-2 disabled:pointer-events-none disabled:opacity-50"
+              >
+                <Sparkles size={15} aria-hidden /> {t('write.aiAnew')}
               </button>
             )}
             {kept && (
@@ -1014,11 +1033,11 @@ export default function WritePage() {
       </div>
 
       {redo && (
-        <Dialog title={redo.over === 'draft' ? t('write.aiDraftTitle') : t('write.aiRedoTitle')} onClose={() => setRedo(null)}>
-          <p className="text-sm text-ink-2">{redo.over === 'draft' ? t('write.aiDraftText') : t('write.aiRedoText')}</p>
+        <Dialog title={t(REDO[redo.over].title)} onClose={() => setRedo(null)}>
+          <p className="text-sm text-ink-2">{t(REDO[redo.over].text)}</p>
           <div className="mt-4 flex flex-wrap justify-end gap-2">
             <button type="button" onClick={() => setRedo(null)} className="inline-flex h-10 items-center rounded-full border border-line px-4 text-sm font-semibold text-ink-2 hover:bg-sheet-2">
-              {redo.over === 'draft' ? t('write.aiDraftKeep') : t('common.cancel')}
+              {t(REDO[redo.over].keep)}
             </button>
             <button
               type="button"
@@ -1029,7 +1048,7 @@ export default function WritePage() {
               }}
               className="inline-flex h-10 items-center rounded-full bg-accent px-4 text-sm font-semibold text-accent-ink hover:brightness-105"
             >
-              {redo.over === 'draft' ? t('write.aiDraftAnew') : t('write.aiRedoConfirm')}
+              {t(REDO[redo.over].go)}
             </button>
           </div>
         </Dialog>

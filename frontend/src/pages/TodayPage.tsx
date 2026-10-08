@@ -258,8 +258,8 @@ function PromptCard({ today }: { today: TodayState }) {
 }
 
 /** "Den Tag aufschreiben", as the mock's finish card: "Ausformulieren" with the AI (short or long) above "Selbst
- * schreiben" when there is an AI for this person and notes to write from; a day that has a page already is written on
- * ("Weiterschreiben"), without the AI, which would write it anew. */
+ * schreiben" when there is an AI for this person and notes to write from. A day that has a page already keeps the
+ * button, for notes added later; the writing page asks before the AI writes over the saved page. */
 function FinishCard({ today, ai }: { today: TodayState; ai: AiState | null }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -267,8 +267,8 @@ function FinishCard({ today, ai }: { today: TodayState; ai: AiState | null }) {
   const data = today.data as TodayData
   const count = data.notes.length
   const written = Boolean(data.day?.text.trim())
-  const text = written ? t('write.finishExisting') : count > 0 ? t('write.finishText', { count }) : t('write.finishNoNotes')
-  const aiOn = Boolean(ai?.available) && !written && data.notes.some((note) => note.text && !note.unreadable)
+  const aiOn = Boolean(ai?.available) && !data.day?.locked && data.notes.some((note) => note.text && !note.unreadable)
+  const text = written ? t(aiOn ? 'write.finishExistingAi' : 'write.finishExisting') : count > 0 ? t('write.finishText', { count }) : t('write.finishNoNotes')
   return (
     <section id="aufschreiben" className="card scroll-mt-6 overflow-hidden">
       <div className="bg-accent-soft/70 px-5 pt-5 pb-4">

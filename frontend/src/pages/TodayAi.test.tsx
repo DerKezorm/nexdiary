@@ -147,11 +147,21 @@ describe('writing the day up with the AI', () => {
     expect(calls.some((call) => call.url.startsWith('/api/ai/'))).toBe(false)
   })
 
-  it('is not offered when the AI is off for the person, there is none, there are no notes, or a page stands', async () => {
+  it('stays for a day that has a page, for notes added later, and leads to the writing page the same way', async () => {
+    today = { ...today, day: { text: 'Schon geschrieben.', title: '', tags: [], values: {} } }
+    await show()
+    expect(box.querySelector('#aufschreiben')!.textContent).toContain('neu ausformulieren lassen')
+    expect(box.querySelector('#aufschreiben a')!.textContent).toContain('Weiterschreiben')
+    await act(async () => button('Ausformulieren')!.click())
+    expect(box.querySelector('[data-writing]')!.textContent).toBe('{"formulate":"long"}')
+    expect(calls.some((call) => call.url.startsWith('/api/ai/'))).toBe(false)
+  })
+
+  it('is not offered when the AI is off for the person, there is none, there are no notes, or the day is locked', async () => {
     for (const [state, day] of [
       [{ provider: 'local', to: '', model: '', mine: false, available: false }, null],
       [{ provider: 'none', to: '', model: '', mine: true, available: false }, null],
-      [{ provider: 'local', to: '', model: '', mine: true, available: true }, { text: 'Schon geschrieben.', title: '', tags: [], values: {} }],
+      [{ provider: 'local', to: '', model: '', mine: true, available: true }, { text: 'Verschlossen.', title: '', tags: [], values: {}, locked: true }],
     ] as const) {
       ai = state
       today = { ...today, day }

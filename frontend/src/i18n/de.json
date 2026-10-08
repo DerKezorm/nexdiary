@@ -1169,6 +1169,7 @@
     "finishText_other": "Aus deinen {{count}} Notizen wird eine Seite. Die Notizen selbst bleiben erhalten.",
     "finishNoNotes": "Noch keine Notizen. Du kannst trotzdem gleich schreiben.",
     "finishExisting": "Heute steht schon eine Seite. Du kannst sie weiterschreiben, die Notizen bleiben erhalten.",
+    "finishExistingAi": "Heute steht schon eine Seite. Du kannst sie weiterschreiben oder aus allen Notizen neu ausformulieren lassen. Die Notizen bleiben erhalten.",
     "self": "Selbst schreiben",
     "continue": "Weiterschreiben",
     "back": "Zurück zu den Notizen",
@@ -1220,6 +1221,10 @@
     "aiDraftText": "Für diesen Tag gibt es schon einen Entwurf. Du kannst ihn behalten oder die KI aus deinen Notizen neu ausformulieren lassen; der Entwurf geht dann verloren. Deine Notizen bleiben, wie sie sind.",
     "aiDraftKeep": "Entwurf behalten",
     "aiDraftAnew": "Neu ausformulieren",
+    "aiAnew": "Neu ausformulieren",
+    "aiPageTitle": "Seite neu ausformulieren?",
+    "aiPageText": "Für diesen Tag steht schon eine Seite. Die KI schreibt sie aus allen Notizen des Tages neu, auch aus denen, die du später nachgetragen hast. Dein bisheriger Text wird ersetzt, sobald du speicherst. Deine Notizen bleiben, wie sie sind.",
+    "aiPageKeep": "Seite behalten",
     "noteInsert": "In den Text einfügen",
     "noteInsertHint": "Antippen fügt es in den Text ein."
   },

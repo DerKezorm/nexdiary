@@ -1169,6 +1169,7 @@
     "finishText_other": "Your {{count}} notes become a page. The notes themselves stay.",
     "finishNoNotes": "No notes yet. You can still start writing.",
     "finishExisting": "Today already has a page. You can go on writing it, the notes stay.",
+    "finishExistingAi": "Today already has a page. You can go on writing it, or have it written up anew from all notes. The notes stay.",
     "self": "Write it yourself",
     "continue": "Go on writing",
     "back": "Back to the notes",
@@ -1220,6 +1221,10 @@
     "aiDraftText": "There is a draft for this day already. You can keep it, or have the AI write it up anew from your notes; the draft is lost then. Your notes stay as they are.",
     "aiDraftKeep": "Keep the draft",
     "aiDraftAnew": "Write it up anew",
+    "aiAnew": "Write it up anew",
+    "aiPageTitle": "Write the page up anew?",
+    "aiPageText": "This day already has a page. The AI writes it anew from all notes of the day, including the ones you added later. Your current text is replaced once you save. Your notes stay as they are.",
+    "aiPageKeep": "Keep the page",
     "noteInsert": "Insert into the text",
     "noteInsertHint": "Tapping it puts it into the text."
   },
