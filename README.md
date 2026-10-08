@@ -178,6 +178,21 @@ With an image: `docker compose pull && docker compose up -d`. Built from source:
 `docker compose up -d --build`. nexdiary adds what the database lacks at the start and makes a backup first; nothing
 needs doing by hand. The way back is under Settings, Backups.
 
+## Forgot your password?
+
+Ask the operator for a link (Settings, Accounts), or use "Forgot your password?" on the sign-in page where a mail server
+is set up. If you are the operator yourself, make the link on the server:
+
+```bash
+docker exec -it -u nexdiary nexdiary python -m app.reset_link <your name>
+```
+
+On Unraid, open the container's console instead and run `gosu nexdiary python -m app.reset_link <your name>`. Without a
+name it lists the accounts. It prints a link (or a path, when no public address is set: open it at the address you
+use for nexdiary). The link works once and for 24 hours and also ends the wait after too many attempts. Your second
+factor stays: after the new password, enter the code from your app or one of your recovery codes. Your diary stays as
+it is; it is not sealed with your password.
+
 ## Environment
 
 | Variable | Default | Meaning |
