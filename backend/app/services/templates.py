@@ -113,11 +113,23 @@ _ESCAPED = re.compile(r"\\([!-/:-@\[-`{-~])")
 _MARKS = re.compile(r"[\\*_\[\]<>`#~&]")
 
 
-def _norm(heading: str) -> str:
-    """A heading for comparing, whether it is raw text or Markdown with its marks escaped (as the editor writes it):
+def _norm_markdown(markdown: str) -> str:
+    """The one normal form, of Markdown text (the words of a heading line, as the editor or the model wrote them):
     escapes resolved, the marks of bold, italic and code gone, white space collapsed, case out of the way."""
-    plain = re.sub(r"[*_`]", "", _ESCAPED.sub(r"\1", heading))
+    plain = re.sub(r"[*_`]", "", _ESCAPED.sub(r"\1", markdown))
     return " ".join(plain.split()).casefold()
+
+
+def _norm(heading: str) -> str:
+    """The normal form of a heading as the person typed it. It goes through the escaping first, as it does when it is
+    written into the text, so that a backslash of the person's own (``C:\\Users``) is a backslash on both ways."""
+    return _norm_markdown(_escape(heading))
+
+
+def _keys(heading: str) -> set[str]:
+    """What a line of the model's answer may say to be this heading: its normal form, and the heading taken as
+    Markdown as it stands (a model that copies the words, backslashes and all, without escaping them again)."""
+    return {_norm(heading), _norm_markdown(heading)}
 
 
 def _escape(heading: str) -> str:
@@ -126,10 +138,22 @@ def _escape(heading: str) -> str:
     return _MARKS.sub(lambda found: "\\" + found.group(0), heading)
 
 
+#: Characters that print as nothing without being white space or a character of format: the fillers of Hangul, the
+#: empty Braille cell and the joiner of combining marks. The selectors of a variant are taken out by their ranges.
+_BLANKS = frozenset(chr(code) for code in (0x3164, 0x115F, 0x1160, 0xFFA0, 0x2800, 0x034F))
+
+
+def _blank(char: str) -> bool:
+    code = ord(char)
+    return (char.isspace() or unicodedata.category(char) == "Cf" or char in _BLANKS or 0xFE00 <= code <= 0xFE0F
+            or 0xE0100 <= code <= 0xE01EF)
+
+
 def _seen(value: str) -> bool:
-    """Whether there is anything to see in a text: not only white space and the invisible characters of format (those
-    that reverse the direction of the writing, joiners and the like)."""
-    return any(not char.isspace() and unicodedata.category(char) != "Cf" for char in value)
+    """Whether there is anything to see in a text: not only white space and characters that print as nothing (those
+    that reverse the direction of the writing, joiners, fillers, selectors of a variant). An emoji with its selector
+    is seen: the emoji is."""
+    return not all(_blank(char) for char in value)
 
 
 def _heading(value: Any) -> str:
@@ -264,7 +288,7 @@ def heading_of(line: str) -> str | None:
 def is_heading_of(line: str, headings: list[str]) -> bool:
     """Whether the line is a heading with the words of one of ``headings``."""
     words = heading_of(line)
-    return words is not None and _norm(words) in {_norm(item) for item in headings}
+    return words is not None and _norm_markdown(words) in {key for item in headings for key in _keys(item)}
 
 
 def _tidy(block: str) -> str:
@@ -278,7 +302,10 @@ def shape(text: str, headings: list[str]) -> str:
     front. A heading twice is one: what stood under both stands under the one, in the order written. A heading of
     another wording stays as a line of bold text with what stood under it, so nothing the model wrote is lost. The
     same text shaped again comes out as it is."""
-    index = {_norm(item): position for position, item in enumerate(headings)}
+    index: dict[str, int] = {}
+    for position, item in enumerate(headings):
+        for key in _keys(item):
+            index.setdefault(key, position)
     front: list[str] = []
     bodies: list[list[str]] = [[] for _ in headings]
     current: list[str] = front
@@ -286,8 +313,8 @@ def shape(text: str, headings: list[str]) -> str:
         words = heading_of(line)
         if words is None:
             current.append(line)
-        elif _norm(words) in index:
-            current = bodies[index[_norm(words)]]
+        elif _norm_markdown(words) in index:
+            current = bodies[index[_norm_markdown(words)]]
         else:
             # Not one of the template's: kept as text, where it stood.
             current.extend(["", f"**{words.strip('*_ ')}**", ""])

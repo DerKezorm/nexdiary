@@ -1548,7 +1548,10 @@ def search(db: Session, account_id: int, dek: bytes, query: str) -> dict[str, An
         content = _readable_content(account_id, dek, row.date, row.content_enc)
         if content is None:
             continue
-        for kind, value in (("title", content["title"]), ("text", strip_images(content["text"], keep_caption=True))):
+        # The text is searched, and quoted, as the words a person reads: not the Markdown it is kept as, in which a
+        # heading is "## C\#" and a star is "\*".
+        text = plain_text(strip_images(content["text"], keep_caption=True))
+        for kind, value in (("title", content["title"]), ("text", text)):
             found = _find(value, needle)
             if found:
                 hits.append(Hit(row.date, kind, _snippet(value, found[2], found[0], len(needle))))

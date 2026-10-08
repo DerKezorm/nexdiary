@@ -5,7 +5,7 @@
  * with the marks escaped, or shown by a node of the editor.
  */
 import type { Template } from '../api/client'
-import { escapeHeading, headingOf, normalHeading, scaffold, templateOf, tidy, untouchedText, withoutEmptySections } from './templates'
+import { escapeHeading, headingOf, normalHeading, normalMarkdown, scaffold, templateOf, tidy, untouchedText, withoutEmptySections } from './templates'
 
 const REVIEW: Template = {
   id: 'aaaaaaaaaaaa',
@@ -142,11 +142,11 @@ const WRITTEN = MARKED.map(({ written }) => `## ${written}`)
 describe('headings with marks of Markdown in them', () => {
   it('come out the same as typed, as the editor writes them and as a node of the editor shows them', () => {
     for (const { typed, written, shown } of MARKED) {
-      expect(normalHeading(written), typed).toBe(normalHeading(typed))
+      expect(normalMarkdown(written), typed).toBe(normalHeading(typed))
       expect(normalHeading(shown), typed).toBe(normalHeading(typed))
     }
     expect(normalHeading('Was *wichtig* war')).toBe('was wichtig war')
-    expect(normalHeading('a * b')).not.toBe(normalHeading('ab'))
+    expect(normalHeading(`a${BS}_b`)).not.toBe(normalHeading('ab'))
   })
 
   it('go into the frame as text, with every mark escaped, not as bold or italic', () => {
@@ -155,7 +155,7 @@ describe('headings with marks of Markdown in them', () => {
     expect(escapeHeading('Tag & <b>')).toBe('Tag \\& \\<b\\>')
     expect(escapeHeading('Heute')).toBe('Heute')
     // Read back as the heading it was made from.
-    for (const { typed } of MARKED) expect(normalHeading(headingOf(scaffold([{ heading: typed, question: '' }]))!), typed).toBe(normalHeading(typed))
+    for (const { typed } of MARKED) expect(normalMarkdown(headingOf(scaffold([{ heading: typed, question: '' }]))!), typed).toBe(normalHeading(typed))
   })
 
   it('are dropped when empty, in the way the editor writes them, and kept with writing', () => {
@@ -177,5 +177,33 @@ describe('headings with marks of Markdown in them', () => {
   it('are recognised again as their template after the page is opened anew', () => {
     const text = MARKED.map(({ written }, at) => (at % 2 ? `## ${written}\n\nEtwas.` : `## ${written}`)).join('\n\n')
     expect(templateOf(text, [REVIEW, WORK, MARKED_TEMPLATE])?.id).toBe(MARKED_TEMPLATE.id)
+  })
+})
+
+/** Headings with a backslash of their own: a path, a backslash before a mark, two of them, a backslash before a hash. */
+const BS = String.fromCharCode(92)
+const OWN = [`C:${BS}Users${BS}*`, `a${BS}_b`, `${BS}${BS}`, `a ${BS}#`]
+const OWN_TEMPLATE: Template = { id: 'dddddddddddd', name: 'Eigene', sections: OWN.map((heading) => ({ heading, question: '' })) }
+
+describe('headings with a backslash of their own', () => {
+  it('are written with the backslash escaped too, and read back as the heading they are', () => {
+    const written = [`## C:${BS}${BS}Users${BS}${BS}${BS}*`, `## a${BS}${BS}${BS}_b`, `## ${BS}${BS}${BS}${BS}`, `## a ${BS}${BS}${BS}#`]
+    expect(scaffold(OWN_TEMPLATE.sections)).toBe(written.join('\n\n'))
+    for (const heading of OWN) expect(normalMarkdown(headingOf(scaffold([{ heading, question: '' }]))!), heading).toBe(normalHeading(heading))
+    // Two headings that differ only by a backslash are two headings.
+    expect(normalHeading(`a${BS}_b`)).not.toBe(normalHeading('ab'))
+    expect(normalHeading(`a${BS}_b`)).not.toBe(normalHeading('a_b'))
+  })
+
+  it('count as the frame, are dropped when empty and kept with writing', () => {
+    const frame = scaffold(OWN_TEMPLATE.sections)
+    expect(untouchedText(frame, [OWN_TEMPLATE])).toBe(true)
+    expect(untouchedText(frame.split('\n\n').join('\n\n\n\n'), [OWN_TEMPLATE])).toBe(true)
+    expect(withoutEmptySections(frame, OWN)).toBe('')
+    for (let at = 0; at < OWN.length; at++) {
+      const lines = frame.split('\n\n').map((line, index) => (index === at ? `${line}\n\nGeschrieben.` : line))
+      expect(withoutEmptySections(lines.join('\n\n'), OWN), OWN[at]).toBe(`${frame.split('\n\n')[at]}\n\nGeschrieben.`)
+    }
+    expect(templateOf(`${frame}\n\nText`, [REVIEW, OWN_TEMPLATE])?.id).toBe(OWN_TEMPLATE.id)
   })
 })

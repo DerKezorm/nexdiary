@@ -16,17 +16,23 @@ const ESCAPED = /\\([!-/:-@[-`{-~])/g
 /** The marks that Markdown reads in a line, which a heading typed as it is must not let through. */
 const MARKS = /[\\*_[\]<>`#~&]/g
 
-/** A heading for comparing, whether it is raw text, Markdown as the editor writes it (marks escaped with a backslash) or
- * the text a node of the editor shows: escapes resolved, the marks of bold, italic and code gone, white space collapsed,
- * case out of the way. */
-export function normalHeading(heading: string): string {
-  return heading
+/** The one normal form, of Markdown text (the words of a heading line as the editor or the model wrote them): escapes
+ * resolved, the marks of bold, italic and code gone, white space collapsed, case out of the way. */
+export function normalMarkdown(markdown: string): string {
+  return markdown
     .replace(ESCAPED, '$1')
     .replace(/[*_`]/g, '')
     .split(/\s+/)
     .filter(Boolean)
     .join(' ')
     .toLowerCase()
+}
+
+/** The same for a heading as the person typed it, or as a node of the editor shows it. It goes through the escaping
+ * first, as it does when it is written into the text, so that a backslash of its own (`C:\Users`) is a backslash on
+ * both ways. */
+export function normalHeading(heading: string): string {
+  return normalMarkdown(escapeHeading(heading))
 }
 
 /** A heading as the text of a Markdown heading line: every mark that Markdown would read is escaped, so that the editor
@@ -65,7 +71,7 @@ export function untouchedText(text: string, templates: Template[]): boolean {
     if (!line.trim()) continue
     const words = headingOf(line)
     if (words === null) return false
-    found.push(normalHeading(words))
+    found.push(normalMarkdown(words))
   }
   return templates.some(
     (template) => template.sections.length === found.length && template.sections.every((section, at) => normalHeading(section.heading) === found[at]),
@@ -78,7 +84,7 @@ export function templateOf(text: string, templates: Template[], preferred: strin
   const found = new Set<string>()
   for (const line of text.split('\n')) {
     const words = headingOf(line)
-    if (words) found.add(normalHeading(words))
+    if (words) found.add(normalMarkdown(words))
   }
   let best: Template | null = null
   let most = 0
@@ -103,7 +109,7 @@ export function withoutEmptySections(text: string, headings: string[]): string {
   const kept: string[] = []
   for (let at = 0; at < lines.length; at++) {
     const words = headingOf(lines[at])
-    if (words !== null && ours.has(normalHeading(words))) {
+    if (words !== null && ours.has(normalMarkdown(words))) {
       let next = at + 1
       while (next < lines.length && lines[next].trim() === '') next++
       if (next >= lines.length || headingOf(lines[next]) !== null) {

@@ -37,17 +37,20 @@ def test_a_name_or_heading_of_nothing_visible_is_refused(client: TestClient, acc
 
 
 def test_a_heading_of_only_marks_of_markdown_is_refused(client: TestClient, account: Account) -> None:
-    for marks in ("***", "___", "`", f"{BS}*", "* _ *"):
+    for marks in ("***", "___", "`", "* _ *"):
         assert code(put(client, template(marks))) == (422, "template_heading_empty"), marks
     assert client.get("/api/templates").json()["revision"] == -1
 
 
 def test_the_same_heading_in_another_writing_is_the_same_heading(client: TestClient, account: Account) -> None:
-    for first, second in (("C#", f"C{BS}#"), ("Dank_ und _mehr", f"Dank{BS}_ und {BS}_mehr"),
-                          ("Was *wichtig* war", "was wichtig war"), ("Plan [A]", f"Plan {BS}[A]")):
+    for first, second in (("C#", "c#"), ("Dank_ und _mehr", "Dank und mehr"), ("Was *wichtig* war", "was wichtig war"),
+                          ("Plan [A]", " Plan  [A] ")):
         answer = put(client, [{"name": "x", "sections": [{"heading": first, "question": ""},
                                                           {"heading": second, "question": ""}]}])
         assert code(answer) == (422, "template_heading_twice"), (first, second)
+    # A backslash the person typed is a word of the heading: with it and without it are two headings.
+    both = [{"heading": f"C{BS}#", "question": ""}, {"heading": "C#", "question": ""}]
+    assert put(client, [{"name": "x", "sections": both}]).status_code == 200
 
 
 def test_headings_go_into_the_text_as_words_with_their_marks_escaped() -> None:

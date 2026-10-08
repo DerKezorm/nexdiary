@@ -185,3 +185,31 @@ describe('the editor under a template with marks of Markdown in its headings', (
     expect(templateOf(markdown, [{ id: 'x', name: 'x', sections }])?.id).toBe('x')
   })
 })
+
+describe('the editor under a template with a backslash in its headings', () => {
+  const BS = String.fromCharCode(92)
+  const own = [`C:${BS}Users${BS}*`, `a${BS}_b`, `${BS}${BS}`, `a ${BS}#`]
+  const sections: TemplateSection[] = own.map((heading) => ({ heading, question: `Frage zu ${heading}` }))
+
+  it('shows each heading as typed, with its line and its hint, and counts the frame as empty', async () => {
+    const empties: boolean[] = []
+    const editable = await show(scaffold(sections), { sections, onEmpty: (empty) => empties.push(empty) })
+    await eventually(() => expect(blocks(editable)).toEqual(own.flatMap((heading) => [`h2:${heading}`, 'p:'])), 'the lines')
+    expect([...editable.querySelectorAll('p.diary-hint')].map((item) => item.getAttribute('data-hint'))).toEqual(sections.map((section) => section.question))
+    expect(empties.at(-1)).toBe(true)
+  })
+
+  it('writes them back as the headings they are, so that the empty ones go on saving', async () => {
+    const handle = createRef<DiaryEditorHandle>()
+    const editable = await show(scaffold(sections), { sections, handle })
+    await eventually(() => expect(editable.querySelectorAll('p')).toHaveLength(own.length), 'the lines')
+    await act(async () => {
+      editable.querySelectorAll('p')[1].replaceChildren(document.createTextNode('Steht.'))
+      await Promise.resolve()
+    })
+    const markdown = handle.current!.getMarkdown()!
+    expect(untouchedText(markdown, [{ id: 'x', name: 'x', sections }])).toBe(false)
+    expect(withoutEmptySections(markdown, own).split('\n').filter(Boolean)).toHaveLength(2)
+    expect(withoutEmptySections(markdown, own)).toContain('Steht.')
+  })
+})
