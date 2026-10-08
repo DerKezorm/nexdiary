@@ -50,8 +50,15 @@ def fresh_schema_sql() -> str:
     return "".join(" ".join(row[0].split()) + ";\n" for row in rows)
 
 
+def drop_v13(connection: sqlite3.Connection) -> None:
+    """Takes away what version 13 added (the templates for the pages)."""
+    connection.execute("DROP TABLE writing_templates")
+
+
 def drop_v12(connection: sqlite3.Connection) -> None:
-    """Takes away what version 12 added (whether a photo was taken for a picture in the text)."""
+    """Takes away what version 12 and everything after it added (whether a photo was taken for a picture in the
+    text)."""
+    drop_v13(connection)
     # The migration tests of older versions take the photos away before they get here: nothing left to change then.
     if any(row[1] == "for_text" for row in connection.execute("PRAGMA table_info(photos)")):
         connection.execute("ALTER TABLE photos DROP COLUMN for_text")

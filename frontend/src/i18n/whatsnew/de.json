@@ -1,4 +1,28 @@
 {
+  "0.3.0": {
+    "lead": "Gib deinen Seiten feste Überschriften. Die KI füllt sie beim Ausformulieren mit dem, was deine Notizen dazu sagen.",
+    "sections": [
+      {
+        "title": "Vorlagen für deine Seiten",
+        "where": "Mein Konto, Schreiben",
+        "body": "Lege Vorlagen mit Überschriften an, jede mit einer Frage als Hinweis, und wähle eine als Standard. Zwei Beispiele helfen beim Anfang."
+      },
+      {
+        "title": "Die KI füllt nur, was in deinen Notizen steht",
+        "where": "Heute und Schreibansicht",
+        "body": "Beim Ausformulieren schreibt die KI unter deine Überschriften. Wozu deine Notizen nichts sagen, bleibt der Abschnitt leer. Erfunden wird nichts."
+      },
+      {
+        "title": "Selbst schreiben mit Gerüst",
+        "where": "Schreibansicht",
+        "body": "Die Überschriften stehen schon im Text, die Frage als grauer Hinweis darunter. Leere Abschnitte fallen beim Speichern weg."
+      }
+    ],
+    "smallTitle": "Außerdem",
+    "small": [
+      "Das Ausformulieren am Morgen nimmt deine Standardvorlage, wenn du eine hast."
+    ]
+  },
   "0.2.0": {
     "lead": "Schreib so oft, wie es zu dir passt. Setz dir ein Ziel für die Woche, und deine Serie richtet sich danach.",
     "sections": [

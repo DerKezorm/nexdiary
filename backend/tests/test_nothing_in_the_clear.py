@@ -89,6 +89,9 @@ def write_everywhere(client: TestClient, word: str) -> None:
     assert client.post("/api/prompts/another").status_code == 200
     pool = client.get("/api/prompts/pool", params={"date": "2026-10-05"}).json()["questions"]
     assert word in "".join(entry["text"] for entry in pool)
+    # A template for the pages: its name, its headings and its questions say something about the person too.
+    assert client.put("/api/templates", json={"templates": [{"name": f"Vorlage {word}", "sections": [
+        {"heading": f"Kopf {word}", "question": f"Frage {word}?"}]}], "default": None, "revision": -1}).status_code == 200
     share_everything(client, word)
 
 

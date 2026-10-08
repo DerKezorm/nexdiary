@@ -423,7 +423,8 @@ export type AiModel = { id: string; name: string }
 export const aiApi = {
   state: () => api<AiState>('/api/ai'),
   /** Only on a press of the button: the own notes of the day go to the operator's service. */
-  formulate: (date: string, length: AiLength) => api<{ title: string; text: string; length: AiLength }>('/api/ai/formulate', { method: 'POST', body: { date, length } }),
+  formulate: (date: string, length: AiLength, template?: string) =>
+    api<{ title: string; text: string; length: AiLength }>('/api/ai/formulate', { method: 'POST', body: { date, length, ...(template ? { template } : {}) } }),
   settings: () => api<AiSettings>('/api/settings/ai'),
   save: (change: Partial<Omit<AiSettings, 'key_set'>> & { key?: string }) => api<AiSettings>('/api/settings/ai', { method: 'PUT', body: change }),
   /** Having yesterday written up in the morning on its own; switching it on needs `confirmed` (the person was told
@@ -447,6 +448,33 @@ export const promptsApi = {
   removeOwn: (id: string) => api<PromptChoice>(`/api/prompts/own/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   another: () => api<{ question: Question | null }>('/api/prompts/another', { method: 'POST' }),
   pool: (date: string) => api<{ questions: (Question & { answered: boolean })[] }>('/api/prompts/pool', { query: { date } }),
+}
+
+/** A section of a template: a heading of the page, and what it is about as a hint (may be empty). */
+export type TemplateSection = { heading: string; question: string }
+export type Template = { id: string; name: string; sections: TemplateSection[] }
+/** A template as it is sent: a new one has no id yet. */
+export type TemplateIn = { id?: string; name: string; sections: TemplateSection[] }
+/** All templates of the person, the default one, and the revision they were read at (-1: nothing saved yet). */
+export type TemplateSet = { templates: Template[]; default: string | null; revision: number }
+/** What `formulate` takes as `template` when the person wants none. */
+export const NO_TEMPLATE = 'none'
+
+/** The whole list is replaced at once, onto the revision that was read: a list changed elsewhere meanwhile is refused
+ * (`templates_changed`) and read again. */
+export const templatesApi = {
+  get: () => api<TemplateSet>('/api/templates').then(shapedTemplates),
+  save: (templates: TemplateIn[], defaultId: string | null, revision: number) =>
+    api<TemplateSet>('/api/templates', { method: 'PUT', body: { templates, default: defaultId, revision } }).then(shapedTemplates),
+}
+
+/** The answer as a list of templates, whatever came: an answer that is not one reads as no templates. */
+function shapedTemplates(found: TemplateSet | null | undefined): TemplateSet {
+  return {
+    templates: Array.isArray(found?.templates) ? found.templates : [],
+    default: typeof found?.default === 'string' ? found.default : null,
+    revision: typeof found?.revision === 'number' ? found.revision : -1,
+  }
 }
 
 /** Photos of a day: uploaded as they are, drawn anew by the server without anything but their pixels. */

@@ -37,7 +37,7 @@ _settings.data_dir.mkdir(parents=True, exist_ok=True)
 BUSY_SECONDS = 15
 
 #: The version of the schema the models describe.
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 
 def _v2_diary(connection: Connection) -> None:
@@ -261,11 +261,21 @@ def _v12_text_photos(connection: Connection) -> None:
     connection.exec_driver_sql("ALTER TABLE photos ADD COLUMN for_text BOOLEAN DEFAULT 0 NOT NULL")
 
 
+def _v13_writing_templates(connection: Connection) -> None:
+    """Version 13: the templates each person made for their pages, sealed. Written out as it stood then, not taken from
+    the models."""
+    connection.exec_driver_sql(
+        "CREATE TABLE writing_templates ( user_id INTEGER NOT NULL, content_enc BLOB NOT NULL, "
+        "revision INTEGER NOT NULL, updated_at DATETIME NOT NULL, PRIMARY KEY (user_id), "
+        "FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE )"
+    )
+
+
 #: ``MIGRATIONS[n]`` brings a database from version ``n - 1`` to ``n``. Version 1 is the first schema; it has no step.
 MIGRATIONS: dict[int, Callable[[Connection], None]] = {
     2: _v2_diary, 3: _v3_photos_and_drafts, 4: _v4_sharing, 5: _v5_writing_prompts, 6: _v6_immich, 7: _v7_push,
     8: _v8_security, 9: _v9_recovery, 10: _v10_nights_and_locks, 11: _v11_automatic_writing,
-    12: _v12_text_photos,
+    12: _v12_text_photos, 13: _v13_writing_templates,
 }
 
 # No pool with an upper bound: with the default pool the sixteenth concurrent request would block the event

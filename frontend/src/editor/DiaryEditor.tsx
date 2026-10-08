@@ -22,16 +22,17 @@ import { lift } from '@milkdown/kit/prose/commands'
 import { $prose, getMarkdown } from '@milkdown/kit/utils'
 import type { EditorState } from '@milkdown/kit/prose/state'
 import { Plugin, PluginKey, Selection, TextSelection } from '@milkdown/kit/prose/state'
-import type { EditorView } from '@milkdown/kit/prose/view'
+import { Decoration, DecorationSet, type EditorView } from '@milkdown/kit/prose/view'
 import { Bold, Camera, Heading2, ImagePlus, Images, Italic, List, Loader2, Quote, Undo2, Upload, type LucideIcon } from 'lucide-react'
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 
-import { photoUrl } from '../api/client'
+import { photoUrl, type TemplateSection } from '../api/client'
 import { TextCropDialog } from '../components/CropEditor'
 import { PHOTO_ACCEPT } from '../lib/upload'
 import { tame } from '../lib/markdown'
+import { normalHeading } from '../lib/templates'
 import { CUT_EVENT, insertPhoto, type CutRequest } from './photo'
 import { diaryPlugins, HEADING_LEVEL } from './setup'
 
@@ -77,6 +78,33 @@ function activeOf(state: EditorState): Active {
   }
 }
 
+/** Whether a document holds nothing of the person's but the headings of a template and empty paragraphs. */
+function onlyScaffold(state: EditorState, headings: Set<string>): boolean {
+  let blank = true
+  state.doc.forEach((node) => {
+    if (node.type.name === 'paragraph' && node.childCount === 0) return
+    if (node.type.name === 'heading' && headings.has(normalHeading(node.textContent))) return
+    blank = false
+  })
+  return blank
+}
+
+/** An empty paragraph under every heading of the template that has none (a heading followed by a heading, or the last
+ * one), so there is a line to write on. Not part of the history: undo does not take it away again. */
+function fillGaps(view: EditorView, headings: Set<string>): void {
+  const { doc, schema } = view.state
+  const at: number[] = []
+  doc.forEach((node, offset, index) => {
+    if (node.type.name !== 'heading' || !headings.has(normalHeading(node.textContent))) return
+    const next = index + 1 < doc.childCount ? doc.child(index + 1) : null
+    if (!next || next.type.name === 'heading') at.push(offset + node.nodeSize)
+  })
+  if (at.length === 0) return
+  let tr = view.state.tr
+  for (const position of at.reverse()) tr = tr.insert(position, schema.nodes.paragraph.create())
+  view.dispatch(tr.setMeta('addToHistory', false))
+}
+
 /** The ways the button "Image" offers: a photo from the device (the camera, a file), from the own Immich, from the photos
  * of the day. A way that is left out is not offered. */
 export type ImageWays = {
@@ -94,6 +122,7 @@ export function DiaryEditor({
   label,
   toolbarHost,
   images,
+  sections,
   ref,
 }: {
   value: string
@@ -107,6 +136,10 @@ export function DiaryEditor({
   toolbarHost?: HTMLElement | null
   /** Where a picture in the text may come from; left out, the bar has no button for it. */
   images?: ImageWays
+  /** The sections of the template the page is written under: the headings get a line to write on, the question of a
+   * section is shown grey in the empty line below its heading (no text of the page), and the page counts as empty while
+   * it holds nothing but these headings. Read once, when the editor starts: another template is another editor. */
+  sections?: TemplateSection[] | null
   ref?: Ref<DiaryEditorHandle>
 }) {
   const { t } = useTranslation()
@@ -122,6 +155,7 @@ export function DiaryEditor({
   // The first text only: the editor is not controlled after it started.
   const first = useRef(value)
   const shownLabel = useRef(label)
+  const template = useRef(sections)
 
   useEffect(() => {
     changed.current = onChange
@@ -133,13 +167,17 @@ export function DiaryEditor({
     if (!element) return
     let gone = false
     let wasEmpty: boolean | null = null
+    const headings = new Set((template.current ?? []).map((section) => normalHeading(section.heading)))
+    const hints = new Map((template.current ?? []).filter((section) => section.question).map((section) => [normalHeading(section.heading), section.question]))
     const look = (state: EditorState) => {
       setActive(activeOf(state))
       const now = state.doc.childCount <= 1 && state.doc.textContent.length === 0 && state.doc.firstChild?.type.name !== 'heading'
       setEmpty(now)
-      if (now !== wasEmpty) {
-        wasEmpty = now
-        emptied.current?.(now)
+      // With a template the page is empty while it holds only the template's own headings.
+      const blank = headings.size > 0 ? onlyScaffold(state, headings) : now
+      if (blank !== wasEmpty) {
+        wasEmpty = blank
+        emptied.current?.(blank)
       }
     }
     /** Every change of the document or the selection, as it happens: the bar's state, the placeholder, "empty". */
@@ -152,6 +190,26 @@ export function DiaryEditor({
               if (!gone) look(view.state)
             },
           }),
+        }),
+    )
+    /** The question of a section in the empty line below its heading: a decoration, drawn by the style, not in the text. */
+    const asking = $prose(
+      () =>
+        new Plugin({
+          key: new PluginKey('DIARY_SECTION_HINTS'),
+          props: {
+            decorations: (state) => {
+              if (hints.size === 0) return null
+              const found: Decoration[] = []
+              state.doc.forEach((node, offset, index) => {
+                if (index === 0 || node.type.name !== 'paragraph' || node.childCount !== 0) return
+                const before = state.doc.child(index - 1)
+                const question = before.type.name === 'heading' ? hints.get(normalHeading(before.textContent)) : undefined
+                if (question) found.push(Decoration.node(offset, offset + node.nodeSize, { class: 'diary-hint', 'data-hint': question }))
+              })
+              return DecorationSet.create(state.doc, found)
+            },
+          },
         }),
     )
     const made = Editor.make()
@@ -180,6 +238,7 @@ export function DiaryEditor({
       })
       .use(diaryPlugins)
       .use(watching)
+      .use(asking)
       .use(history)
       .use(listener)
     made
@@ -190,7 +249,9 @@ export function DiaryEditor({
           return
         }
         editor.current = instance
-        look(instance.ctx.get(editorViewCtx).state)
+        const view = instance.ctx.get(editorViewCtx)
+        if (headings.size > 0) fillGaps(view, headings)
+        look(view.state)
         setReady(true)
       })
       .catch(() => undefined)

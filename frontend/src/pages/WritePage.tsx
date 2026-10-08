@@ -23,13 +23,18 @@
  * changed at will; "Länger"/"Kürzer" asks anew. A page begun from a suggestion counts as written with the AI, edited
  * or not ("Mit KI ausformuliert" in the statistics): that is how it came about. The draft keeps it, the notes stay.
  * Beside the text the questions to insert ("Weiterschreiben?").
+ *
+ * **Templates**: a person with templates sees a line "Vorlage" above the text for as long as the page is empty or holds
+ * only the unchanged frame of a template. The default one is preselected. A template puts its headings into the editor
+ * (each with a line to write on, the question as a grey hint in it, `sections` of the editor); the AI buttons carry
+ * the chosen one (`template`), and on saving the sections of the template that stayed empty fall away.
  */
 import { Check, Crop, ImageIcon, Loader2, Lock, Shuffle, Sparkles, ZoomIn } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 
-import { aiApi, ApiError, diaryApi, immichApi, photosApi, photoUrl, promptsApi, type AiLength, type CoverCropValue, type DayChange, type DayPage, type DraftIn, type ImmichEntry, type ImmichPhoto, type Note, type Photo, type Question } from '../api/client'
+import { aiApi, ApiError, diaryApi, immichApi, NO_TEMPLATE, photosApi, photoUrl, promptsApi, templatesApi, type AiLength, type CoverCropValue, type DayChange, type DayPage, type DraftIn, type ImmichEntry, type ImmichPhoto, type Note, type Photo, type Question, type Template, type TemplateSet } from '../api/client'
 import { CoverCropDialog } from '../components/CropEditor'
 import { DayPhotoPicker } from '../components/DayPhotoPicker'
 import { Dialog } from '../components/Dialog'
@@ -44,6 +49,7 @@ import { copyText } from '../lib/copy'
 import { aiHint } from '../lib/aiProviders'
 import { longDate, timeOf } from '../lib/dates'
 import { errorText } from '../lib/errors'
+import { scaffold, templateOf, tidy, untouchedText, withoutEmptySections } from '../lib/templates'
 import { coverCropOf } from '../lib/textPhoto'
 import { uploadPhoto } from '../lib/upload'
 import { useAiState } from '../state/ai'
@@ -172,6 +178,9 @@ export default function WritePage() {
    * stands. */
   const [redo, setRedo] = useState<{ length: AiLength; over: 'draft' | 'suggestion' } | null>(null)
   const [length, setLength] = useState<AiLength>('long')
+  /** The person's templates (none: an empty list) and the one the page is written under, by its id. */
+  const [templateSet, setTemplateSet] = useState<TemplateSet | null>(null)
+  const [chosen, setChosen] = useState<string | null>(null)
   const titleField = useRef<HTMLTextAreaElement>(null)
   /** How this writing came about: from a suggestion of the AI (and the length asked for), or not. Kept with the draft. */
   const [origin, setOrigin] = useState<{ by: 'ai' | null; length: AiLength }>({ by: null, length: 'long' })
@@ -179,6 +188,17 @@ export default function WritePage() {
   const wanted = useRef<AiLength | null>(askedLength(location.state))
   const suggested = useRef<{ title: string; text: string } | null>(null)
   const askingAi = useRef(false)
+
+  const templates = templateSet?.templates ?? []
+  const chosenTemplate: Template | null = templates.find((template) => template.id === chosen) ?? null
+  const sections = chosenTemplate?.sections ?? null
+  /** What the AI is told: the chosen template, "none" for a person who has templates and wants none, nothing for a
+   * person without templates (then the server's own default counts, and there is none). */
+  const templateParam = templates.length > 0 ? (chosenTemplate?.id ?? NO_TEMPLATE) : undefined
+  /** Nothing of the person's is on the page: no title, and no text or only the frame of a template. */
+  const isBlank = (now: Page) => !now.title.trim() && untouchedText(now.text, templates)
+  /** The editor writes an empty paragraph as extra line breaks; under a template those are no change of the text. */
+  const sameText = (a: string, b: string) => (sections ? tidy(a) === tidy(b) : a === b)
 
   /** What the page holds right now, for the timers and handlers that outlive a render. */
   const latest = useRef({ page, base, origin })
@@ -203,13 +223,58 @@ export default function WritePage() {
   /** The photo the cover is, when it is one of the day's (its cut can be chosen). */
   const coverPhoto = shownCover.startsWith('photo:') ? (photos.find((photo) => `photo:${photo.id}` === shownCover) ?? null) : null
 
+  // --- Templates ----------------------------------------------------------------------------------------------------
+
+  /** Chooses the template for the page as it stands in ``latest``: an empty page begins under the default one (its
+   * frame goes into the text, which is no change of the person's: nothing is marked, no draft is made), a text that was
+   * written under a template keeps it, any other text has none. */
+  const framePage = (set: TemplateSet | null) => {
+    const own = set?.templates ?? []
+    const now = latest.current.page
+    let picked: Template | null = null
+    if (own.length > 0) {
+      const empty = !now.text.trim()
+      picked = empty ? (own.find((template) => template.id === set?.default) ?? null) : templateOf(now.text, own, set?.default ?? null)
+      if (picked && empty) {
+        const framed = { ...now, text: scaffold(picked.sections) }
+        latest.current = { ...latest.current, page: framed }
+        setPage(framed)
+      }
+    }
+    setChosen(picked?.id ?? null)
+  }
+
+  /** Another template (or none) while the page is still empty: its frame replaces the old one. */
+  const pickTemplate = (id: string) => {
+    // What was typed a moment ago is not in the page's text yet (the editor reports it after a pause): ask the editor.
+    // If anything of the person's is there, nothing is swapped; the page takes the new text and the line goes.
+    const live = editor.current?.getMarkdown()
+    if (live != null && !untouchedText(live, templates)) {
+      settled()
+      return
+    }
+    const next = templates.find((template) => template.id === id) ?? null
+    setChosen(next?.id ?? null)
+    const framed = { ...latest.current.page, text: next ? scaffold(next.sections) : '' }
+    latest.current = { ...latest.current, page: framed }
+    setPage(framed)
+    setEditorKey((key) => key + 1)
+  }
+
   // --- Loading ------------------------------------------------------------------------------------------------------
 
   useEffect(() => {
     let gone = false
     void (async () => {
       try {
-        const [found, dayNotes, dayPhotos, draft] = await Promise.all([orNull(diaryApi.day(date)), diaryApi.notes(date), photosApi.list(date), diaryApi.draft(date)])
+        const [found, dayNotes, dayPhotos, draft, ownTemplates] = await Promise.all([
+          orNull(diaryApi.day(date)),
+          diaryApi.notes(date),
+          photosApi.list(date),
+          diaryApi.draft(date),
+          // Templates are a help, never a reason for the page not to open.
+          templatesApi.get().catch(() => null),
+        ])
         if (gone) return
         setDay(found)
         setNotes(dayNotes)
@@ -237,6 +302,8 @@ export default function WritePage() {
           started.current = server
           touched.current = new Set()
         }
+        setTemplateSet(ownTemplates)
+        framePage(ownTemplates)
         setLoaded(true)
       } catch (error) {
         if (!gone) setProblem(codeOf(error))
@@ -255,7 +322,7 @@ export default function WritePage() {
     // Trailing white space never counts: the editor's change report ends with a line break that its direct read may
     // not have, and which of the two came last depended on timing.
     const text = editor.current?.getMarkdown()?.replace(/\s+$/, '')
-    if (text != null && text !== latest.current.page.text.replace(/\s+$/, '')) {
+    if (text != null && !sameText(text, latest.current.page.text.replace(/\s+$/, ''))) {
       const page = { ...latest.current.page, text }
       latest.current = { ...latest.current, page }
       pending.current = true
@@ -354,6 +421,8 @@ export default function WritePage() {
   const changeOf = (now: Page, against: DayPage | null, from: number) => {
     const change: DayChange = { base_revision: from }
     for (const field of touched.current) if (field !== 'cover' && field !== 'cover_crop') Object.assign(change, { [field]: now[field] })
+    // The sections of the template that stayed empty fall away; the other headings and all that is written stay.
+    if (sections && typeof change.text === 'string') change.text = withoutEmptySections(change.text, sections.map((section) => section.heading))
     if (touched.current.has('cover') || touched.current.has('cover_crop') || !against?.cover_chosen) {
       change.cover = now.cover ?? defaultCover(date, now.tags, dayPhotos, time)
       // Another cover starts without a cut on the server; the same one keeps its cut unless one is sent (none included).
@@ -433,6 +502,7 @@ export default function WritePage() {
     touched.current = new Set()
     pending.current = false
     sentDraft.current = ''
+    framePage(templateSet)
     setEditorKey((key) => key + 1)
     setConflict(null)
     void diaryApi.deleteDraft(date).catch(() => undefined)
@@ -462,6 +532,7 @@ export default function WritePage() {
     touched.current = new Set()
     setBase(day?.revision ?? -1)
     sentDraft.current = ''
+    framePage(templateSet)
     setEditorKey((key) => key + 1)
   }
 
@@ -552,7 +623,7 @@ export default function WritePage() {
     setFormulating(true)
     setProblem(null)
     try {
-      const suggestion = await aiApi.formulate(date, length)
+      const suggestion = await aiApi.formulate(date, length, templateParam)
       const from = { by: 'ai' as const, length }
       setOrigin(from)
       latest.current = { ...latest.current, origin: from }
@@ -577,7 +648,7 @@ export default function WritePage() {
     wanted.current = null
     // Only onto an empty page; over a draft only after asking; never over a page that was saved.
     const now = latest.current.page
-    if (!now.title.trim() && !now.text.trim()) void formulate(length)
+    if (isBlank(now)) void formulate(length)
     else if (!day?.text.trim()) setRedo({ length, over: latest.current.origin.by === 'ai' ? 'suggestion' : 'draft' })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded])
@@ -585,7 +656,7 @@ export default function WritePage() {
   /** "Ausformulieren" here: onto an empty page at once, over a draft only after asking. */
   const ask = (asked: AiLength) => {
     const now = latest.current.page
-    if (!now.title.trim() && !now.text.trim()) void formulate(asked)
+    if (isBlank(now)) void formulate(asked)
     else setRedo({ length: asked, over: 'draft' })
   }
 
@@ -594,14 +665,18 @@ export default function WritePage() {
     // The editor reports a change after a short pause in the typing; what it reported is what was changed.
     const now = latest.current.page
     const untouched = suggested.current !== null && now.text === suggested.current.text && now.title === suggested.current.title
-    if (untouched || (!now.text.trim() && !now.title.trim())) void formulate(length)
+    if (untouched || isBlank(now)) void formulate(length)
     else setRedo({ length, over: latest.current.origin.by === 'ai' ? 'suggestion' : 'draft' })
   }
 
   const aiOn = Boolean(ai?.available)
   // "Ausformulieren" above the text: a day with notes to write from and no saved page, before the AI wrote anything.
   const offerAi = aiOn && loaded && !formulating && origin.by !== 'ai' && !day?.text.trim()
-    && notes.some((note) => note.text && !note.unreadable) && ((!page.title.trim() && !page.text.trim()) || restored !== null)
+    && notes.some((note) => note.text && !note.unreadable) && (isBlank(page) || restored !== null)
+
+  // The line "Vorlage": only for a person with templates, and only while nothing of theirs is on the page yet.
+  const showTemplates =
+    loaded && !formulating && templates.length > 0 && !day?.text.trim() && untouchedText(page.text, templates) && (Boolean(tidy(page.text)) || !page.title.trim())
 
   // The title wraps on a narrow screen: the field grows with it, and its words never hold a line break.
   useLayoutEffect(() => {
@@ -830,12 +905,32 @@ export default function WritePage() {
                   </button>
                 </span>
               </div>
+              {showTemplates && (
+                <div className="mb-4" data-template-row>
+                  <label className="flex flex-wrap items-center gap-3 text-sm">
+                    <span className="font-semibold text-ink-2">{t('write.template')}</span>
+                    <select
+                      value={chosenTemplate?.id ?? ''}
+                      onChange={(event) => pickTemplate(event.target.value)}
+                      className="h-9 max-w-full min-w-0 rounded-xl border border-line bg-sheet px-3 text-ink"
+                    >
+                      <option value="">{t('write.templateNone')}</option>
+                      {templates.map((template) => (
+                        <option key={template.id} value={template.id}>
+                          {template.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {chosenTemplate && <p className="mt-1.5 text-xs text-muted">{t('write.templateHint')}</p>}
+                </div>
+              )}
               <DiaryEditor
                 key={editorKey}
                 ref={editor}
                 value={page.text}
                 onChange={(text) => {
-                  if (text !== latest.current.page.text) changed({ text })
+                  if (!sameText(text, latest.current.page.text)) changed({ text })
                 }}
                 onEmptyChange={setEditorEmpty}
                 toolbarHost={toolbarHost}
@@ -845,6 +940,7 @@ export default function WritePage() {
                   onImmich: immichReady ? () => setChooser('text') : undefined,
                   onDay: photos.length > 0 ? () => setChooser('day') : undefined,
                 }}
+                sections={sections}
                 placeholder={t('write.bodyPlaceholder')}
                 label={t('write.bodyLabel')}
               />

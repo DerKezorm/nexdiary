@@ -392,6 +392,19 @@ class WritingPrompts(Base):
     updated_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
 
 
+class WritingTemplates(Base):
+    """The templates a person made for their pages, sealed like the diary: names and headings say something about the
+    person. One row per person with every template and the choice of the default; a change is written only onto the
+    revision it was read from."""
+
+    __tablename__ = "writing_templates"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    content_enc: Mapped[bytes] = mapped_column(LargeBinary)
+    revision: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+
 class ImmichLink(Base):
     """A person's own Immich: its address, the API key and the choices of the card, sealed in one field with the
     person's data key. Only the person's own requests use it; the operator sees how many there are, never one."""
@@ -525,5 +538,6 @@ __all__ = [
     "UserKey",
     "ValueDef",
     "WritingPrompts",
+    "WritingTemplates",
     "utcnow",
 ]

@@ -1,4 +1,28 @@
 {
+  "0.3.0": {
+    "lead": "Give your pages fixed headings. When the AI writes a page up, it fills them with what your notes say about each.",
+    "sections": [
+      {
+        "title": "Templates for your pages",
+        "where": "My account, Writing",
+        "body": "Create templates with headings, each with a question as a hint, and pick one as your default. Two examples help you get started."
+      },
+      {
+        "title": "The AI fills in only what your notes say",
+        "where": "Today and the writing view",
+        "body": "When it writes a page up, the AI writes under your headings. A section your notes say nothing about stays empty. Nothing is made up."
+      },
+      {
+        "title": "Writing it yourself, with a frame",
+        "where": "Writing view",
+        "body": "The headings are already in the text, with the question as a grey hint below. Empty sections are dropped when you save."
+      }
+    ],
+    "smallTitle": "Also",
+    "small": [
+      "Writing up in the morning uses your default template, if you have one."
+    ]
+  },
   "0.2.0": {
     "lead": "Write as often as suits you. Set a goal for the week, and your streak follows it.",
     "sections": [

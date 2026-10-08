@@ -13,7 +13,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..deps import Account, DbSession, OperatorAccount
-from ..services import ai, diary, vault
+from ..services import ai, diary, templates, vault
 from .auth import profile_of
 
 router = APIRouter(prefix="/api", tags=["ai"])
@@ -26,6 +26,8 @@ class Strict(BaseModel):
 class FormulateIn(Strict):
     date: str = Field(max_length=10)
     length: Literal["short", "long"] = "long"
+    #: The id of one of the person's templates, ``"none"`` for no template; left out, the person's default counts.
+    template: str | None = Field(default=None, max_length=32)
 
 
 class AiSettingsIn(Strict):
@@ -62,8 +64,12 @@ def formulate(payload: FormulateIn, account: Account, db: DbSession) -> dict[str
     ai.check_allowed(db, account.id)
     ai.usable(db, switch)
     day = diary.check_date(account, payload.date)
-    notes = diary.list_notes(db, account.id, vault.dek_for(account.id), day)
-    return ai.formulate(db, account.id, switch, notes, diary.zone_of(account), payload.length)
+    dek = vault.dek_for(account.id)
+    # The template is read here, by its id, from the person's own sealed list: nothing of it comes from the browser.
+    chosen = templates.resolve(db, account.id, dek, payload.template)
+    notes = diary.list_notes(db, account.id, dek, day)
+    return ai.formulate(db, account.id, switch, notes, diary.zone_of(account), payload.length,
+                        sections=chosen["sections"] if chosen else None)
 
 
 # --- The operator ---------------------------------------------------------------------------------------------------

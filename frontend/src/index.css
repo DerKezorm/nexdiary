@@ -197,6 +197,15 @@ body {
   .prose-diary:focus {
     outline: none;
   }
+  /* The question of a template section, as a grey hint in the empty paragraph under its heading. It is drawn from the
+     paragraph's data-hint, so it is no text of the page and never reaches the Markdown. */
+  .prose-diary p.diary-hint::before {
+    content: attr(data-hint);
+    float: left;
+    height: 0;
+    pointer-events: none;
+    color: var(--muted);
+  }
   /* A picture inside a page: its own block, the full width of the text, with a quiet caption. */
   .diary-photo {
     position: relative;

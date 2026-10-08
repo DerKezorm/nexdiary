@@ -1,8 +1,8 @@
 /**
  * The own account in tabs, everything personal in one place: Profile (picture, display name, name, role, mail
  * address, language), Security (password, second factor, the link to the provider, the notice of a new sign-in),
- * Look (colour, light or dark, the layout of "Today" and of the journal, where a phone starts), Writing (the values
- * and the writing prompts), Reminders (Web Push on this device and the others, when to remind), AI (the own switch,
+ * Look (colour, light or dark, the layout of "Today" and of the journal, where a phone starts), Writing (the values,
+ * the writing prompts and the templates), Reminders (Web Push on this device and the others, when to remind), AI (the own switch,
  * and what the operator set up) and Connections (the own Immich, API tokens for programs). The tab stands in the
  * address (`?tab=`). Settings are the operator's.
  */
@@ -22,6 +22,7 @@ import { GoalCard, JournalCard, LanguageCard, LayoutCard, LooksCard, PhoneCard }
 import { PromptsCard } from './settings/PromptsCard'
 import { RemindersPart } from './settings/PushCards'
 import { DevicesCard, PasskeysCard, SecondFactorCard } from './settings/SecurityCards'
+import { TemplatesCard } from './settings/TemplatesCard'
 import { Button, Card, Confirm, Feedback, Input, Segment, Select, TabRow, Toggle, useAction, type Tab } from './settings/ui'
 import { ValuesCard } from './settings/ValuesCard'
 
@@ -70,6 +71,7 @@ export function AccountPage() {
             <GoalCard />
             <ValuesCard />
             <PromptsCard />
+            <TemplatesCard />
           </>
         )}
         {part === 'reminders' && <RemindersPart me={me} />}

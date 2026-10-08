@@ -10,8 +10,8 @@ This is the one place where notes go to the AI without a press of a button, so i
   conditional update before the AI is asked, so two server processes, two rounds or a restart ask once, and a failure
   is not tried again. Only the day before (the notes of a night that the person put on yesterday are on it).
 * It goes through ``ai.formulate(..., automatic=True)``, the same road as the button (same rules, same limits for the
-  notes, the permission of the account asked again), with a limit of its own. A failure is said in the log by its
-  code, never with a word of the notes or of the answer.
+  notes, the permission of the account asked again, the person's default template if there is one), with a limit of
+  its own. A failure is said in the log by its code, never with a word of the notes or of the answer.
 * The result is a **draft** that waits for the person (``drafts.auto``): no page, so no streak, no statistics, nothing
   to share, nothing in the journal, until the person takes it. It is only made where the day has notes, no page, no
   draft and is not locked, and only onto the revision that was read: a page saved in between wins.
@@ -33,7 +33,7 @@ from sqlalchemy.orm import Session
 from .. import clock
 from ..errors import error
 from ..models import Account, AutoMark, Day, Draft
-from . import ai, diary, push, settings_service, vault
+from . import ai, diary, push, settings_service, templates, vault
 
 logger = logging.getLogger("nexdiary.autowrite")
 
@@ -169,8 +169,9 @@ def write_up(db: Session, account: Account, day: str, length: str) -> bool:
     if not any(note["text"] and not note["unreadable"] for note in notes):
         return False
     try:
+        chosen = templates.default_of(db, account.id, dek)
         suggestion = ai.formulate(db, account.id, own_switch(account), notes, diary.zone_of(account), length,
-                                  automatic=True)
+                                  automatic=True, sections=chosen["sections"] if chosen else None)
     except HTTPException as exc:
         code = exc.detail.get("code") if isinstance(exc.detail, dict) else exc.status_code
         logger.warning("Automatic writing did not work code=%s", code)

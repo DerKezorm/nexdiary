@@ -58,6 +58,9 @@ More, in light and dark and on the phone, are in [docs/screenshots](docs/screens
   what they rate.
 - **Writing prompts.** A question of the day for when nothing comes to mind, six groups that can each be switched off,
   and your own questions. A reminder may bring a question along.
+- **Templates.** Fixed headings for a page, each with a question as a hint, and one of them as your default. When the AI
+  writes a page up it fills only what your notes say about a heading; the rest stays empty, and an empty section is
+  dropped when you save.
 - **Journal and search.** The days as a blog or as a timeline by month; tags; search over pages and notes.
 - **A writing goal.** Once to seven times a week, as suits you. Below seven the streak counts weeks in which the goal
   was met; shields earned with a long streak or a long entry save a missed day or week, and a reminder can come when
@@ -214,6 +217,8 @@ or one that speaks the Messages API. Every person can switch it off for their ac
 - Before the button it says where the notes go: they stay at home, or the provider is named.
 - The AI orders and smooths, writes in the first person, short or long, and invents nothing. Its suggestion is only a
   suggestion in the editor; the notes are never changed.
+- With a **template** the headings and questions of the template go along as material, read from the database by their
+  id; the AI writes under exactly those headings and leaves a section empty where the notes say nothing.
 - **Writing up on its own** is a second, deliberate step: the operator opens it (Settings, AI, off from the start), and
   each person switches it on for themselves (My account, AI, off from the start, with a confirmation that says where
   the notes go). Then, each morning at the chosen time, yesterday's notes become a draft that waits for you: it is no
