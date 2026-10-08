@@ -59,6 +59,9 @@ More, in light and dark and on the phone, are in [docs/screenshots](docs/screens
 - **Writing prompts.** A question of the day for when nothing comes to mind, six groups that can each be switched off,
   and your own questions. A reminder may bring a question along.
 - **Journal and search.** The days as a blog or as a timeline by month; tags; search over pages and notes.
+- **A writing goal.** Once to seven times a week, as suits you. Below seven the streak counts weeks in which the goal
+  was met; shields earned with a long streak or a long entry save a missed day or week, and a reminder can come when
+  the week runs short.
 - **Statistics.** Streaks, days in the year, words, half a year as a calendar, values over time, weekdays, what goes
   together, the best and the worst day (30 days, a year, ever), the most frequent tags, and the same day a year ago.
 - **Sharing a day.** With chosen people of the family. They read the page and the photos; values and raw notes only if

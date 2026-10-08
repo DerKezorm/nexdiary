@@ -1,4 +1,28 @@
 {
+  "0.2.0": {
+    "lead": "Write as often as suits you. Set a goal for the week, and your streak follows it.",
+    "sections": [
+      {
+        "title": "Your writing goal",
+        "where": "My account, Writing",
+        "body": "Choose how often you want to write, from once to seven times a week. Below seven the streak counts weeks in which you reached your goal, so a day without writing breaks nothing."
+      },
+      {
+        "title": "Shields for your streak",
+        "where": "Today and Statistics",
+        "body": "A long streak or a long entry earns a shield. It saves your streak over a missed day or a missed week on its own."
+      },
+      {
+        "title": "A reminder when the week runs short",
+        "where": "My account, Reminders",
+        "body": "If you like, nexdiary reminds you when your goal for the week is getting tight, for example on Friday with two entries still open."
+      }
+    ],
+    "smallTitle": "Also",
+    "small": [
+      "The writing page saves its text the same way however quickly you tap Save."
+    ]
+  },
   "0.1.0": {
     "lead": "The first version of nexdiary: a diary for the family on your own server. During the day you jot thoughts down in a few words, in the evening they become a page.",
     "sections": [

@@ -1,4 +1,28 @@
 {
+  "0.2.0": {
+    "lead": "Schreib so oft, wie es zu dir passt. Setz dir ein Ziel für die Woche, und deine Serie richtet sich danach.",
+    "sections": [
+      {
+        "title": "Dein Schreibziel",
+        "where": "Mein Konto, Schreiben",
+        "body": "Wähle, wie oft du schreiben möchtest, einmal bis siebenmal pro Woche. Unter sieben zählt die Serie Wochen, in denen du dein Ziel erreicht hast. Ein Tag ohne Eintrag bricht also nichts."
+      },
+      {
+        "title": "Schilde für deine Serie",
+        "where": "Heute und Statistik",
+        "body": "Eine lange Serie oder ein langer Eintrag bringt ein Schild. Es rettet deine Serie von selbst über einen verpassten Tag oder eine verpasste Woche."
+      },
+      {
+        "title": "Erinnerung, wenn die Woche knapp wird",
+        "where": "Mein Konto, Erinnerungen",
+        "body": "Auf Wunsch erinnert dich nexdiary, wenn dein Wochenziel knapp wird, etwa am Freitag, wenn noch zwei Einträge fehlen."
+      }
+    ],
+    "smallTitle": "Außerdem",
+    "small": [
+      "Die Schreibseite speichert ihren Text gleich, egal wie schnell du auf Speichern tippst."
+    ]
+  },
   "0.1.0": {
     "lead": "Die erste Version von nexdiary: ein Tagebuch für die Familie auf deinem eigenen Server. Tagsüber hältst du Gedanken in Stichworten fest, abends wird daraus eine Seite.",
     "sections": [
