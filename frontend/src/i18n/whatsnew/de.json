@@ -1,4 +1,18 @@
 {
+  "0.4.0": {
+    "lead": "Notizen, die du nach dem Schreiben noch nachträgst, kommen jetzt auch auf die Seite.",
+    "sections": [
+      {
+        "title": "Neu ausformulieren",
+        "where": "Heute und Schreibansicht",
+        "body": "Steht für einen Tag schon eine Seite, lässt die KI sie aus allen Notizen neu schreiben, auch aus den nachgetragenen. Vorher fragt nexdiary nach, und ersetzt wird erst beim Speichern. An einem verschlossenen Tag geht das nicht."
+      }
+    ],
+    "smallTitle": "Außerdem",
+    "small": [
+      "Wer als Betreiber sein eigenes Passwort vergessen hat, macht sich den Link zum Zurücksetzen auf dem Server selbst. Wie das geht, steht im README."
+    ]
+  },
   "0.3.0": {
     "lead": "Gib deinen Seiten feste Überschriften. Die KI füllt sie beim Ausformulieren mit dem, was deine Notizen dazu sagen.",
     "sections": [

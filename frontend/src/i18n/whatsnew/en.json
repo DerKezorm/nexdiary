@@ -1,4 +1,18 @@
 {
+  "0.4.0": {
+    "lead": "Notes you add after writing a page now reach the page too.",
+    "sections": [
+      {
+        "title": "Write it up anew",
+        "where": "Today and the writing view",
+        "body": "When a day already has a page, the AI can write it anew from all notes, including the ones added later. nexdiary asks first, and nothing is replaced before you save. Not on a locked day."
+      }
+    ],
+    "smallTitle": "Also",
+    "small": [
+      "An operator who forgot their own password makes the reset link on the server. The README says how."
+    ]
+  },
   "0.3.0": {
     "lead": "Give your pages fixed headings. When the AI writes a page up, it fills them with what your notes say about each.",
     "sections": [

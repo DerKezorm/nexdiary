@@ -1,3 +1,3 @@
 """nexdiary: a diary for the family. Jot things down during the day, write the page in the evening."""
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
