@@ -1,10 +1,11 @@
-import { BarChart3, BookOpen, Heart, Images, PenLine, SquarePen } from 'lucide-react'
+import { BarChart3, BookOpen, Heart, Hourglass, Images, PenLine, SquarePen } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, NavLink, Outlet, useLocation, useMatch, useNavigate } from 'react-router-dom'
 
 import { photosApi } from '../api/client'
 import { useAuth } from '../state/auth'
+import { CapsulesProvider, useCapsules } from '../state/capsules'
 import { SharedProvider, useShared } from '../state/shared'
 
 import { AccountMenu } from './AccountMenu'
@@ -18,8 +19,12 @@ const NAV = [
   { to: '/tagebuch', label: 'nav.journal', icon: BookOpen },
   { to: '/fotos', label: 'nav.photos', icon: Images },
   { to: '/statistik', label: 'nav.stats', icon: BarChart3 },
+  { to: '/zeitkapseln', label: 'nav.capsules', icon: Hourglass },
   { to: '/geteilt', label: 'nav.shared', icon: Heart },
 ]
+
+/** The bar at the bottom of a phone holds five, as the mock: "My photos" is in the account menu there. */
+const PHONE_NAV = NAV.filter((item) => item.to !== '/fotos')
 
 /** Whether the person has a photo at all: "My photos" shows in the menu from the first one. Asked again on each
  * page change (a photo may have come or gone), a single count. */
@@ -103,11 +108,13 @@ function Toast() {
 export function AppShell() {
   return (
     <SharedProvider>
-      <PhotoDeleteProvider>
-        <LightboxProvider>
-          <Frame />
-        </LightboxProvider>
-      </PhotoDeleteProvider>
+      <CapsulesProvider>
+        <PhotoDeleteProvider>
+          <LightboxProvider>
+            <Frame />
+          </LightboxProvider>
+        </PhotoDeleteProvider>
+      </CapsulesProvider>
     </SharedProvider>
   )
 }
@@ -115,6 +122,7 @@ export function AppShell() {
 function Frame() {
   const { t } = useTranslation()
   const { unseen } = useShared()
+  const { opened } = useCapsules()
   useQuickStart()
   const hasPhotos = useHasPhotos()
   const menu = NAV.filter((item) => item.to !== '/fotos' || hasPhotos)
@@ -141,6 +149,11 @@ function Frame() {
                   {unseen}
                 </span>
               )}
+              {to === '/zeitkapseln' && opened > 0 && (
+                <span className="ml-auto rounded-full bg-accent px-1.5 text-xs font-bold text-accent-ink" aria-label={t('capsules.badge', { count: opened })}>
+                  {opened}
+                </span>
+              )}
             </NavLink>
           ))}
         </nav>
@@ -156,7 +169,7 @@ function Frame() {
             <Link to="/schnell" className="rounded-full bg-accent p-2 text-accent-ink" aria-label={t('quick.open')}>
               <SquarePen size={18} aria-hidden />
             </Link>
-            <AccountMenu />
+            <AccountMenu photos={hasPhotos} />
           </div>
         </div>
         <WhatsNewBanner />
@@ -165,10 +178,11 @@ function Frame() {
 
       <Toast />
       <nav hidden={writing} className={`fixed inset-x-0 bottom-0 z-30 border-t border-line bg-sheet/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden ${writing ? 'hidden' : 'flex'}`} aria-label={t('app.mainMenu')}>
-        {menu.map(({ to, label, icon: Icon }) => (
-          <NavLink key={to} to={to} end={to === '/'} className={({ isActive }) => `relative flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[0.7rem] font-bold ${isActive ? 'text-accent' : 'text-muted'}`}>
-            <Icon size={21} /> {t(label)}
+        {PHONE_NAV.map(({ to, label, icon: Icon }) => (
+          <NavLink key={to} to={to} end={to === '/'} className={({ isActive }) => `relative flex min-w-0 flex-1 flex-col items-center gap-0.5 py-2.5 text-[0.7rem] font-bold ${isActive ? 'text-accent' : 'text-muted'}`}>
+            <Icon size={21} /> <span className="max-w-full truncate">{t(label)}</span>
             {to === '/geteilt' && unseen > 0 && <span className="absolute top-1.5 left-1/2 ml-2 h-2 w-2 rounded-full bg-accent" role="img" aria-label={t('shared.badge', { count: unseen })} />}
+            {to === '/zeitkapseln' && opened > 0 && <span className="absolute top-1.5 left-1/2 ml-2 h-2 w-2 rounded-full bg-accent" role="img" aria-label={t('capsules.badge', { count: opened })} />}
           </NavLink>
         ))}
       </nav>

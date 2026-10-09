@@ -37,6 +37,7 @@ function serve(): void {
       const photo = (id: string, width: number, height: number, onNote = false) => ({ id, date: '2026-10-04', source: 'upload', width, height, created_at: '', on_note: onNote })
       if (url === '/api/photos/storage') return json({ used: 10, limit: null, count: photoCount })
       if (url === '/api/shared/count') return json({ new: 0 })
+      if (url === '/api/capsules/count') return json({ new: 0 })
       if (url === '/api/journal') return json({ days: [], more: false })
       if (url === '/api/days/2026-10-04') return json({ date: '2026-10-04', title: 'Sonntag', text: 'Am See.', tags: [], values: {}, cover: `photo:${COVER}`, cover_chosen: true, written_by: 'self', words: 2, revision: 0, created_at: '', updated_at: '' })
       if (url === '/api/notes?date=2026-10-04') return json([{ id: 'n1', date: '2026-10-04', text: 'see', unreadable: false, prompt: null, photo_id: NOTE, created_at: '2026-10-04T10:00:00+00:00', updated_at: null }])
@@ -155,9 +156,17 @@ describe('the menu', () => {
       '/',
     )
     await until(() => entries().includes('Fotos'), 'the entry')
-    expect(entries()).toEqual(['Heute', 'Tagebuch', 'Fotos', 'Statistik', 'Geteilt'])
-    // The bar of a phone has it too.
-    expect([...box.querySelectorAll('nav[aria-label] a')].some((link) => link.getAttribute('href') === '/fotos')).toBe(true)
+    expect(entries()).toEqual(['Heute', 'Tagebuch', 'Fotos', 'Statistik', 'Zeitkapseln', 'Geteilt'])
+    // The bar of a phone holds five, as the mock: there "Fotos" is in the account menu of the header.
+    expect([...box.querySelectorAll('main ~ nav a')].map((link) => link.getAttribute('href'))).toEqual(['/', '/tagebuch', '/statistik', '/zeitkapseln', '/geteilt'])
+    // Five equal parts that may shrink, each word cut rather than pushing the bar wider than the phone.
+    for (const link of box.querySelectorAll('main ~ nav a')) {
+      expect(link.className).toMatch(/\bmin-w-0\b/)
+      expect(link.className).toMatch(/\bflex-1\b/)
+      expect(link.querySelector('span.truncate')).not.toBeNull()
+    }
+    await act(async () => box.querySelector<HTMLButtonElement>('main button[aria-haspopup]')!.click())
+    expect(box.querySelector('main a[href="/fotos"]')?.textContent?.trim()).toBe('Fotos')
   })
 
   it('has no such entry without a photo', async () => {
@@ -171,7 +180,9 @@ describe('the menu', () => {
       '/',
     )
     await idle()
-    expect(entries()).toEqual(['Heute', 'Tagebuch', 'Statistik', 'Geteilt'])
+    expect(entries()).toEqual(['Heute', 'Tagebuch', 'Statistik', 'Zeitkapseln', 'Geteilt'])
+    expect(box.querySelector('a[href="/fotos"]')).toBeNull()
+    await act(async () => box.querySelector<HTMLButtonElement>('main button[aria-haspopup]')!.click())
     expect(box.querySelector('a[href="/fotos"]')).toBeNull()
   })
 })

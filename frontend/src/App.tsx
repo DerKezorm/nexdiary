@@ -2,6 +2,7 @@ import { lazy, Suspense, type ReactNode } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 
 import { AppShell } from './components/AppShell'
+import { CapsulesPage } from './pages/CapsulesPage'
 import { AboutPage } from './pages/AboutPage'
 import { AccountPage } from './pages/AccountPage'
 import { ForgotPage, InvitePage, LoginPage, ResetPage, SetupPage } from './pages/AuthPages'
@@ -60,6 +61,7 @@ export default function App() {
         <Route path="tagebuch" element={<JournalPage />} />
         <Route path="fotos" element={<LibraryPage />} />
         <Route path="statistik" element={<StatsPage />} />
+        <Route path="zeitkapseln" element={<CapsulesPage />} />
         <Route path="geteilt" element={<SharedPage />} />
         <Route path="geteilt/:from/:date" element={<SharedEntryPage />} />
         <Route path="tag/:date" element={<EntryPage />} />

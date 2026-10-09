@@ -26,6 +26,7 @@ from .routers import (
     ai,
     apitokens,
     auth,
+    capsules,
     diary,
     health,
     immich,
@@ -62,6 +63,7 @@ from .services import (
     vault,
 )
 from .services import apitokens as apitokens_service
+from .services import capsules as capsules_service
 from .services import passkeys as passkeys_service
 
 logger = logging.getLogger("nexdiary")
@@ -69,7 +71,7 @@ logger = logging.getLogger("nexdiary")
 ROUTERS = [
     health, about, locales_router, logs_router, auth, totp_router, oidc, invites, settings_router, backups_router,
     avatars_router, apitokens, v1_router, diary, photos, sharing, ai, prompts, immich, push, passkeys, stats,
-    resets, templates,
+    resets, templates, capsules,
 ]
 
 
@@ -130,6 +132,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         tasks.append(asyncio.create_task(_sweep_forever(stop)))
         tasks.append(asyncio.create_task(reminders.run_forever(stop)))
         tasks.append(asyncio.create_task(autowrite.run_forever(stop)))
+        tasks.append(asyncio.create_task(capsules_service.run_forever(stop)))
     logger.info("nexdiary %s started", __version__)
     with SessionLocal() as db:
         accounts.announce_setup_code(db)

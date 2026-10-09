@@ -18,6 +18,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import get_settings
+from app.db import SessionLocal
 from app.models import Account
 from app.services import backups, logs, vault
 
@@ -93,6 +94,35 @@ def write_everywhere(client: TestClient, word: str) -> None:
     assert client.put("/api/templates", json={"templates": [{"name": f"Vorlage {word}", "sections": [
         {"heading": f"Kopf {word}", "question": f"Frage {word}?"}]}], "default": None, "revision": -1}).status_code == 200
     share_everything(client, word)
+    capsule_everything(client, word)
+
+
+def capsule_everything(client: TestClient, word: str) -> None:
+    """Time capsules with the word in the title, the text and the photo's metadata: one to somebody else (read by its
+    sender, listed by the one it is for, changed once), one only to oneself. Their key is sealed for each holder;
+    nothing of them lies in the clear."""
+    from .conftest import new_client
+
+    with SessionLocal() as db:
+        rike = db.query(Account).filter_by(name="rike").one()
+        db.expunge(rike)
+    me = client.get("/api/auth/me").json()["id"]
+    chosen = client.post("/api/capsules/photos", params={"upload_id": str(uuid.uuid4())}, content=photo_with(word))
+    assert chosen.status_code == 201
+    made = client.post("/api/capsules", json={"id": str(uuid.uuid4()), "to": [rike.id, me], "opens_on": "2060-12-24",
+                                              "title": f"Kapsel {word}", "text": f"Brief {word}",
+                                              "photo": chosen.json()["id"]})
+    assert made.status_code == 201, made.text
+    assert word in client.get(f"/api/capsules/{made.json()['id']}").text
+    changed = client.put(f"/api/capsules/{made.json()['id']}", json={
+        "revision": made.json()["revision"], "to": [rike.id], "opens_on": "2060-12-24", "title": f"Kapsel {word}",
+        "text": f"Geändert {word}"})
+    assert changed.status_code == 200
+    assert client.post("/api/capsules", json={"id": str(uuid.uuid4()), "to": [me], "opens_on": "2060-12-31",
+                                              "title": f"Selbst {word}", "text": f"Versiegelt {word}"}
+                       ).status_code == 201
+    with new_client(rike) as reader:
+        assert word in reader.get("/api/capsules").text
 
 
 def share_everything(client: TestClient, word: str) -> None:
@@ -210,6 +240,12 @@ def test_a_backup_cannot_be_read_without_the_master_key_and_comes_back_on_the_sa
     assert len(with_photo) == 1
     assert client.get(f"/api/photos/{with_photo[0]['photo_id']}").headers["content-type"] == "image/webp"
     assert client.get("/api/days/2026-10-05").json()["title"] == f"Titel {word}"
+    # The time capsules came back too, readable, with the photo.
+    sent = client.get("/api/capsules").json()["from_me"]
+    assert sorted(item["title"] for item in sent) == [f"Kapsel {word}", f"Selbst {word}"]
+    to_rike = next(item for item in sent if item["title"] == f"Kapsel {word}")
+    assert client.get(f"/api/capsules/{to_rike['id']}").json()["text"] == f"Geändert {word}"
+    assert client.get(f"/api/capsules/{to_rike['id']}/photo").status_code == 200
 
 
 def test_a_deleted_account_leaves_neither_its_key_nor_its_texts_in_the_files(

@@ -37,7 +37,7 @@ _settings.data_dir.mkdir(parents=True, exist_ok=True)
 BUSY_SECONDS = 15
 
 #: The version of the schema the models describe.
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 
 def _v2_diary(connection: Connection) -> None:
@@ -271,11 +271,46 @@ def _v13_writing_templates(connection: Connection) -> None:
     )
 
 
+
+def _v14_time_capsules(connection: Connection) -> None:
+    """Version 14: time capsules, the key of each sealed for every person who holds it, and the photos chosen for a
+    capsule that is not closed yet. Written out as it stood then, not taken from the models."""
+    for statement in (
+        (
+            "CREATE TABLE capsules ( id INTEGER NOT NULL, uid VARCHAR(32) NOT NULL, sender_id INTEGER, "
+            "client_id VARCHAR(36) NOT NULL, opens_on VARCHAR(10) NOT NULL, written_on VARCHAR(10) NOT NULL, "
+            "sealed BOOLEAN NOT NULL, title_enc BLOB NOT NULL, text_enc BLOB NOT NULL, photo_uid VARCHAR(32), "
+            "photo_width INTEGER, photo_height INTEGER, photo_size INTEGER NOT NULL, revision INTEGER NOT NULL, "
+            "created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL, first_opened_at DATETIME, PRIMARY KEY (id), "
+            "CONSTRAINT uq_capsules_uid UNIQUE (uid), "
+            "CONSTRAINT uq_capsules_sender_client UNIQUE (sender_id, client_id), "
+            "FOREIGN KEY(sender_id) REFERENCES users (id) ON DELETE SET NULL )"
+        ),
+        (
+            "CREATE TABLE capsule_keys ( capsule_id INTEGER NOT NULL, user_id INTEGER NOT NULL, "
+            "recipient BOOLEAN NOT NULL, key_enc BLOB NOT NULL, arrival_sent BOOLEAN NOT NULL, "
+            "open_sent BOOLEAN NOT NULL, read_at DATETIME, PRIMARY KEY (capsule_id, user_id), "
+            "FOREIGN KEY(capsule_id) REFERENCES capsules (id) ON DELETE CASCADE, "
+            "FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE )"
+        ),
+        (
+            "CREATE TABLE capsule_uploads ( uid VARCHAR(32) NOT NULL, user_id INTEGER NOT NULL, "
+            "upload_id VARCHAR(36) NOT NULL, width INTEGER NOT NULL, height INTEGER NOT NULL, size INTEGER NOT NULL, "
+            "preview_size INTEGER NOT NULL, created_at DATETIME NOT NULL, PRIMARY KEY (uid), "
+            "CONSTRAINT uq_capsule_uploads_user_upload UNIQUE (user_id, upload_id), "
+            "FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE )"
+        ),
+        "CREATE INDEX ix_capsules_sender_id ON capsules (sender_id)",
+        "CREATE INDEX ix_capsule_keys_user_id ON capsule_keys (user_id)",
+        "CREATE INDEX ix_capsule_uploads_user_id ON capsule_uploads (user_id)",
+    ):
+        connection.exec_driver_sql(statement)
+
 #: ``MIGRATIONS[n]`` brings a database from version ``n - 1`` to ``n``. Version 1 is the first schema; it has no step.
 MIGRATIONS: dict[int, Callable[[Connection], None]] = {
     2: _v2_diary, 3: _v3_photos_and_drafts, 4: _v4_sharing, 5: _v5_writing_prompts, 6: _v6_immich, 7: _v7_push,
     8: _v8_security, 9: _v9_recovery, 10: _v10_nights_and_locks, 11: _v11_automatic_writing,
-    12: _v12_text_photos, 13: _v13_writing_templates,
+    12: _v12_text_photos, 13: _v13_writing_templates, 14: _v14_time_capsules,
 }
 
 # No pool with an upper bound: with the default pool the sixteenth concurrent request would block the event

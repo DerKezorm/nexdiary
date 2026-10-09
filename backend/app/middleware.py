@@ -120,6 +120,7 @@ LARGE_BODIES = {
     "/api/backups/upload": 64 * 1024**3,
     "/api/auth/avatar": pictures.MAX_BYTES,
     "/api/photos": pictures.MAX_BYTES,
+    "/api/capsules/photos": pictures.MAX_BYTES,
 }
 
 

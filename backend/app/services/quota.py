@@ -1,8 +1,9 @@
 """What one person may keep: the operator sets a limit in GB (Settings, Accounts; 0: none) over everything
-the person has stored: the sealed photo files, and the sealed texts of their days, notes, drafts, values, own
-questions and templates (counted as the bytes that lie in the database, the seal included). Counted inside the
-transaction that writes, so two writes at the same moment cannot pass the limit together: a statement that inserts
-checks it in its own condition, a write of a sealed text checks right after (``check_after_write``)."""
+the person has stored: the sealed photo files, the sealed texts of their days, notes, drafts, values, own questions
+and templates, and the time capsules they sent with their photos (counted as the bytes that lie in the database or on
+disk, the seal included). Counted inside the transaction that writes, so two writes at the same moment cannot pass the
+limit together: a statement that inserts checks it in its own condition, a write of a sealed text checks right after
+(``check_after_write``)."""
 
 from __future__ import annotations
 
@@ -24,7 +25,10 @@ USED = (
     "+ coalesce(length(prompt_ref_enc), 0)), 0) FROM notes WHERE user_id = :user) + "
     "(SELECT coalesce(sum(length(data_enc)), 0) FROM value_defs WHERE user_id = :user) + "
     "(SELECT coalesce(sum(length(content_enc)), 0) FROM writing_prompts WHERE user_id = :user) + "
-    "(SELECT coalesce(sum(length(content_enc)), 0) FROM writing_templates WHERE user_id = :user))"
+    "(SELECT coalesce(sum(length(content_enc)), 0) FROM writing_templates WHERE user_id = :user) + "
+    "(SELECT coalesce(sum(length(title_enc) + length(text_enc) + photo_size), 0) FROM capsules "
+    "WHERE sender_id = :user) + "
+    "(SELECT coalesce(sum(size + preview_size), 0) FROM capsule_uploads WHERE user_id = :user))"
 )
 
 

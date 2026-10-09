@@ -1,4 +1,4 @@
-import { Info, LogOut, Settings, User } from 'lucide-react'
+import { Images, Info, LogOut, Settings, User } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
@@ -9,8 +9,9 @@ import { Avatar } from './Avatar'
 /**
  * The person's menu, as in nexlore: own account, settings, about, sign out. `up`: at the foot of the sidebar, with the
  * name beside the picture, opening upwards; otherwise the round picture in the phone's header, opening downwards.
+ * `photos`: "My photos" too, on a phone, whose bar at the bottom has room for five.
  */
-export function AccountMenu({ up = false }: { up?: boolean }) {
+export function AccountMenu({ up = false, photos = false }: { up?: boolean; photos?: boolean }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { me, signOut } = useAuth()
@@ -66,6 +67,11 @@ export function AccountMenu({ up = false }: { up?: boolean }) {
           <Link to="/konto" className={item}>
             <User size={16} /> {t('account.mine')}
           </Link>
+          {photos && (
+            <Link to="/fotos" className={item}>
+              <Images size={16} /> {t('nav.photos')}
+            </Link>
+          )}
           {me.role === 'operator' && (
             <Link to="/einstellungen" className={item}>
               <Settings size={16} /> {t('settings.title')}

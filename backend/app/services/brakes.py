@@ -30,6 +30,8 @@ LIMITS = {
     "push_test": 10,
     #: A look at the statistics opens every sealed day of the person.
     "stats": 30,
+    #: Closing, changing or taking back a time capsule: a letter is written by hand, a few a minute at the most.
+    "capsule": 30,
 }
 #: The code and the sentence of the answer.
 CODES = {
@@ -43,6 +45,7 @@ CODES = {
     "push": ("push_too_often", "Too many at once. Wait a minute."),
     "push_test": ("push_too_often", "Too many at once. Wait a minute."),
     "stats": ("stats_too_often", "Too many looks at the statistics. Wait a minute."),
+    "capsule": ("slow_down_writing", "Too much at once. Wait a minute."),
 }
 
 _lock = threading.Lock()

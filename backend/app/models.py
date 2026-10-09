@@ -509,6 +509,90 @@ class ShareSeen(Base):
     at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
 
 
+
+# --- Time capsules ---------------------------------------------------------------------------------------------------
+#
+# A letter that opens on a date, to oneself or to others on the server (``services/capsules.py``). Its title, text and
+# photo are sealed with a key of the capsule's own; that key is sealed once for every person who holds the capsule,
+# with that person's data key. So the capsule outlives the account that wrote it, and a person who goes takes only
+# their own copy of the key.
+
+
+class Capsule(Base):
+    """One time capsule. In the clear only what sorting, opening and the rules need: who sent it, the day it opens, the
+    day it was written, whether it is sealed for its sender, and the size of its photo."""
+
+    __tablename__ = "capsules"
+    __table_args__ = (
+        UniqueConstraint("uid", name="uq_capsules_uid"),
+        #: Made by the browser for one capsule: "Verschließen" sent twice keeps one capsule.
+        UniqueConstraint("sender_id", "client_id", name="uq_capsules_sender_client"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    uid: Mapped[str] = mapped_column(String(32))
+    #: Empty once the account that wrote it is deleted: the capsule stays with the people it was for.
+    sender_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True,
+                                                  index=True)
+    client_id: Mapped[str] = mapped_column(String(36))
+    #: ``YYYY-MM-DD``: from 00:00 of this day in each recipient's own time zone the capsule is open for them.
+    opens_on: Mapped[str] = mapped_column(String(10))
+    #: ``YYYY-MM-DD`` in the sender's time zone, the day it was first closed.
+    written_on: Mapped[str] = mapped_column(String(10))
+    #: Only for the sender: until the day nobody can read or change it, the sender neither.
+    sealed: Mapped[bool] = mapped_column(Boolean, default=False)
+    title_enc: Mapped[bytes] = mapped_column(LargeBinary)
+    text_enc: Mapped[bytes] = mapped_column(LargeBinary)
+    #: The photo in the media folder (``uid`` and ``uid.p``), sealed with the capsule's key.
+    photo_uid: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    photo_width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    photo_height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: Bytes of both photo files on disk; counted in the sender's storage.
+    photo_size: Mapped[int] = mapped_column(Integer, default=0)
+    #: Counts every change: a change is written only onto the revision it was read from.
+    revision: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    #: The first moment the server saw it open for one of its recipients: from then on it cannot be changed or taken
+    #: back. Set in the same statement order as a change, so the two never pass each other.
+    first_opened_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+
+
+class CapsuleKey(Base):
+    """The key of one capsule, sealed with the data key of one person who holds it: each recipient, and the sender
+    (who may be a recipient too). Deleting the account deletes this copy only."""
+
+    __tablename__ = "capsule_keys"
+
+    capsule_id: Mapped[int] = mapped_column(ForeignKey("capsules.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True)
+    #: The capsule is for this person; false: the sender's own copy of a capsule only for others.
+    recipient: Mapped[bool] = mapped_column(Boolean, default=True)
+    key_enc: Mapped[bytes] = mapped_column(LargeBinary)
+    #: The push "a capsule came for you" went out (or is not owed: the sender's own copy).
+    arrival_sent: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: The push "it has opened" went out on its day.
+    open_sent: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: When the recipient first read it, once it was open: until then it counts as new.
+    read_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+
+
+class CapsuleUpload(Base):
+    """A photo chosen for a capsule that is not closed yet, sealed with the uploader's data key. Taken over (sealed
+    anew with the capsule's key) when the capsule is closed or changed; gone after a day when nothing took it."""
+
+    __tablename__ = "capsule_uploads"
+    __table_args__ = (UniqueConstraint("user_id", "upload_id", name="uq_capsule_uploads_user_upload"),)
+
+    uid: Mapped[str] = mapped_column(String(32), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    upload_id: Mapped[str] = mapped_column(String(36))
+    width: Mapped[int] = mapped_column(Integer)
+    height: Mapped[int] = mapped_column(Integer)
+    size: Mapped[int] = mapped_column(Integer)
+    preview_size: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
 __all__ = [
     "MEMBER",
     "OPERATOR",
@@ -522,6 +606,9 @@ __all__ = [
     "ApiToken",
     "AuthSession",
     "Base",
+    "Capsule",
+    "CapsuleKey",
+    "CapsuleUpload",
     "Day",
     "Draft",
     "Heart",

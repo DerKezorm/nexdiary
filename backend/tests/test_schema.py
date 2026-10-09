@@ -50,8 +50,15 @@ def fresh_schema_sql() -> str:
     return "".join(" ".join(row[0].split()) + ";\n" for row in rows)
 
 
+def drop_v14(connection: sqlite3.Connection) -> None:
+    """Takes away what version 14 added (the time capsules)."""
+    for table in ("capsule_keys", "capsule_uploads", "capsules"):
+        connection.execute(f"DROP TABLE {table}")
+
+
 def drop_v13(connection: sqlite3.Connection) -> None:
-    """Takes away what version 13 added (the templates for the pages)."""
+    """Takes away what version 13 and everything after it added (the templates for the pages)."""
+    drop_v14(connection)
     connection.execute("DROP TABLE writing_templates")
 
 
