@@ -67,6 +67,14 @@ More, in light and dark and on the phone, are in [docs/screenshots](docs/screens
   the week runs short.
 - **Statistics.** Streaks, days in the year, words, half a year as a calendar, values over time, weekdays, what goes
   together, the best and the worst day (30 days, a year, ever), the most frequent tags, and the same day a year ago.
+- **Time capsules.** A letter that opens on a chosen day, to yourself or to people in the family, written like a page
+  and with as many photos as you like. Until the day the people it is for only see who it is from and when it opens; a
+  letter to yourself stays sealed for you too. A push arrives on the morning it opens.
+- **Looking back.** A week as a strip of covers, a month as a collage, the first value as a line, the best day and what
+  it was about; a summary by the AI only on request. The journal shows a volume per year that fills up page by page,
+  and a year can be set as a print-ready PDF book.
+- **A family question.** One question a day for those who join; the others' answers open once you have answered,
+  and stay readable on that day later. An answer is final.
 - **Sharing a day.** With chosen people of the family. They read the page and the photos; values and raw notes only if
   you tick them. A shared day is read-only and cannot be passed on; you take it back at any time. The only reaction is a
   heart.
@@ -226,9 +234,12 @@ The AI is off until the operator chooses a service, for everybody (Settings, AI)
 your own network (Ollama or anything that speaks `/v1/chat/completions`), a service on the internet that speaks the same,
 or one that speaks the Messages API. Every person can switch it off for their account.
 
-- Nothing is sent without a press of the button "Write up", and nothing on a schedule.
-- What goes out are the notes of that one day, with their times and the questions they answer. No name, no date, no
-  photos, no values.
+- Nothing is sent without a press of a button ("Write it up with AI", "Ask me first", "Sum it up"), and nothing on a
+  schedule.
+- What goes out when a day is written up, or when the AI asks first, are the notes of that one day, with their times and
+  the questions they answer. No name, no date, no photos, no values.
+- What goes out when a week or a month is summed up are its pages: weekday, day of the month, title and text. No
+  photos, values, tags or notes.
 - Before the button it says where the notes go: they stay at home, or the provider is named.
 - The AI orders and smooths, writes in the first person, short or long, and invents nothing. Its suggestion is only a
   suggestion in the editor; the notes are never changed.

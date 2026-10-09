@@ -1158,7 +1158,7 @@
       "pick": "Modell wählen",
       "saveTry": "Speichern und ausprobieren",
       "probed": "Gespeichert. Probe: Das Modell hat in {{seconds}} Sekunden geantwortet.",
-      "outgoing": "Was hinausgeht: beim Druck auf „Ausformulieren mit KI“ die Notizen dieses einen Tages mit ihrer Uhrzeit und, wo eine Notiz eine Frage beantwortet, mit der Frage. Ohne Namen des Kontos, ohne Datum, ohne Fotos und ohne Werte. Sonst nichts. Wer das nicht will, schaltet die KI in seinem Konto ab.",
+      "outgoing": "Was hinausgeht: beim Druck auf „Ausformulieren mit KI“ die Notizen dieses einen Tages mit ihrer Uhrzeit und, wo eine Notiz eine Frage beantwortet, mit der Frage. Ohne Namen des Kontos, ohne Datum, ohne Fotos und ohne Werte. „Erst fragen lassen“ schickt dieselben Notizen. Beim Druck auf „Zusammenfassen“ im Rückblick die Seiten dieser Woche oder dieses Monats: Wochentag, Tag im Monat, Titel und Text, ohne Fotos, Werte, Tags und Notizen. Sonst nichts. Wer das nicht will, schaltet die KI in seinem Konto ab.",
       "saved": "Gespeichert.",
       "keyOptional": "API-Schlüssel (falls nötig)",
       "keyLocalHint": "Nur, wenn der Dienst einen verlangt, etwa LiteLLM. Ollama braucht keinen.",

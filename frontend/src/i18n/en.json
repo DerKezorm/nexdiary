@@ -1158,7 +1158,7 @@
       "pick": "Choose a model",
       "saveTry": "Save and try it",
       "probed": "Saved. Test: the model answered in {{seconds}} seconds.",
-      "outgoing": "What goes out: when someone presses \"Write it up with AI\", the notes of that one day with their times and, where a note answers a question, with the question. Without the name of the account, without the date, without photos and without ratings. Nothing else. Whoever does not want that switches the AI off in their account.",
+      "outgoing": "What goes out: when someone presses \"Write it up with AI\", the notes of that one day with their times and, where a note answers a question, with the question. Without the name of the account, without the date, without photos and without ratings. \"Ask me first\" sends the same notes. When someone presses \"Sum it up\" in a look back, the pages of that week or month: weekday, day of the month, title and text, without photos, ratings, tags and notes. Nothing else. Whoever does not want that switches the AI off in their account.",
       "saved": "Saved.",
       "keyOptional": "API key (if needed)",
       "keyLocalHint": "Only when the service asks for one, such as LiteLLM. Ollama needs none.",
