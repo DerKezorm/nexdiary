@@ -383,3 +383,183 @@ def test_every_illustration_is_known_and_draws() -> None:
     canvas.showPage()
     canvas.save()
     assert out.getvalue().startswith(b"%PDF")
+
+
+# --- Second round: load, the server's place, what is read, what is left --------------------------------------------
+
+
+def test_a_page_full_of_marks_is_set_in_good_time() -> None:
+    with person("jule") as jule:
+        write(jule, "2026-03-03", "Lang", ("Wort " * 19_000)[:99_000])
+        write(jule, "2026-03-04", "Viele", ("*a* " * 24_000)[:99_000])
+        write(jule, "2026-03-05", "Unterstriche", ("_a_ **b** " * 9_900)[:99_000])
+        started = time.perf_counter()
+        _done, pdf = made(jule, photos=False)
+        seconds = time.perf_counter() - started
+    # Measured well under a second per day on the machine it was written on; generous for a slow one.
+    assert seconds < 15, seconds
+    text = text_of(pdf)
+    assert "*a* *a*" in text and "Viele" in text
+
+
+def test_a_book_that_took_too_long_pauses_the_person(monkeypatch: pytest.MonkeyPatch) -> None:
+    moment = [0.0]
+    monkeypatch.setattr(book, "ticks", lambda: moment[0])
+
+    def late(step: str) -> None:
+        if step == "day":
+            moment[0] += book.JOB_SECONDS + 1
+
+    with person("jule") as jule, person("ben") as ben:
+        write(jule, "2026-03-03", "Drei")
+        write(ben, "2026-03-03", "Bens")
+        book.checkpoint = late
+        assert wait(jule, jule.post("/api/book", json={"year": 2026}).json()["id"])["error"] == "book_too_long"
+        book.checkpoint = None
+        paused = jule.post("/api/book", json={"year": 2026})
+        assert paused.status_code == 429 and paused.json()["detail"]["code"] == "book_paused"
+        assert 0 < int(paused.headers["retry-after"]) <= book.PAUSE_SECONDS + 1
+        # Only the person who held the place waits.
+        other = ben.post("/api/book", json={"year": 2026})
+        assert other.status_code == 202
+        wait(ben, other.json()["id"])
+        moment[0] += book.PAUSE_SECONDS
+        assert jule.post("/api/book", json={"year": 2026}).status_code == 202
+
+
+def test_a_book_given_up_holds_the_server_until_its_thread_has_ended() -> None:
+    gate = threading.Event()
+    inside = threading.Event()
+
+    def hold(step: str) -> None:
+        if step == "day":
+            inside.set()
+            gate.wait(10)
+
+    with person("jule") as jule, person("ben") as ben:
+        write(jule, "2026-03-03", "Drei")
+        write(ben, "2026-03-03", "Bens")
+        book.checkpoint = hold
+        job = jule.post("/api/book", json={"year": 2026}).json()["id"]
+        assert inside.wait(10)
+        assert jule.delete(f"/api/book/{job}").status_code == 204
+        busy = ben.post("/api/book", json={"year": 2026})
+        assert busy.status_code == 503 and busy.json()["detail"]["code"] == "book_busy"
+        again = jule.post("/api/book", json={"year": 2026})
+        assert again.status_code == 409 and again.json()["detail"]["code"] == "book_running"
+        book.checkpoint = None
+        gate.set()
+        deadline = time.monotonic() + 10
+        while any(item.running for item in list(book._jobs.values())):
+            assert time.monotonic() < deadline
+            time.sleep(0.02)
+        assert ben.post("/api/book", json={"year": 2026}).status_code == 202
+
+
+EVIL = ('<img src="file:///etc/hosts" width="20" height="20"/>Titel <a href="http://127.0.0.1:9/x">Link</a> '
+        '<font color="red">Rot</font>')
+
+
+def test_markup_in_titles_and_notes_stays_text() -> None:
+    with person("jule") as jule:
+        jule.put("/api/me/language", json={"language": "de"})
+        write(jule, "2026-05-01", EVIL, "Text.")
+        jule.post("/api/notes", json={"id": str(uuid.uuid4()), "text": EVIL, "date": "2026-05-01"})
+        _done, pdf = made(jule, notes=True)
+    # Compared without spaces: the extraction of a PDF puts some between letters set apart by kerning.
+    text = "".join(text_of(pdf).split())
+    for part in ('<imgsrc="file:///etc/hosts"width="20"height="20"/>Titel', '<ahref="http://127.0.0.1:9/x">Link</a>',
+                 '<fontcolor="red">Rot</font>'):
+        assert text.count(part) == 2, part
+    assert sum(len(page.images) for page in PdfReader(io.BytesIO(pdf)).pages) == 0
+
+
+def test_a_photo_of_somebody_else_is_never_drawn_and_the_day_keeps_its_illustration() -> None:
+    from app.db import SessionLocal
+    from app.models import Account, Day
+    from app.services import diary, vault
+
+    with person("jule") as jule, person("ben") as ben:
+        uid = photo(ben, "2026-04-02")
+        write(jule, "2026-04-02", "Versuch")
+        with SessionLocal() as db:
+            owner = db.query(Account).filter_by(name="jule").one()
+            row = db.query(Day).filter_by(user_id=owner.id, date="2026-04-02").one()
+            dek = vault.dek_for(owner.id)
+            # Straight into the database: the routes would never keep a photo of somebody else.
+            content = {**diary.empty_day(), "title": "Versuch", "text": f"![x](photo:{uid})", "cover": f"photo:{uid}"}
+            row.content_enc = vault.seal_json(dek, content, diary._day_aad(owner.id, "2026-04-02"))
+            db.commit()
+        _done, pdf = made(jule)
+    pages = PdfReader(io.BytesIO(pdf)).pages
+    assert sum(len(page.images) for page in pages) == 0
+    day = next(page for page in pages if "Versuch" in (page.extract_text() or ""))
+    # The cover is the suggested illustration (its sky is a shading), not an empty band where the photo would be.
+    assert b" sh" in day.get_contents().get_data()
+
+
+def test_a_book_on_its_way_to_the_browser_stays_when_a_new_one_starts_or_it_is_given_up() -> None:
+    with person("jule") as jule:
+        write(jule, "2026-03-03", "Drei")
+        first = jule.post("/api/book", json={"year": 2026}).json()["id"]
+        assert wait(jule, first)["state"] == "done"
+        owner = book._jobs[first].account_id
+        _year, pieces = book.fetch(first, owner)
+        assert jule.delete(f"/api/book/{first}").status_code == 204
+        second = jule.post("/api/book", json={"year": 2026}).json()["id"]
+        wait(jule, second)
+        assert first in book._jobs
+        assert b"".join(pieces).startswith(b"%PDF")
+        assert first not in book._jobs
+
+
+def test_files_no_job_knows_go_once_they_are_old() -> None:
+    import os
+
+    folder = Path(DATA_DIR) / "books"
+    folder.mkdir(parents=True, exist_ok=True)
+    old, fresh = folder / ("a" * 32 + ".sealed"), folder / ("b" * 32 + ".sealed")
+    old.write_bytes(b"x")
+    fresh.write_bytes(b"x")
+    past = time.time() - book.KEEP_SECONDS - 60
+    os.utime(old, (past, past))
+    book.sweep()
+    assert not old.exists() and fresh.exists()
+    fresh.unlink()
+
+
+def test_reportlab_opens_no_file_and_no_address(tmp_path: Path) -> None:
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.platypus import Paragraph, SimpleDocTemplate
+
+    book._fonts()
+    secret = tmp_path / "secret.png"
+    Image.new("RGB", (8, 8), (255, 0, 0)).save(secret)
+    for src in (str(secret), secret.as_uri(), "http://127.0.0.1:9/x.png"):
+        out = io.BytesIO()
+        try:
+            SimpleDocTemplate(out).build([Paragraph(f'Bild <img src="{src}" width="8" height="8"/>',
+                                                    ParagraphStyle("x"))])
+        except OSError as exc:
+            # Refusing to open it is the point; the refusal is ours, not a file that happened to be missing.
+            assert "nexdiary opens no" in str(exc), src
+            continue
+        assert sum(len(page.images) for page in PdfReader(io.BytesIO(out.getvalue())).pages) == 0, src
+
+
+def test_deleting_an_account_takes_its_books_at_once(client: TestClient, operator: Any) -> None:
+    from app.db import SessionLocal
+    from app.models import Account
+
+    from .conftest import PASSWORD
+
+    with person("jule") as jule:
+        write(jule, "2026-03-03", "Drei")
+        job = jule.post("/api/book", json={"year": 2026}).json()["id"]
+        assert wait(jule, job)["state"] == "done"
+        with SessionLocal() as db:
+            jule_id = db.query(Account).filter_by(name="jule").one().id
+    answer = client.request("DELETE", f"/api/accounts/{jule_id}", json={"current_password": PASSWORD})
+    assert answer.status_code == 204
+    assert job not in book._jobs
+    assert list((Path(DATA_DIR) / "books").iterdir()) == []

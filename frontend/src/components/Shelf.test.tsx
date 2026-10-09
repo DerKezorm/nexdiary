@@ -38,6 +38,8 @@ type Call = { method: string; url: string; body: unknown }
 let calls: Call[]
 let statuses: { state: string; pages: number; error: string | null }[]
 let start: { status: number; body: unknown }
+/** Held: the answer to starting a book waits for it. */
+let startGate: Promise<void> | null = null
 
 function serve(): void {
   calls = []
@@ -54,7 +56,10 @@ function serve(): void {
         const days = year === 2026 ? [day('2026-10-08', 'Neu'), day('2026-09-02', 'Lang', 'x'.repeat(250))] : [day('2026-10-08', 'Neu'), day('2025-07-01', 'Alt')]
         return json({ days, more: false })
       }
-      if (url === '/api/book' && method === 'POST') return json(start.body, start.status)
+      if (url === '/api/book' && method === 'POST') {
+        if (startGate) await startGate
+        return json(start.body, start.status)
+      }
       if (url.startsWith('/api/book/job1') && method === 'GET') return json({ id: 'job1', year: 2026, ...(statuses.shift() ?? { state: 'done', pages: 3, error: null }) })
       if (url.startsWith('/api/book/') && method === 'DELETE') return new Response(null, { status: 204 })
       return json(url === '/api/catch-up' ? { count: 0, days: [] } : [])
@@ -87,6 +92,7 @@ const button = (label: string) => [...document.querySelectorAll('button')].find(
 beforeEach(async () => {
   await changeLanguage('de', false)
   statuses = []
+  startGate = null
   start = { status: 202, body: { id: 'job1', year: 2026, state: 'working', pages: 0, error: null } }
   serve()
 })
@@ -192,6 +198,19 @@ describe('the book', () => {
     await click(button('PDF erstellen'))
     await until(() => document.querySelector('[role="alert"]'), 'the reason')
     expect(document.querySelector('[role="alert"]')!.textContent).toBe('Das Buch hat zu lange gebraucht und wurde abgebrochen.')
+  })
+
+  it('gives the book up when the dialog closes before the server answered the start', async () => {
+    let release = () => undefined as void
+    startGate = new Promise<void>((resolve) => (release = resolve))
+    await show(<BookDialog volume={volume} name="Jule" onClose={() => undefined} onDone={() => undefined} pollMs={5} />)
+    await act(async () => button('PDF erstellen')!.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+    await until(() => calls.some((call) => call.url === '/api/book'), 'the start to go out')
+    act(() => root.unmount())
+    release()
+    await until(() => calls.some((call) => call.method === 'DELETE' && call.url === '/api/book/job1'), 'the book to be given up')
+    expect(calls.some((call) => call.method === 'GET' && call.url === '/api/book/job1')).toBe(false)
+    root = createRoot(box)
   })
 
   it('gives the book up when the dialog closes while it is set', async () => {

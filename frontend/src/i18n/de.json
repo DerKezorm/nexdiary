@@ -1993,7 +1993,8 @@
       "book_too_often": "Das waren genug Bücher für eine Stunde. Versuch es später noch einmal.",
       "book_empty": "In diesem Jahr gibt es noch keine Seite.",
       "book_failed": "Das Buch ließ sich nicht setzen. Versuch es noch einmal.",
-      "book_too_long": "Das Buch hat zu lange gebraucht und wurde abgebrochen."
+      "book_too_long": "Das Buch hat zu lange gebraucht und wurde abgebrochen.",
+      "book_paused": "Dein letztes Buch hat zu lange gebraucht. Versuch es in einer Viertelstunde noch einmal."
     }
   }
 }

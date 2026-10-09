@@ -57,24 +57,28 @@ export function ReviewTeaser() {
   const week = teaser.kind === 'week'
   const target = `/rueckblick/${week ? 'woche' : 'monat'}/${teaser.start}`
   return (
-    <div className="card group relative flex items-center overflow-hidden" data-review-teaser>
-      <Link to={target} className="flex min-w-0 flex-1 items-center gap-4 p-3 pr-2">
-        <div className="flex shrink-0 gap-1" aria-hidden>
+    // The card measures itself: wide enough, the covers stand beside the words; narrow (a phone, the side column of the
+    // two-column layout), they stand above them, and the words keep the whole width.
+    <div className="@container card group relative overflow-hidden" data-review-teaser>
+      <Link to={target} className="flex flex-col gap-2.5 p-3 @lg:flex-row @lg:items-center @lg:gap-4 @lg:pr-11">
+        <div className="flex gap-1 pr-8 @lg:shrink-0 @lg:pr-0" aria-hidden data-teaser-covers>
           {teaser.covers.map((cover, index) =>
             cover ? (
-              <CoverImage key={cover.date} cover={cover.cover} crop={cover.cover_crop} className="h-14 w-7 rounded-md sm:w-9" />
+              <CoverImage key={cover.date} cover={cover.cover} crop={cover.cover_crop} className="h-12 min-w-0 flex-1 rounded-md @lg:h-14 @lg:w-9 @lg:flex-none" />
             ) : (
-              <span key={`free${index}`} className="h-14 w-7 rounded-md border border-dashed border-line sm:w-9" />
+              <span key={`free${index}`} className="h-12 min-w-0 flex-1 rounded-md border border-dashed border-line @lg:h-14 @lg:w-9 @lg:flex-none" />
             ),
           )}
         </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-xs font-bold tracking-wide text-accent uppercase">{t('review.teaser')}</p>
-          <p className="font-display text-lg leading-snug font-semibold group-hover:text-accent">
-            {week ? t('review.teaserWeek', { count: teaser.written }) : t('review.teaserMonth', { month: monthName(teaser.start, i18n.language), count: teaser.written })}
-          </p>
+        <div className="flex min-w-0 flex-1 items-center gap-3" data-teaser-text>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-bold tracking-wide text-accent uppercase">{t('review.teaser')}</p>
+            <p className="font-display text-base leading-snug font-semibold group-hover:text-accent @lg:text-lg">
+              {week ? t('review.teaserWeek', { count: teaser.written }) : t('review.teaserMonth', { month: monthName(teaser.start, i18n.language), count: teaser.written })}
+            </p>
+          </div>
+          <ArrowRight size={18} className="shrink-0 text-muted group-hover:text-accent" aria-hidden />
         </div>
-        <ArrowRight size={18} className="shrink-0 text-muted group-hover:text-accent" aria-hidden />
       </Link>
       <button
         type="button"
@@ -82,7 +86,7 @@ export function ReviewTeaser() {
           hide(keyOf(teaser))
           setGone(true)
         }}
-        className="mr-2 shrink-0 self-start rounded-full p-1.5 text-muted hover:bg-sheet-2 hover:text-ink"
+        className="absolute top-2 right-2 rounded-full p-1.5 text-muted hover:bg-sheet-2 hover:text-ink"
         aria-label={t('review.dismiss')}
       >
         <X size={14} />

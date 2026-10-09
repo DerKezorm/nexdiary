@@ -344,3 +344,15 @@ def _jpeg() -> bytes:
     out = io.BytesIO()
     Image.new("RGB", (64, 48), (90, 122, 82)).save(out, "JPEG")
     return out.getvalue()
+
+
+def test_the_strip_follows_the_persons_time_zone_at_the_edge_of_a_day(fixed: list[datetime]) -> None:
+    with person("jule") as jule:
+        write(jule, "2026-09-30", "Mittwoch")
+        # Sunday 4 October, 23:30 in UTC: already Monday in Berlin, still Sunday in UTC.
+        fixed[0] = datetime(2026, 10, 4, 23, 30, tzinfo=UTC)
+        jule.put("/api/me/preferences", json={"timezone": "Europe/Berlin"})
+        teaser = jule.get("/api/review/teaser").json()["teaser"]
+        assert teaser is not None and teaser["kind"] == "week" and teaser["start"] == "2026-09-28"
+        jule.put("/api/me/preferences", json={"timezone": "UTC"})
+        assert jule.get("/api/review/teaser").json()["teaser"] is None

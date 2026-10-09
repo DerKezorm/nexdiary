@@ -51,11 +51,21 @@ def rename(font: TTFont, family: str, style: str) -> None:
     names = font["name"]
     full = f"{family} {style}"
     postscript = f"{family.replace(' ', '')}-{style.replace(' ', '')}"
+    copyright_line = names.getDebugName(0) or ""
+    # The axes and instances of the variable font are gone; so are their names and the style table that used them.
+    if "STAT" in font:
+        del font["STAT"]
     for record in list(names.names):
-        if record.nameID in (16, 17, 21, 22, 25):
+        if record.nameID in (16, 17, 21, 22, 25) or record.nameID >= 256:
             names.removeNames(nameID=record.nameID)
-    subfamily = style if style in ("Regular", "Bold", "Italic", "Bold Italic") else "Regular"
-    for name_id, value in ((1, family), (2, subfamily), (3, f"nexdiary:{postscript}"), (4, full), (6, postscript)):
+    # A cut outside Regular, Bold, Italic and Bold Italic is a family of its own in the older names (1, 2), and keeps
+    # the family and its style in the typographic ones (16, 17), as the OpenType specification describes.
+    ribbi = style in ("Regular", "Bold", "Italic", "Bold Italic")
+    entries = [(0, copyright_line), (1, family if ribbi else full), (2, style if ribbi else "Regular"),
+               (3, f"nexdiary:{postscript}"), (4, full), (6, postscript)]
+    if not ribbi:
+        entries += [(16, family), (17, style)]
+    for name_id, value in entries:
         names.setName(value, name_id, 3, 1, 0x409)
         names.setName(value, name_id, 1, 0, 0)
 

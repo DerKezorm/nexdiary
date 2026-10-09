@@ -52,6 +52,7 @@ from ..security import (
 from ..services import (
     accounts,
     autowrite,
+    book,
     capsules,
     diary,
     family,
@@ -681,6 +682,8 @@ def delete_account(
     photos.remove_files(gone)
     vault.shred_leftovers()
     totp.forget_account(account_id)
+    # A book of the person being set stops, a finished one goes with its file.
+    book.forget_account(account_id)
     logger.warning("Account deleted name=%s by=%s", name, operator.name)
 
 

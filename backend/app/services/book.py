@@ -211,6 +211,9 @@ class Job:
     code: str | None = None
     pages: int = 0
     finished: float | None = None
+    #: The thread is still at work. Only it clears this, as its very last step: until then the job holds the server's
+    #: one place for a book, also when it was given up.
+    running: bool = True
     key: bytes = field(default_factory=lambda: AESGCM.generate_key(bit_length=256), repr=False)
 
     def view(self) -> dict[str, Any]:
@@ -220,6 +223,10 @@ class Job:
 _lock = threading.Lock()
 _jobs: dict[str, Job] = {}
 _starts: dict[int, deque[float]] = {}
+#: People whose last book ran past ``JOB_SECONDS``: when they may start the next one.
+_paused: dict[int, float] = {}
+#: How long a person waits after a book that took too long; it held the server's one place for that long.
+PAUSE_SECONDS = 15 * 60
 
 
 def folder() -> Path:
@@ -245,12 +252,37 @@ def startup() -> None:
 
 
 def sweep() -> None:
-    """Books nobody fetched within ``KEEP_SECONDS``, and failed ones, go."""
+    """Books nobody fetched within ``KEEP_SECONDS``, and failed ones, go; so do files in ``books/`` that no job knows
+    (a download that never finished, say) once they are that old."""
     moment = ticks()
     with _lock:
         for job in list(_jobs.values()):
-            if job.finished is not None and moment - job.finished > KEEP_SECONDS:
+            if job.finished is not None and moment - job.finished > KEEP_SECONDS and not job.running:
                 _drop(job)
+        known = {_path(job).name for job in _jobs.values()}
+        try:
+            files = list(folder().iterdir())
+        except OSError:
+            files = []
+        now = time.time()
+        for path in files:
+            try:
+                if path.name not in known and now - path.stat().st_mtime > KEEP_SECONDS:
+                    path.unlink(missing_ok=True)
+            except OSError as exc:
+                logger.warning("A book file could not be deleted: %s", exc.strerror)
+
+
+def forget_account(account_id: int) -> None:
+    """An account is deleted: its books go at once, one being set stops at its next step."""
+    with _lock:
+        for job in [job for job in _jobs.values() if job.account_id == account_id]:
+            if job.running:
+                job.state = "cancelled"
+            else:
+                _drop(job)
+        _starts.pop(account_id, None)
+        _paused.pop(account_id, None)
 
 
 def forget() -> None:
@@ -259,6 +291,7 @@ def forget() -> None:
         for job in list(_jobs.values()):
             _drop(job)
         _starts.clear()
+        _paused.clear()
 
 
 def _check_id(job_id: str) -> None:
@@ -286,7 +319,9 @@ def discard(job_id: str, account_id: int) -> None:
         if job.state == "working":
             job.state = "cancelled"
             return
-        _drop(job)
+        # A book on its way to the browser goes when the download ends.
+        if job.state != "taken":
+            _drop(job)
 
 
 def fetch(job_id: str, account_id: int) -> tuple[int, Iterator[bytes]]:
@@ -327,12 +362,18 @@ def start(db: Session, account: Account, options: Options) -> dict[str, Any]:
     sweep()
     moment = ticks()
     with _lock:
-        working = [job for job in _jobs.values() if job.state == "working"]
+        # A job counts until its thread has ended, given up or not.
+        working = [job for job in _jobs.values() if job.running]
         if any(job.account_id == account.id for job in working):
             raise fail("book_running", "Your book is being set already.", 409)
         if working:
             exc = fail("book_busy", "A book is being set right now. Try again in a moment.", 503)
             exc.headers = {"Retry-After": "30"}  # type: ignore[attr-defined]
+            raise exc
+        paused = _paused.get(account.id)
+        if paused is not None and moment < paused:
+            exc = fail("book_paused", "Your last book took too long. Try again later.", 429)
+            exc.headers = {"Retry-After": str(int(paused - moment) + 1)}  # type: ignore[attr-defined]
             raise exc
         seen = _starts.setdefault(account.id, deque())
         while seen and moment - seen[0] > 3600:
@@ -342,8 +383,8 @@ def start(db: Session, account: Account, options: Options) -> dict[str, Any]:
             exc.headers = {"Retry-After": str(int(3600 - (moment - seen[0])) + 1)}  # type: ignore[attr-defined]
             raise exc
         seen.append(moment)
-        # A book of the person that was never fetched gives way to the new one.
-        for job in [job for job in _jobs.values() if job.account_id == account.id]:
+        # A book of the person that was never fetched gives way to the new one; one on its way to the browser stays.
+        for job in [job for job in _jobs.values() if job.account_id == account.id and job.state != "taken"]:
             _drop(job)
         job = Job(id=secrets.token_hex(JOB_ID_LENGTH // 2), account_id=account.id, year=options.year, started=moment)
         _jobs[job.id] = job
@@ -384,6 +425,8 @@ def _run(job: Job, options: Options, name: str) -> None:
         writer.close()
         _step(job, "sealed")
         with _lock:
+            if job.state == "cancelled":
+                raise Stopped("book_cancelled")
             job.pages = pages
             job.state = "done"
             job.finished = ticks()
@@ -404,7 +447,12 @@ def _run(job: Job, options: Options, name: str) -> None:
             job.state = "failed"
             job.code = code
             job.finished = ticks()
-            if code == "book_cancelled":
+            if code == "book_too_long":
+                _paused[job.account_id] = ticks() + PAUSE_SECONDS
+    finally:
+        with _lock:
+            job.running = False
+            if job.state in ("cancelled", "failed") and job.code in (None, "book_cancelled"):
                 _drop(job)
 
 
@@ -414,9 +462,48 @@ _fonts_lock = threading.Lock()
 _fonts_ready = False
 
 
+def _harden() -> None:
+    """ReportLab opens whatever a picture or a font names: a path, ``file:``, ``http:`` (an ``<img src>`` in a paragraph
+    would do it). nexdiary hands it every picture in memory and only its own fonts by path, so nothing else is ever
+    opened: not the disk, not the network, even if text ever slipped through unescaped."""
+    from reportlab import rl_config
+    from reportlab.lib import utils
+    from reportlab.pdfbase import pdfdoc, pdfutils
+    from reportlab.platypus import flowables
+
+    rl_config.trustedSchemes = []
+    rl_config.trustedHosts = []
+    original = utils.open_for_read
+    if getattr(original, "nexdiary_guard", False):
+        return
+    fonts = FONTS.resolve()
+
+    def guarded(name: Any, mode: str = "b") -> Any:
+        if hasattr(name, "read"):
+            return name
+        if isinstance(name, str):
+            try:
+                path = Path(name).resolve()
+            except (OSError, ValueError):
+                path = None
+            if path is not None and path.parent == fonts and path.suffix == ".ttf" and path.is_file():
+                return original(name, mode)
+        raise OSError("nexdiary opens no file and no address for a book")
+
+    def refused(url: Any, headers: Any = None) -> Any:
+        raise OSError("nexdiary opens no address for a book")
+
+    guarded.nexdiary_guard = True  # type: ignore[attr-defined]
+    for module in (utils, pdfdoc, pdfutils, flowables):
+        if hasattr(module, "open_for_read"):
+            module.open_for_read = guarded  # type: ignore[attr-defined]
+    utils.rlUrlRead = refused  # type: ignore[attr-defined]
+
+
 def _fonts() -> None:
     global _fonts_ready
     with _fonts_lock:
+        _harden()
         if _fonts_ready:
             return
         for name in ("Fraunces-SemiBold", "DiarySerif-Regular", "DiarySerif-Bold", "DiarySerif-Italic",

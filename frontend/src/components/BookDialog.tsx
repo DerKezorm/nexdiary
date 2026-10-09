@@ -71,6 +71,11 @@ export function BookDialog({ volume, name, onClose, onDone, pollMs = BOOK_POLL_M
     setProblem(null)
     try {
       const started = await bookApi.start(year, format, photos, values, notes)
+      // Closed while the server was still answering: the book nobody waits for is given up at once.
+      if (!alive.current) {
+        void bookApi.discard(started.id).catch(() => undefined)
+        return
+      }
       job.current = started.id
       let state = started
       while (state.state === 'working') {

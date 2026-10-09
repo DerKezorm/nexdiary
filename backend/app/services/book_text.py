@@ -28,11 +28,45 @@ class Block:
 
 
 _ESCAPABLE = set("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~")
+#: The longest run of text one paragraph of the book gets: a longer one is set as several, one after the other.
+#: ReportLab takes far longer than linear on one huge paragraph full of marks; in pieces it stays quick.
+PIECE = 2_000
+#: More bold or italic marks than this in one piece and it is set as plain text, marks and all.
+MARKS_MAX = 64
+
+
+def runs(text: str, size: int = PIECE) -> list[str]:
+    """The text cut into runs of at most ``size`` characters, at a space where there is one in the second half."""
+    out: list[str] = []
+    while len(text) > size:
+        cut = text.rfind(" ", size // 2, size)
+        cut = cut if cut > 0 else size
+        out.append(text[:cut])
+        text = text[cut:].lstrip(" ")
+    if text:
+        out.append(text)
+    return out
+
+
+def _plain(text: str) -> str:
+    """The text as it stands, escapes as their character: for a piece with too many marks to be worth setting."""
+    out: list[str] = []
+    index = 0
+    while index < len(text):
+        if text[index] == "\\" and index + 1 < len(text) and text[index + 1] in _ESCAPABLE:
+            out.append(text[index + 1])
+            index += 2
+            continue
+        out.append(text[index])
+        index += 1
+    return "".join(out).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 def inline(text: str) -> str:
     """One line or paragraph of Markdown as markup: ``**bold**``, ``*italic*`` and ``_italic_`` (not inside a word),
-    escapes as the character itself, everything else as text."""
+    escapes as the character itself, everything else as text. More than ``MARKS_MAX`` marks: all of it as text."""
+    if text.count("*") + text.count("_") > MARKS_MAX:
+        return _plain(text)
     out: list[str] = []
     run: list[str] = []
     bold = italic = False
@@ -128,15 +162,13 @@ def blocks(markdown: str) -> list[Block]:
     def end_paragraph() -> None:
         if paragraph:
             text = " ".join(part.strip() for part in paragraph).strip()
-            if text:
-                found.append(Block("paragraph", inline(text)))
+            found.extend(Block("paragraph", inline(piece)) for piece in runs(text))
             paragraph.clear()
 
     def end_quote() -> None:
         if quote:
             text = " ".join(part.strip() for part in quote).strip()
-            if text:
-                found.append(Block("quote", inline(text)))
+            found.extend(Block("quote", inline(piece)) for piece in runs(text))
             quote.clear()
 
     for raw in markdown.replace("\r\n", "\n").split("\n"):
@@ -155,7 +187,9 @@ def blocks(markdown: str) -> list[Block]:
         if heading is not None:
             end_paragraph()
             if heading[1]:
-                found.append(Block("heading", inline(heading[1]), str(min(heading[0], 3))))
+                first, *rest = runs(heading[1])
+                found.append(Block("heading", inline(first), str(min(heading[0], 3))))
+                found.extend(Block("paragraph", inline(piece)) for piece in rest)
             continue
         item = _item(line)
         pieces = list(_photos(line if item is None else item[1]))
@@ -163,7 +197,9 @@ def blocks(markdown: str) -> list[Block]:
             end_paragraph()
             words = "".join(text for kind, text, _cut in pieces if kind == "text").strip()
             if words:
-                found.append(Block("number" if item[0] else "bullet", inline(words), item[0]))
+                first, *rest = runs(words)
+                found.append(Block("number" if item[0] else "bullet", inline(first), item[0]))
+                found.extend(Block("paragraph", inline(piece)) for piece in rest)
             found.extend(Block("photo", uid, cut) for kind, uid, cut in pieces if kind == "photo")
             continue
         for kind, value, cut in pieces:
