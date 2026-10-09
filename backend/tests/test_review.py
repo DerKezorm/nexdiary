@@ -315,11 +315,52 @@ def test_the_shelf_counts_pages_per_year_with_leap_years() -> None:
         overview = jule.get("/api/journal/overview").json()
     assert overview["year"] == 2026
     assert overview["volumes"] == [
-        {"year": 2024, "pages": 2, "days": 366, "months": [0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]},
+        # The first volume from its first page on: 29 February to 31 December of a leap year.
+        {"year": 2024, "pages": 2, "days": 307, "months": [0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]},
         {"year": 2025, "pages": 1, "days": 365, "months": [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0]},
         {"year": 2026, "pages": 2, "days": 365, "months": [1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0]},
     ]
     assert journal.days_in_year(2100) == 365 and journal.days_in_year(2000) == 366
+
+
+@pytest.mark.parametrize(("first", "days"), [
+    ("2025-07-18", 167),  # in the middle of the year: 18 July to 31 December
+    ("2025-01-01", 365),  # on the 1 January: the whole year
+    ("2025-12-31", 1),  # on the 31 December: that day alone
+    ("2024-01-01", 366),  # a leap year from its start
+    ("2024-03-01", 306),  # a leap year after its 29 February
+])
+def test_the_first_volume_counts_from_the_first_page_and_the_later_ones_whole_years(first: str, days: int) -> None:
+    with person("jule") as jule:
+        jule.put("/api/me/preferences", json={"timezone": "UTC"})
+        write(jule, first)
+        write(jule, "2026-03-03")
+        volumes = jule.get("/api/journal/overview").json()["volumes"]
+    assert (volumes[0]["year"], volumes[0]["days"]) == (int(first[:4]), days)
+    assert volumes[-1] == {"year": 2026, "pages": 1, "days": 365, "months": [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]}
+    assert journal.volume_days(2028, date(2028, 2, 29)) == 307 and journal.volume_days(2028, None) == 366
+
+
+def test_the_first_volume_is_this_years_and_the_days_left_run_to_new_years_eve(fixed: list[datetime]) -> None:
+    with person("jule") as jule:
+        jule.put("/api/me/preferences", json={"timezone": "UTC"})
+        for day in ("2026-07-18", "2026-08-01", "2026-10-09"):
+            write(jule, day)
+        overview = jule.get("/api/journal/overview").json()
+        assert overview["volumes"] == [
+            {"year": 2026, "pages": 3, "days": 167, "months": [0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0]}]
+        # Friday 9 October: the 10th up to the 31 December are 83 days.
+        assert overview["days_left"] == 83
+    assert journal.days_left(date(2026, 12, 30)) == 1 and journal.days_left(date(2026, 12, 31)) == 0
+    assert journal.days_left(date(2027, 1, 1)) == 364 and journal.days_left(date(2028, 1, 1)) == 365
+    # In the person's own zone: 23:30 on the 31st in UTC is the 1 January in Berlin, a new year with 364 days left.
+    fixed[0] = datetime(2026, 12, 31, 23, 30, tzinfo=UTC)
+    with person("tom") as tom:
+        tom.put("/api/me/preferences", json={"timezone": "Europe/Berlin"})
+        later = tom.get("/api/journal/overview").json()
+        assert (later["year"], later["days_left"]) == (2027, 364)
+        tom.put("/api/me/preferences", json={"timezone": "UTC"})
+        assert tom.get("/api/journal/overview").json()["days_left"] == 0
 
 
 def test_the_journal_filters_by_year_on_the_server() -> None:

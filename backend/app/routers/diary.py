@@ -165,6 +165,8 @@ def today(request: Request, account: Account, db: DbSession) -> dict[str, Any]:
         "catch_up": diary.catch_up(db, account.id, dek, day),
         "notes": diary.list_notes(db, account.id, dek, key),
         "day": diary.get_day(db, account.id, dek, key),
+        # Whether something is begun and not saved: with it (or notes, or a page) the day is no day for "Nur kurz".
+        "has_draft": diary.has_draft(db, account.id, key),
         "values": diary.list_values(db, account.id, dek),
         "streak": series["current"],
         # The streak with its unit, the weekly goal, the week so far and the shields in hand.
@@ -280,7 +282,8 @@ def put_day(date: str, payload: DayIn, request: Request, account: Account, db: D
 
 @router.post("/days/{date}/short", summary="Today's page out of one sentence and the first value: the short entry")
 def short(date: str, payload: ShortIn, request: Request, account: Account, db: DbSession) -> dict[str, Any]:
-    """Only for today and only while the day has no page (``day_written`` else). Counts as a written day."""
+    """Only for today and only on an empty day: no page (``day_written``), no notes and no draft
+    (``short_day_not_empty``). Counts as a written day."""
     key = diary.check_date(account, date)
     if key != diary.note_day(account).isoformat():
         raise error("short_only_today", "A short entry is for today only.", 409)
@@ -335,9 +338,13 @@ def put_values_of_day(date: str, payload: ValuesOfDayIn, request: Request, accou
     return diary.change_day(db, account.id, dek, key, lambda content: diary.merge(content, patch))
 
 
-@router.delete("/days/{date}", status_code=204, summary="Delete the page of a day (its notes stay)")
+@router.delete("/days/{date}", status_code=204, summary="Delete the page of a day (its notes and photos stay)")
 def delete_day(date: str, account: Account, db: DbSession) -> None:
-    diary.delete_day(db, account.id, diary.check_date(account, date))
+    """Title, text, tags, ratings and cover go, the shares of the day and its draft with them; the notes and the photos
+    of the day stay, the pictures taken for the text alone go. Never a locked day."""
+    key = diary.check_date(account, date)
+    diary.delete_day(db, account.id, key)
+    photos.remove_files(diary.tidy_text_photos(db, account.id, vault.dek_for(account.id), key))
 
 
 # --- Values ---------------------------------------------------------------------------------------------------------

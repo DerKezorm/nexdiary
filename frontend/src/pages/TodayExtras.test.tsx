@@ -50,6 +50,8 @@ let today: Record<string, unknown>
 let ai: Record<string, unknown>
 let family: FamilyCard | null
 let followups: { questions: unknown[] } | string
+/** The answer the server already holds for today (another device): a new one is refused. */
+let answeredElsewhere: string | null
 
 function serve(): void {
   calls = []
@@ -64,6 +66,10 @@ function serve(): void {
       if (url === '/api/ai') return json(ai)
       if (url === '/api/family/answer' && method === 'PUT') {
         await new Promise((resolve) => setTimeout(resolve, 20))
+        if (answeredElsewhere !== null) {
+          family = { ...family!, mine: { text: answeredElsewhere, at: '2026-10-06T16:00:00+00:00' }, answers: ANSWERS }
+          return json({ detail: { code: 'family_answered', message: 'x' } }, 409)
+        }
         const mine = { text: body!.text, at: '2026-10-06T17:00:00+00:00' }
         family = { ...family!, mine, answers: ANSWERS, people: PEOPLE.map((person) => (person.me ? { ...person, answered: true } : person)) }
         today = { ...today, notes: [...(today.notes as unknown[]), { ...NOTES[1], id: body!.note_id, text: body!.text, prompt: QUESTION.text, prompt_id: QUESTION.id }] }
@@ -85,6 +91,18 @@ function serve(): void {
         return json({ date: DATE, title: body!.text, text: body!.text, tags: [], values: {}, cover: body!.cover, cover_chosen: true, written_by: 'self', words: 3, revision: 0, created_at: '', updated_at: '' })
       }
       return json([])
+    }),
+  )
+}
+
+/** The short entry refused: a note came in on another device meanwhile. */
+function serveShortRefused(): void {
+  const before = globalThis.fetch
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === `/api/days/${DATE}/short`) return new Response(JSON.stringify({ detail: { code: 'short_day_not_empty', message: 'x' } }), { status: 409, headers: { 'Content-Type': 'application/json' } })
+      return before(url, init)
     }),
   )
 }
@@ -149,6 +167,7 @@ beforeEach(async () => {
   ai = { provider: 'local', to: '', model: 'llama3.1:8b', mine: true, available: true }
   family = BEFORE
   followups = { questions: [] }
+  answeredElsewhere = null
   serve()
 })
 
@@ -202,17 +221,29 @@ describe('the family question', () => {
     await idle()
     const ids = calls.filter((call) => call.url === '/api/family/answer').map((call) => call.body!.note_id)
     expect(new Set(ids).size).toBe(1)
-    // Changing the answer goes out again; there is no way to take it back.
+    // An answer is final: nothing to take back, nothing to change, and the card said so under the field.
     expect(button('Zurücknehmen')).toBeUndefined()
-    await act(async () => button('Ändern')!.click())
-    type(box.querySelector<HTMLTextAreaElement>('textarea[aria-label="Deine Antwort auf die Familienfrage"]')!, 'Suppe und Brot')
-    await act(async () => button('Antworten')!.click())
-    await idle()
-    const changes = calls.filter((call) => call.url === '/api/family/answer' && call.method === 'PUT')
-    expect(changes.at(-1)!.body!.text).toBe('Suppe und Brot')
-    expect(changes.at(-1)!.body!.note_id).not.toBe(ids[0])
+    expect(button('Ändern')).toBeUndefined()
+    expect(box.querySelector('textarea[aria-label="Deine Antwort auf die Familienfrage"]')).toBeNull()
     expect(calls.some((call) => call.method === 'DELETE')).toBe(false)
     expect(box.querySelector('[data-answers]')).not.toBeNull()
+  })
+
+  it.each(['page', 'columns', 'chat'] as const)('says under the field that an answer cannot be changed, layout %s', async (layout) => {
+    await show(layout)
+    const card = box.querySelector('[data-family]')!
+    expect(card.querySelector('[data-family-final]')!.textContent).toBe('Deine Antwort lässt sich danach nicht mehr ändern.')
+  })
+
+  it('shows the answer that stands when another device answered first', async () => {
+    answeredElsewhere = 'Suppe vom Handy'
+    await show()
+    type(box.querySelector<HTMLTextAreaElement>('textarea[aria-label="Deine Antwort auf die Familienfrage"]')!, 'Brot')
+    await act(async () => button('Antworten')!.click())
+    await idle()
+    const card = box.querySelector('[data-family]')!
+    expect(card.querySelector('[role=alert]')!.textContent).toBe('Du hast diese Frage schon beantwortet. Eine Antwort bleibt, wie sie ist.')
+    expect(card.querySelector('[data-mine] p')!.textContent).toBe('Suppe vom Handy')
   })
 
   it('says so when nobody answered yet, and is not there for whoever has not joined', async () => {
@@ -256,11 +287,17 @@ describe('the AI asks first', () => {
   it.each(['page', 'columns', 'chat'] as const)('stands under "Ausformulieren" only with an AI and notes, layout %s', async (layout) => {
     await show(layout)
     expect(button('Erst fragen lassen')).toBeTruthy()
+    // Said right under it what it does; the promise about the notes stays below.
+    const explain = box.querySelector('[data-followups-explain]')!
+    expect(explain.textContent).toBe('Die KI stellt dir bis zu zwei Fragen zu dem, was in deinen Notizen offen bleibt. Deine Antworten kommen zu den Notizen, dann schreibt sie die Seite.')
+    expect(explain.previousElementSibling!.textContent).toContain('Erst fragen lassen')
+    expect(explain.nextElementSibling!.textContent).toContain('Die KI ordnet und glättet nur')
     expect(calls.some((call) => call.url.startsWith('/api/ai/'))).toBe(false)
     close()
     ai = { provider: 'none', to: '', model: '', mine: true, available: false }
     await show(layout)
     expect(button('Erst fragen lassen')).toBeUndefined()
+    expect(box.querySelector('[data-followups-explain]')).toBeNull()
   })
 
   it('asks, keeps the answers as notes with their question, passes over the empty ones and writes the day up', async () => {
@@ -273,6 +310,7 @@ describe('the AI asks first', () => {
     await show()
     await act(async () => button('Erst fragen lassen')!.click())
     expect(dialog().textContent).toContain('Liest deine Notizen')
+    expect(dialog().querySelector('[data-followups-explain]')!.textContent).toContain('Die KI stellt dir bis zu zwei Fragen')
     await eventually(() => expect(dialog().textContent).toContain('Was war die Idee?'), 'the questions')
     // The time of the note in the person's zone: 07:40 UTC is 09:40 in Berlin.
     expect(dialog().textContent).toContain('zur Notiz von 09:40 Uhr')
@@ -317,6 +355,43 @@ describe('the AI asks first', () => {
 })
 
 describe('just briefly today', () => {
+  // "Heute nur kurz" is for an empty day only: no notes, no page, no draft.
+  beforeEach(() => {
+    today = { ...today, notes: [] }
+  })
+
+  it.each(['page', 'columns', 'chat'] as const)('is offered on an empty day and not once there are notes, layout %s', async (layout) => {
+    await show(layout)
+    expect(button('Heute nur kurz: Stimmung und ein Satz')).toBeTruthy()
+    close()
+    today = { ...today, notes: [...NOTES] }
+    await show(layout)
+    expect(button('Heute nur kurz: Stimmung und ein Satz')).toBeUndefined()
+    // The rest of the card stays: the day is written up instead.
+    expect(box.textContent).toContain('Den Tag aufschreiben')
+  })
+
+  it('is not offered while a draft stands, nor under a title alone', async () => {
+    today = { ...today, has_draft: true }
+    await show()
+    expect(button('Heute nur kurz: Stimmung und ein Satz')).toBeUndefined()
+    close()
+    today = { ...today, has_draft: false, day: { date: DATE, text: '', title: 'Nur ein Titel', tags: [], values: {}, cover: 'illu:baum.abend.herbst', cover_chosen: true } }
+    await show()
+    expect(button('Heute nur kurz: Stimmung und ein Satz')).toBeUndefined()
+  })
+
+  it('says why when the server finds the day no longer empty', async () => {
+    await show()
+    serveShortRefused()
+    await act(async () => button('Heute nur kurz: Stimmung und ein Satz')!.click())
+    type(dialog().querySelector<HTMLInputElement>('input')!, 'Nur kurz.')
+    await act(async () => button('4 von 10', dialog())!.click())
+    await act(async () => button('Speichern', dialog())!.click())
+    await idle()
+    expect(dialog().querySelector('[role=alert]')!.textContent).toBe('Für heute gibt es schon Notizen oder einen Entwurf. Schreib den Tag lieber auf.')
+  })
+
   it.each(['page', 'columns', 'chat'] as const)('makes the page of today out of the first value and one sentence, layout %s', async (layout) => {
     await show(layout)
     await act(async () => button('Heute nur kurz: Stimmung und ein Satz')!.click())

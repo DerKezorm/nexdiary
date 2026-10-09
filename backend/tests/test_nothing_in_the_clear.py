@@ -99,8 +99,9 @@ def write_everywhere(client: TestClient, word: str) -> None:
 
 
 def family_everything(client: TestClient, word: str) -> None:
-    """The family question answered by both, read by both, changed once: the answers are sealed, each with the key of
-    the one who wrote it, and the note an answer became as well."""
+    """The family question answered by both and read by both, on today and on the reading page of the day: the answers
+    are sealed, each with the key of the one who wrote it, and the note an answer became as well. A second answer is
+    refused and leaves nothing behind."""
     from .conftest import new_client
 
     with SessionLocal() as db:
@@ -111,12 +112,13 @@ def family_everything(client: TestClient, word: str) -> None:
     first = client.put("/api/family/answer", json={"date": today, "text": f"Antwort {word}", "note_id": str(uuid.uuid4())})
     assert first.status_code == 200
     assert client.put("/api/family/answer", json={"date": today, "text": f"Geändert {word}",
-                                                  "note_id": str(uuid.uuid4())}).status_code == 200
+                                                  "note_id": str(uuid.uuid4())}).status_code == 409
     with new_client(rike) as reader:
         reader.put("/api/me/preferences", json={"timezone": "UTC", "family": True})
         seen = reader.put("/api/family/answer", json={"date": today, "text": f"Rike {word}",
                                                       "note_id": str(uuid.uuid4())})
-        assert seen.status_code == 200 and f"Geändert {word}" in seen.text
+        assert seen.status_code == 200 and f"Antwort {word}" in seen.text
+        assert f"Antwort {word}" in reader.get(f"/api/family/day/{today}").text
 
 
 def capsule_everything(client: TestClient, word: str) -> None:
@@ -270,7 +272,7 @@ def test_a_backup_cannot_be_read_without_the_master_key_and_comes_back_on_the_sa
     assert client.get(f"/api/capsules/{to_rike['id']}").json()["text"] == f"Geändert {word}"
     assert client.get(f"/api/capsules/{to_rike['id']}/photo").status_code == 200
     # The answer to the family question came back too.
-    assert client.get("/api/family").json()["mine"]["text"] == f"Geändert {word}"
+    assert client.get("/api/family").json()["mine"]["text"] == f"Antwort {word}"
 
 
 def test_a_deleted_account_leaves_neither_its_key_nor_its_texts_in_the_files(

@@ -29,14 +29,15 @@
  * (each with a line to write on, the question as a grey hint in it, `sections` of the editor); the AI buttons carry
  * the chosen one (`template`), and on saving the sections of the template that stayed empty fall away.
  */
-import { Check, Crop, ImageIcon, Loader2, Lock, MessageCircleQuestion, Shuffle, Sparkles, ZoomIn } from 'lucide-react'
+import { Check, Crop, ImageIcon, Loader2, Lock, MessageCircleQuestion, Shuffle, Sparkles, Trash2, ZoomIn } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 
-import { aiApi, ApiError, diaryApi, immichApi, NO_TEMPLATE, photosApi, photoUrl, promptsApi, templatesApi, type AiLength, type CoverCropValue, type DayChange, type DayPage, type DraftIn, type ImmichEntry, type ImmichPhoto, type Note, type Photo, type Question, type Template, type TemplateSet } from '../api/client'
+import { aiApi, ApiError, diaryApi, immichApi, NO_TEMPLATE, photosApi, photoUrl, promptsApi, templatesApi, type AiLength, type CoverCropValue, type DayChange, type DayPage, type Draft, type DraftIn, type ImmichEntry, type ImmichPhoto, type Note, type Photo, type Question, type Template, type TemplateSet } from '../api/client'
 import { CoverCropDialog } from '../components/CropEditor'
 import { DayPhotoPicker } from '../components/DayPhotoPicker'
+import { DeletePageDialog } from '../components/DeletePage'
 import { Dialog } from '../components/Dialog'
 import { ImmichPicker } from '../components/ImmichPicker'
 import { LockDialog, LockedMark } from '../components/LockDay'
@@ -160,6 +161,9 @@ export default function WritePage() {
   const [kept, setKept] = useState(false)
   const [saving, setSaving] = useState(false)
   const [conflict, setConflict] = useState<DayPage | null>(null)
+  /** A draft older than the page that stands, waiting for the person to choose between the two. */
+  const [stale, setStale] = useState<{ draft: Draft; found: DayPage; templates: TemplateSet | null; time: string } | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const [copied, setCopied] = useState(false)
   const [editorEmpty, setEditorEmpty] = useState(true)
   const [picking, setPicking] = useState(false)
@@ -273,6 +277,52 @@ export default function WritePage() {
 
   // --- Loading ------------------------------------------------------------------------------------------------------
 
+  /** Starts the writing: from the draft when there is one (it comes back and names where it started), else from the
+   * saved page (or an empty one). */
+  const begin = (found: DayPage | null, draft: Draft | null, ownTemplates: TemplateSet | null) => {
+    const server = pageOf(found)
+    if (draft) {
+      const kept: Page = { title: draft.title, text: draft.text, tags: draft.tags, cover: draft.cover, cover_crop: draft.cover ? coverCropOf(draft.cover_crop) : null }
+      const from = { by: draft.written_by === 'ai' ? ('ai' as const) : null, length: draft.ai_length ?? ('long' as const) }
+      setPage(kept)
+      setOrigin(from)
+      if (from.by === 'ai') suggested.current = null
+      latest.current = { page: kept, base: draft.base_revision, origin: from }
+      setBase(draft.base_revision)
+      // What the draft holds differently from the page it started from was written here.
+      started.current = draft.base_revision === (found?.revision ?? -1) ? server : null
+      touched.current = new Set(FIELDS.filter((field) => !same(kept[field], (started.current ?? server)[field]) || started.current === null))
+      sentDraft.current = JSON.stringify({ ...kept, base_revision: draft.base_revision })
+      setRestored(timeOf(draft.updated_at, zone))
+      setAutoDraft(Boolean(draft.auto))
+    } else {
+      setPage(server)
+      latest.current = { page: server, base: found?.revision ?? -1, origin: latest.current.origin }
+      setBase(found?.revision ?? -1)
+      started.current = server
+      touched.current = new Set()
+    }
+    framePage(ownTemplates)
+    setLoaded(true)
+  }
+
+  /** For the loading, which runs once per day and outlives a render. */
+  const beginning = useRef(begin)
+  useEffect(() => {
+    beginning.current = begin
+  })
+
+  /** The answer to "Seite oder Entwurf?": the saved page throws the draft away; the draft comes back as ever, and a
+   * save meets the page saved since (the conflict shows the other version). */
+  const chooseStale = (keep: 'page' | 'draft') => {
+    if (!stale) return
+    setStale(null)
+    if (keep === 'page') {
+      void diaryApi.deleteDraft(date).catch(() => undefined)
+      begin(stale.found, null, stale.templates)
+    } else begin(stale.found, stale.draft, stale.templates)
+  }
+
   useEffect(() => {
     let gone = false
     void (async () => {
@@ -289,32 +339,14 @@ export default function WritePage() {
         setDay(found)
         setNotes(dayNotes)
         setPhotos(dayPhotos)
-        const server = pageOf(found)
-        // A draft is writing that was never saved (a save ends it): it comes back, and names where it started.
-        if (draft) {
-          const kept: Page = { title: draft.title, text: draft.text, tags: draft.tags, cover: draft.cover, cover_crop: draft.cover ? coverCropOf(draft.cover_crop) : null }
-          const from = { by: draft.written_by === 'ai' ? ('ai' as const) : null, length: draft.ai_length ?? ('long' as const) }
-          setPage(kept)
-          setOrigin(from)
-          if (from.by === 'ai') suggested.current = null
-          latest.current = { page: kept, base: draft.base_revision, origin: from }
-          setBase(draft.base_revision)
-          // What the draft holds differently from the page it started from was written here.
-          started.current = draft.base_revision === (found?.revision ?? -1) ? server : null
-          touched.current = new Set(FIELDS.filter((field) => !same(kept[field], (started.current ?? server)[field]) || started.current === null))
-          sentDraft.current = JSON.stringify({ ...kept, base_revision: draft.base_revision })
-          setRestored(timeOf(draft.updated_at, zone))
-          setAutoDraft(Boolean(draft.auto))
-        } else {
-          setPage(server)
-          latest.current = { page: server, base: found?.revision ?? -1, origin: latest.current.origin }
-          setBase(found?.revision ?? -1)
-          started.current = server
-          touched.current = new Set()
-        }
         setTemplateSet(ownTemplates)
-        framePage(ownTemplates)
-        setLoaded(true)
+        // A draft begun on another revision of a page that stands now (the page was saved after it: "Nur kurz", a
+        // second tab, the morning's suggestion taken): it does not come back unasked. The person chooses.
+        if (draft && draft.base_revision !== (found?.revision ?? -1) && found && (found.title.trim() || found.text.trim())) {
+          setStale({ draft, found, templates: ownTemplates, time: timeOf(draft.updated_at, zone) })
+          return
+        }
+        beginning.current(found, draft, ownTemplates)
       } catch (error) {
         if (!gone) setProblem(codeOf(error))
       }
@@ -777,6 +809,7 @@ export default function WritePage() {
                 onClick={() => setAskingFirst(true)}
                 disabled={formulating}
                 aria-label={t('followups.button')}
+                title={t('followups.explain')}
                 className="inline-flex h-8 items-center justify-center gap-2 rounded-full px-2.5 text-sm font-semibold text-ink-2 transition hover:bg-sheet-2 disabled:pointer-events-none disabled:opacity-50 sm:px-3.5"
               >
                 <MessageCircleQuestion size={15} aria-hidden /> <span className="hidden sm:inline">{t('followups.button')}</span>
@@ -797,6 +830,19 @@ export default function WritePage() {
                 className="inline-flex h-8 items-center justify-center gap-2 rounded-full px-3 text-sm font-semibold text-ink-2 transition hover:bg-sheet-2 disabled:pointer-events-none disabled:opacity-50"
               >
                 <Lock size={15} aria-hidden /> <span className="hidden sm:inline" aria-hidden>{t('lock.action')}</span>
+              </button>
+            )}
+            {canLock && (
+              <button
+                type="button"
+                onClick={() => setDeleting(true)}
+                aria-label={t('entry.delete')}
+                title={t('entry.delete')}
+                disabled={saving}
+                className="inline-flex h-8 items-center justify-center rounded-full px-2.5 text-sm font-semibold text-ink-2 transition hover:bg-sheet-2 hover:text-bad disabled:pointer-events-none disabled:opacity-50"
+                data-delete-page-open
+              >
+                <Trash2 size={15} aria-hidden />
               </button>
             )}
             <SaveButton className="hidden h-8 px-3.5 text-sm lg:inline-flex" onSave={() => void save()} disabled={!canSave} saving={saving} />
@@ -906,6 +952,9 @@ export default function WritePage() {
                   >
                     <MessageCircleQuestion size={18} aria-hidden /> {t('followups.button')}
                   </button>
+                  <p className="-mt-1 text-xs leading-relaxed text-muted" data-followups-explain>
+                    {t('followups.explain')}
+                  </p>
                   <p className="text-xs leading-relaxed text-muted">
                     {aiHint(ai, t)} {t('write.aiPromise')}
                   </p>
@@ -1061,6 +1110,38 @@ export default function WritePage() {
             setAskingFirst(false)
             // The answers are notes of the day now: they show beside the page, and the AI writes from all of them.
             void diaryApi.notes(date).then(setNotes, () => undefined).finally(() => ask(length))
+          }}
+        />
+      )}
+
+      {stale && (
+        <Dialog title={t('write.staleTitle')} onClose={() => navigate(`/tag/${date}`)}>
+          <p className="text-sm text-ink-2" data-stale-draft>
+            {t('write.staleText')}
+          </p>
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <button type="button" onClick={() => chooseStale('draft')} className="inline-flex h-10 items-center rounded-full border border-line px-4 text-sm font-semibold text-ink-2 hover:bg-sheet-2">
+              {t('write.staleDraft', { time: stale.time })}
+            </button>
+            <button type="button" onClick={() => chooseStale('page')} className="inline-flex h-10 items-center rounded-full bg-accent px-4 text-sm font-semibold text-accent-ink hover:brightness-105">
+              {t('write.stalePage')}
+            </button>
+          </div>
+        </Dialog>
+      )}
+
+      {deleting && day && !day.locked && (
+        <DeletePageDialog
+          date={date}
+          unsaved={unsaved}
+          onClose={() => setDeleting(false)}
+          onDeleted={() => {
+            // Nothing is left to send: the draft went with the page.
+            done.current = true
+            pending.current = false
+            window.clearTimeout(pause.current)
+            window.clearTimeout(longest.current)
+            navigate(isToday ? '/' : `/tag/${date}`, { state: { notice: t('entry.deleted') } })
           }}
         />
       )}

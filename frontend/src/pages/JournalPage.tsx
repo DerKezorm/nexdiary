@@ -225,7 +225,7 @@ export function JournalPage() {
       </header>
       {overview?.volumes && overview.volumes.length > 0 && (
         <div className="mb-6">
-          <Shelf volumes={overview.volumes} thisYear={overview.year ?? new Date().getFullYear()} year={year} onYear={setYear} name={me?.display_name || me?.name || ''} />
+          <Shelf volumes={overview.volumes} thisYear={overview.year ?? new Date().getFullYear()} daysLeft={overview.days_left ?? 0} year={year} onYear={setYear} name={me?.display_name || me?.name || ''} />
         </div>
       )}
       {!query && <CatchUpCard data={catchUp} className="mb-5" />}

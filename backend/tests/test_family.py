@@ -1,7 +1,8 @@
 """The family question: only who joined takes part, the others' answers come out only after the own one (on every
-way) and the own one cannot be taken back, leaving takes the answers along, blocked accounts vanish, the date is the
-server's for everybody (a zone of one's own reaches no other day), an answer is a note with its question on the
-person's own day of notes, and answering twice at once keeps one answer and one note."""
+way) and the own one is final (no taking back, no changing), leaving takes the answers along, blocked accounts vanish,
+the date is the server's for everybody (a zone of one's own reaches no other day), an answer is a note with its
+question on the person's own day of notes, answering twice at once keeps one answer and one note, and the answers of a
+date can be read again on that day by whoever answered then, by nobody else."""
 
 from __future__ import annotations
 
@@ -193,32 +194,41 @@ def test_the_operator_has_no_way_in(client: TestClient, operator: Account, at_no
 # --- The answer -----------------------------------------------------------------------------------------------------
 
 
-def test_an_answer_is_a_note_of_the_day_with_its_question_and_changes_with_it(at_noon: list[datetime]) -> None:
+def test_an_answer_is_a_note_of_the_day_with_its_question_and_is_final(at_noon: list[datetime]) -> None:
     jule = joined("jule")
     question = jule.get("/api/family").json()["question"]
     note_id = str(uuid.uuid4())
     assert answer(jule, "Kastanien", note_id=note_id).status_code == 200
-    # The same press again: one answer, one note.
-    assert answer(jule, "Kastanien", note_id=note_id).status_code == 200
+    # The same press again (a reply lost on the way): one answer, one note, answered like the first.
+    again = answer(jule, "Kastanien", note_id=note_id)
+    assert again.status_code == 200 and again.json()["mine"]["text"] == "Kastanien"
     notes = jule.get("/api/notes", params={"date": DAY}).json()
     assert [(note["id"], note["text"], note["prompt"], note["prompt_id"]) for note in notes] == [
         (note_id, "Kastanien", question["text"], question["id"])]
-    # Changed the same day, with another id from a reloaded page: the answer and its note change, nothing is added.
-    changed = answer(jule, "Kastanien und Tee")
-    assert changed.json()["mine"]["text"] == "Kastanien und Tee"
+    # Another answer the same day, from a reloaded page or the same page: refused, nothing changes.
+    for words, other in (("Kastanien und Tee", str(uuid.uuid4())), ("Kastanien und Tee", note_id),
+                         ("Kastanien", str(uuid.uuid4()))):
+        refused = answer(jule, words, note_id=other)
+        assert (refused.status_code, refused.json()["detail"]["code"]) == (409, "family_answered"), (words, other)
+    assert jule.get("/api/family").json()["mine"]["text"] == "Kastanien"
     notes = jule.get("/api/notes", params={"date": DAY}).json()
-    assert [(note["id"], note["text"]) for note in notes] == [(note_id, "Kastanien und Tee")]
+    assert [(note["id"], note["text"]) for note in notes] == [(note_id, "Kastanien")]
     assert count(FamilyAnswer) == 1
     jule.close()
 
 
-def test_a_deleted_note_stays_deleted_when_the_answer_changes(at_noon: list[datetime]) -> None:
+def test_the_note_of_an_answer_is_the_persons_to_change_and_delete(at_noon: list[datetime]) -> None:
     jule = joined("jule")
     note_id = str(uuid.uuid4())
     answer(jule, "Kastanien", note_id=note_id)
+    assert jule.put(f"/api/notes/{note_id}", json={"text": "Kastanien, heiß"}).status_code == 200
+    # The answer stays as it was given.
+    assert jule.get("/api/family").json()["mine"]["text"] == "Kastanien"
     assert jule.delete(f"/api/notes/{note_id}").status_code == 204
-    assert answer(jule, "Tee").json()["mine"]["text"] == "Tee"
     assert jule.get("/api/notes", params={"date": DAY}).json() == []
+    assert jule.get("/api/family").json()["mine"]["text"] == "Kastanien"
+    refused = answer(jule, "Tee")
+    assert (refused.status_code, refused.json()["detail"]["code"]) == (409, "family_answered")
     jule.close()
 
 
@@ -248,7 +258,7 @@ def test_a_locked_day_keeps_the_answer_without_a_note(at_noon: list[datetime]) -
     jule.close()
 
 
-def test_answering_twice_at_once_keeps_one_answer_and_one_note(at_noon: list[datetime]) -> None:
+def test_answering_at_once_keeps_one_answer_and_one_note_and_refuses_the_rest(at_noon: list[datetime]) -> None:
     jule = joined("jule")
     jule_id = account_id(jule)
     start = threading.Barrier(4, timeout=10)
@@ -265,7 +275,8 @@ def test_answering_twice_at_once_keeps_one_answer_and_one_note(at_noon: list[dat
         thread.start()
     for thread in threads:
         thread.join()
-    assert codes == [200, 200, 200, 200], codes
+    # One is kept, every other is refused: none of them changed the one that stands.
+    assert sorted(codes) == [200, 409, 409, 409], codes
     assert count(FamilyAnswer) == 1
     notes = jule.get("/api/notes", params={"date": DAY}).json()
     assert len(notes) == 1
@@ -330,9 +341,6 @@ def test_the_answer_note_goes_to_the_persons_own_day_at_night(at_noon: list[date
     assert answer(jule, "Nachts", day="2026-10-10").status_code == 200
     assert [note["text"] for note in jule.get("/api/notes", params={"date": "2026-10-09"}).json()] == ["Nachts"]
     assert jule.get("/api/notes", params={"date": "2026-10-10"}).json() == []
-    # Changed later, the note changes where it stands.
-    assert answer(jule, "Nachts, mit Tee", day="2026-10-10").status_code == 200
-    assert [note["text"] for note in jule.get("/api/notes", params={"date": "2026-10-09"}).json()] == ["Nachts, mit Tee"]
     jule.close()
 
 
@@ -383,3 +391,107 @@ def test_the_questions_are_many_light_and_in_both_languages() -> None:
             assert "–" not in words and "—" not in words and len(words) <= 120
     assert len({german for german, _ in family.QUESTIONS}) == len(family.QUESTIONS)
     assert len({english for _, english in family.QUESTIONS}) == len(family.QUESTIONS)
+
+
+# --- Reading a date again -------------------------------------------------------------------------------------------
+
+
+def of_date(browser: TestClient, day: str = DAY):
+    return browser.get(f"/api/family/day/{day}")
+
+
+def test_the_answers_of_a_date_are_read_again_on_that_day_by_who_answered(at_noon: list[datetime]) -> None:
+    tom, ruth, jule = joined("tom"), joined("ruth"), joined("jule")
+    answer(tom, "Kürbissuppe")
+    answer(jule, "Kastanien")
+    question = jule.get("/api/family").json()["question"]
+    # Days later, the date is read again on the reading page of the day.
+    at_noon[0] = NOON + timedelta(days=5)
+    found = of_date(jule)
+    assert found.status_code == 200
+    card = found.json()
+    assert card["date"] == DAY and card["question"] == question
+    assert card["mine"]["text"] == "Kastanien"
+    assert [(item["from"], item["text"]) for item in card["answers"]] == [(account_id(tom), "Kürbissuppe")]
+    # Only who answered is named: Ruth, who did not, stays out.
+    assert sorted(person["name"] for person in card["people"]) == ["jule", "tom"]
+    # Ruth did not answer then: nothing, the same as a date nobody answered on.
+    for browser in (ruth,):
+        looked = of_date(browser)
+        assert looked.status_code == 200 and looked.json() is None
+        assert "Kürbissuppe" not in looked.text and "Kastanien" not in looked.text
+    assert of_date(jule, "2026-10-08").json() is None
+    # The same date of today, too: today is a date like any other.
+    at_noon[0] = NOON
+    assert of_date(jule).json()["answers"] == card["answers"]
+    for browser in (tom, ruth, jule):
+        browser.close()
+
+
+def test_who_has_not_joined_or_left_or_is_another_account_reads_nothing(client: TestClient, operator: Account,
+                                                                        at_noon: list[datetime]) -> None:
+    tom, jule = joined("tom"), joined("jule")
+    answer(tom, "Kürbissuppe")
+    answer(jule, "Kastanien")
+    with new_client(make_account("mia")) as mia:
+        mia.put("/api/me/preferences", json={"timezone": "UTC"})
+        assert of_date(mia).json() is None
+    # The operator is a person like any other here: no answer, nothing to read, nothing of the others.
+    looked = of_date(client)
+    assert looked.status_code == 200 and looked.json() is None and "Kürbissuppe" not in looked.text
+    # Blocked: vanishes from the date as from today (and is signed out).
+    tom_id = account_id(tom)
+    assert client.post(f"/api/accounts/{tom_id}/block", json={"current_password": PASSWORD}).status_code == 204
+    assert of_date(jule).json()["answers"] == []
+    assert client.post(f"/api/accounts/{tom_id}/unblock", json={"current_password": PASSWORD}).status_code == 204
+    assert [item["text"] for item in of_date(jule).json()["answers"]] == ["Kürbissuppe"]
+    # Jule leaves: her answers go along, and she reads nothing any more, even after joining again; and Tom reads his
+    # own without hers.
+    assert jule.put("/api/me/preferences", json={"family": False}).status_code == 200
+    assert of_date(jule).json() is None
+    assert jule.put("/api/me/preferences", json={"family": True}).status_code == 200
+    assert of_date(jule).json() is None
+    with new_client(make_account_row(tom_id)) as again:
+        card = of_date(again).json()
+        assert card["mine"]["text"] == "Kürbissuppe" and card["answers"] == []
+    tom.close()
+    jule.close()
+
+
+def test_the_date_is_checked(at_noon: list[datetime]) -> None:
+    with joined("jule") as jule:
+        for bad in ("2026-13-01", "gestern", "1899-12-31"):
+            looked = of_date(jule, bad)
+            assert looked.status_code in (404, 422), bad
+        future = of_date(jule, "2027-01-01")
+        assert (future.status_code, future.json()["detail"]["code"]) == (422, "date_in_future")
+
+
+def test_the_night_note_stands_on_the_day_before_the_answers_on_the_date_of_the_question(
+        at_noon: list[datetime]) -> None:
+    at_noon[0] = datetime(2026, 10, 10, 1, 0, tzinfo=UTC)
+    tom, jule = joined("tom"), joined("jule")
+    assert answer(tom, "Schlaflos", day="2026-10-10").status_code == 200
+    assert jule.put("/api/night", json={"choice": "yesterday"}).status_code == 200
+    assert answer(jule, "Nachts", day="2026-10-10").status_code == 200
+    assert of_date(jule, "2026-10-09").json() is None
+    assert [item["text"] for item in of_date(jule, "2026-10-10").json()["answers"]] == ["Schlaflos"]
+    tom.close()
+    jule.close()
+
+
+def test_a_date_is_read_only_while_joined_even_if_answers_were_left_behind(at_noon: list[datetime]) -> None:
+    """Leaving deletes the answers in the same transaction; should one ever stay behind (a database put back by hand),
+    the reading page still gives nothing to whoever has not joined."""
+    jule = joined("jule")
+    answer(jule, "Kastanien")
+    jule_id = account_id(jule)
+    with SessionLocal() as db:
+        row = db.get(Account, jule_id)
+        assert row is not None
+        row.profile = {**row.profile, "family": False}
+        db.commit()
+        db.refresh(row)
+        assert count(FamilyAnswer, user_id=jule_id) == 1
+        assert family.view_of_date(db, row, DAY, "de") is None
+    jule.close()

@@ -545,3 +545,46 @@ def test_a_page_without_the_photo_keeps_no_crop_of_it() -> None:
             "cover_crop": {"x": 1, "y": 2, "zoom": 150}}
     assert diary.without_photo(page, "a" * 32) == {"title": "", "text": "x", "cover": None, "cover_crop": None}
     assert diary.without_photo(page, "b" * 32) is None
+
+
+# --- Deleting the page of a day ---------------------------------------------------------------------------------------
+
+
+def test_deleting_a_page_keeps_notes_and_photos_and_ends_its_shares_and_its_draft(client: TestClient, account: Account,
+                                                                                 moment: Clock) -> None:
+    """What the question before deleting says: title, text, tags and ratings go, the shares end, the draft goes with
+    it (no old draft comes back over the empty day); the notes and the photos of the day stay, the pictures taken for
+    the text alone go."""
+    in_text = shot(client, text=True)["id"]
+    of_the_day = shot(client)["id"]
+    on_a_note = shot(client)["id"]
+    kept_note = note_with(client, on_a_note)
+    mood = client.get("/api/values").json()[0]["id"]
+    page = {"title": "Versehen", "text": f"Nur kurz.\n\n{image(in_text)}", "tags": ["kurz"], "values": {mood: 3},
+            "cover": f"photo:{of_the_day}"}
+    assert client.put(f"/api/days/{DAY}", json=page).status_code == 200
+    with new_client(make_account("tom")) as tom:
+        tom_id = int(tom.get("/api/auth/me").json()["id"])
+        assert client.put(f"/api/days/{DAY}/shares", json={"to": [tom_id]}).status_code == 200
+        assert len(tom.get("/api/shared").json()) == 1
+        # A draft from another device, begun on the old page.
+        assert client.put(f"/api/days/{DAY}/draft", json={"text": "Alt", "base_revision": 0}).status_code == 200
+        moment.later()
+        assert client.delete(f"/api/days/{DAY}").status_code == 204
+        assert client.get(f"/api/days/{DAY}").status_code == 404
+        assert client.get(f"/api/days/{DAY}/draft").json() is None
+        assert tom.get("/api/shared").json() == []
+    assert [note["id"] for note in client.get("/api/notes", params={"date": DAY}).json()] == [kept_note["id"]]
+    assert exists(of_the_day) and exists(on_a_note) and gone(in_text)
+    # Written anew, the day starts empty: none of the old ratings, tags or shares.
+    fresh = client.put(f"/api/days/{DAY}", json={"text": "Neu."}).json()
+    assert (fresh["tags"], fresh["values"], fresh["title"]) == ([], {}, "")
+    assert client.get(f"/api/days/{DAY}/shares").json()["people"] == []
+
+
+def test_a_locked_page_is_not_deleted(client: TestClient, account: Account) -> None:
+    assert client.put(f"/api/days/{DAY}", json={"title": "Fest", "text": "Bleibt."}).status_code == 200
+    assert client.post(f"/api/days/{DAY}/lock").status_code == 200
+    refused = client.delete(f"/api/days/{DAY}")
+    assert (refused.status_code, refused.json()["detail"]["code"]) == (409, "day_locked")
+    assert client.get(f"/api/days/{DAY}").json()["text"] == "Bleibt."

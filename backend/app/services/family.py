@@ -11,16 +11,20 @@ The rules, all of them kept here on the server:
   picked from the date; the language only chooses its words.
 * **The others' answers only after the own.** The server gives out the answers of the others only to a person who
   answered that day themselves, and only while both have joined. Before that it says who answered, nothing of what
-  (not even how long). An answer cannot be taken back, only changed (never to nothing): whoever read the others has
-  left a trace.
+  (not even how long). An answer is final: it cannot be taken back or changed (``family_answered``), so whoever read
+  the others has left a trace, and what they read was answered without knowing the others.
+* **Read again on the day.** The answers of a date can be read again later (``view_of_date``, the reading page of the
+  day), by the same rules: only by a person who answered on that date, only the answers of those who joined and are
+  not blocked. Whoever did not answer gets nothing, not even a sign that there were answers.
 * **Leaving takes the answers along.** Whoever leaves loses all their answers in the same transaction (``leave``): from
   then on nobody sees them. The notes the answers became stay with the person.
-* **Sealed with the key of the one who answered**, at most ``ANSWER_MAX`` characters, one per person and day (changed
-  on the same day). The answer is a note as well, with the question, like the question of the day: on the person's own
-  day of notes (after midnight the day they said the night belongs to). Only today counts: there is no archive.
+* **Sealed with the key of the one who answered**, at most ``ANSWER_MAX`` characters, one per person and day. The
+  answer is a note as well, with the question, like the question of the day: on the person's own day of notes (after
+  midnight the day they said the night belongs to). That note is the person's like any other note: they may change or
+  delete it, the answer stays as it was given. Answering is for today only.
 
 The operator has no route here. Answering twice at once leaves one answer and one note (``answer`` writes the answer and
-its note in one transaction).
+its note in one transaction); the second is refused, unless it is the same press again (same words, same note).
 """
 
 from __future__ import annotations
@@ -30,12 +34,12 @@ from datetime import date, datetime, tzinfo
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import bindparam, delete, select, text, update
+from sqlalchemy import bindparam, delete, select, text
 from sqlalchemy.orm import Session
 
 from .. import clock
 from ..errors import error
-from ..models import Account, FamilyAnswer, Note, UtcDateTime
+from ..models import Account, FamilyAnswer, UtcDateTime
 from . import diary, vault
 
 #: The longest answer.
@@ -124,6 +128,10 @@ QUESTIONS: tuple[tuple[str, str], ...] = (
 #: one comes again, and neighbouring days do not get neighbouring questions.
 _ORDER: tuple[int, ...] = tuple(sorted(range(len(QUESTIONS)),
                                        key=lambda index: hashlib.sha256(f"{PREFIX}|{index}".encode()).digest()))
+
+
+#: A stored question id that still names one of the questions.
+_QUESTION_IDS = frozenset(f"{PREFIX}.{index}" for index in range(len(QUESTIONS)))
 
 
 def joined(profile: Any) -> bool:
@@ -242,14 +250,61 @@ def view(db: Session, account: Account, language: str) -> dict[str, Any]:
     }
 
 
+def view_of_date(db: Session, account: Account, day: str, language: str) -> dict[str, Any] | None:
+    """The family question of a date (``YYYY-MM-DD``, checked by the caller) as the reading page of that day shows it:
+    the question, the own answer and the answers of the others. None, and so the same as a date without any answers,
+    for a person who has not joined, is blocked or did not answer on that date themselves: they learn nothing, not even
+    that others answered. Only the answers of people who joined and are not blocked, as on "Today" (whoever left took
+    their answers along)."""
+    if not joined(account.profile) or account.blocked_at is not None:
+        return None
+    own = db.execute(select(FamilyAnswer.question, FamilyAnswer.text_enc, FamilyAnswer.user_id, FamilyAnswer.date,
+                            FamilyAnswer.updated_at)
+                     .where(FamilyAnswer.user_id == account.id, FamilyAnswer.date == day)).first()
+    if own is None:
+        return None
+    people = members(db, keep=account.id)
+    if account.id not in {row.id for row in people}:
+        return None
+    by_id = {row.id: row for row in people}
+    rows = db.execute(select(FamilyAnswer.user_id, FamilyAnswer.date, FamilyAnswer.text_enc, FamilyAnswer.updated_at)
+                      .where(FamilyAnswer.date == day, FamilyAnswer.user_id.in_(list(by_id)),
+                             FamilyAnswer.user_id != account.id)
+                      .order_by(FamilyAnswer.created_at, FamilyAnswer.id)).all()
+    words = _open(own)
+    answers = []
+    for row in rows:
+        text_of = _open(row)
+        if text_of is not None:
+            answers.append({"from": row.user_id, "text": text_of, "at": row.updated_at.isoformat()})
+    # The question as it was asked that day; the words in the language of the reader.
+    question = own.question if own.question in _QUESTION_IDS else question_of(day)
+    shown = {account.id} | {item["from"] for item in answers}
+    return {
+        "date": day,
+        "question": {"id": question, "text": words_of(question, language)},
+        # Only who answered: whoever did not stays unnamed here.
+        "people": [
+            {"id": row.id, "name": row.name, "display_name": row.display_name or "",
+             "avatar": row.avatar_at.isoformat() if row.avatar_at else None,
+             "me": row.id == account.id, "answered": True}
+            for row in people if row.id in shown
+        ],
+        "mine": {"text": words or "", "unreadable": words is None, "at": own.updated_at.isoformat()},
+        "answers": answers,
+    }
+
+
 def _error_code(exc: HTTPException) -> str:
     return str(exc.detail.get("code")) if isinstance(exc.detail, dict) else ""
 
 
 def answer(db: Session, account: Account, day: str, words: str, note_uid: str, language: str) -> dict[str, Any]:
-    """Keeps the person's answer for today, or changes it, and makes it a note with the question, on the person's own
-    day of notes (a changed answer changes that note). The answer and its note are written in one transaction, and
-    only while the person has joined and is not blocked: decided in the statement that writes."""
+    """Keeps the person's answer for today and makes it a note with the question, on the person's own day of notes.
+    The answer and its note are written in one transaction, and only while the person has joined and is not blocked:
+    decided in the statement that writes. An answer is final: a second one for the same date is refused
+    (``family_answered``), decided by the same statement (two at once: one is kept, the other refused). The same press
+    again (the same words with the same note, a retry after a lost reply) answers like the first."""
     check_today(day)
     words = diary.clean_text(words, ANSWER_MAX, "answer_too_long")
     if not words:
@@ -274,7 +329,7 @@ def answer(db: Session, account: Account, day: str, words: str, note_uid: str, l
         if inserted.rowcount == 1:
             _note_for(db, account, dek, diary.note_day(account).isoformat(), words, note_uid, question, language)
         else:
-            standing = db.execute(select(FamilyAnswer.id, FamilyAnswer.text_enc, FamilyAnswer.note_uid)
+            standing = db.execute(select(FamilyAnswer.text_enc, FamilyAnswer.note_uid)
                                   .where(FamilyAnswer.user_id == account.id, FamilyAnswer.date == day)).first()
             if standing is None:
                 # Not inserted, and nothing stands: the person has not joined (or left in between).
@@ -283,10 +338,9 @@ def answer(db: Session, account: Account, day: str, words: str, note_uid: str, l
                 before = vault.open_text(dek, standing.text_enc, _aad(account.id, day))
             except vault.SealError:
                 before = None
-            if before != words:
-                db.execute(update(FamilyAnswer).where(FamilyAnswer.id == standing.id)
-                           .values(text_enc=sealed, updated_at=moment))
-                _change_note(db, account, dek, words, standing.note_uid)
+            if before != words or standing.note_uid != note_uid:
+                raise error("family_answered", "You have answered this question already; an answer stays as given.",
+                            409)
         db.commit()
     except Exception:
         db.rollback()
@@ -309,25 +363,10 @@ def _note_for(db: Session, account: Account, dek: bytes, day: str, words: str, n
             raise
 
 
-def _change_note(db: Session, account: Account, dek: bytes, words: str, note_uid: str | None) -> None:
-    """The note of a changed answer, changed with it: only while it stands and its day is open. A note the person
-    deleted (or moved to a locked day) stays as it is."""
-    if note_uid is None:
-        return
-    found = db.scalar(select(Note.date).where(Note.user_id == account.id, Note.uid == note_uid))
-    if found is None or diary.is_locked(db, account.id, found):
-        return
-    try:
-        diary.change_note(db, account.id, dek, note_uid, words)
-    except HTTPException as exc:
-        if _error_code(exc) not in ("not_found", "day_locked"):
-            raise
-
-
 def leave(db: Session, account_id: int) -> None:
     """Every answer of a person who leaves, gone in the caller's transaction (the one that switches it off)."""
     db.execute(delete(FamilyAnswer).where(FamilyAnswer.user_id == account_id))
 
 
 __all__ = ["ANSWER_MAX", "QUESTIONS", "answer", "hint_due", "joined", "leave", "members", "question_of", "today",
-           "view", "words_of"]
+           "view", "view_of_date", "words_of"]

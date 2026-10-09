@@ -20,17 +20,18 @@
       {
         "title": "Family question",
         "where": "My account, Writing",
-        "body": "One question a day for everyone who joins. You see the others' answers once you have answered yourself. Off at first; each person switches it on for themselves."
+        "body": "One question a day for everyone who joins. You see the others' answers once you have answered yourself, and again later when you read that day. Off at first; each person switches it on for themselves."
       },
       {
         "title": "Just briefly today",
         "where": "Today",
-        "body": "On tired days your first rating and one sentence are enough, and the day counts for your streak. You can make more of it later."
+        "body": "On tired days without notes, your first rating and one sentence are enough, and the day counts for your streak. You can make more of it later."
       }
     ],
     "smallTitle": "Also",
     "small": [
-      "With “Ask me first”, the AI asks up to two questions about what your notes leave open before it writes. Your answers become notes."
+      "With “Ask me first”, the AI asks up to two questions about what your notes leave open before it writes. Your answers become notes.",
+      "A page can now be deleted, when reading the day and when writing. Your notes and the photos of the day stay."
     ]
   },
   "0.4.0": {

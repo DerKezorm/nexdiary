@@ -1,17 +1,19 @@
 /**
  * One own day, read: as the mock's `EntryPage.tsx`. The cover (to change with the picker), the date, the title, the
  * text as it was written, the photos of the day, the tags, the values, who it is shared with (and who sent a heart),
- * the notes of the day folded away, and a year ago today. "Bearbeiten" leads into the writing page, "Teilen" opens the
- * dialog.
+ * the notes of the day folded away, the family question of that date (only for whoever answered it then, as the server
+ * decides), and a year ago today. "Bearbeiten" leads into the writing page, "Teilen" opens the dialog, "Seite löschen"
+ * asks first and leaves the notes.
  */
-import { ChevronDown, Crop, Heart, ImageIcon, Lock, PenLine, Share2, Sparkles } from 'lucide-react'
+import { ChevronDown, Crop, Heart, ImageIcon, Lock, PenLine, Share2, Sparkles, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 
-import { ApiError, diaryApi, immichApi, journalApi, photosApi, photoUrl, sharingApi, type CoverCropValue, type DayPage, type DayShares, type ImmichEntry, type ImmichPhoto, type JournalDay, type Note, type Photo, type ValueDef } from '../api/client'
+import { ApiError, diaryApi, familyApi, immichApi, journalApi, photosApi, photoUrl, sharingApi, type CoverCropValue, type DayPage, type DayShares, type FamilyCard, type ImmichEntry, type ImmichPhoto, type JournalDay, type Note, type Photo, type ValueDef } from '../api/client'
 import { Avatar } from '../components/Avatar'
 import { CoverCropDialog } from '../components/CropEditor'
+import { DeletePageDialog } from '../components/DeletePage'
 import { LockDialog, LockedMark } from '../components/LockDay'
 import { ImmichPicker } from '../components/ImmichPicker'
 import { Markdown } from '../components/Markdown'
@@ -19,6 +21,7 @@ import { useOwnPhotoViewer } from '../components/ownPhotoViewer'
 import { useDeletePhotos } from '../components/PhotoDelete'
 import { PhotoFigure, PhotoTile } from '../components/PhotoViews'
 import { ShareDialog } from '../components/ShareDialog'
+import { FamilyOfDay } from '../components/TodayExtras'
 import { YearAgo } from '../components/YearAgo'
 import { CoverImage, CoverPicker } from '../covers/Cover'
 import { addDays, longDate, timeOf, yearBefore } from '../lib/dates'
@@ -43,6 +46,9 @@ export function EntryPage() {
   const [raw, setRaw] = useState(false)
   const [share, setShare] = useState(false)
   const [locking, setLocking] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  /** The family question of this date, for a person who answered it then; null for everybody else. */
+  const [family, setFamily] = useState<FamilyCard | null>(null)
   const [picking, setPicking] = useState(false)
   /** The cut of the cover photo being chosen. */
   const [cropping, setCropping] = useState(false)
@@ -70,6 +76,9 @@ export function EntryPage() {
     setData(null)
     setRaw(false)
     void load()
+    setFamily(null)
+    // Never a reason for the day not to show: without it, the page is as it was.
+    familyApi.ofDate(date).then((found) => setFamily(found?.question ? found : null), () => undefined)
     // A year ago today: the newest day before the one after the same calendar day a year earlier, if it is that day.
     setYearAgo(null)
     if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
@@ -141,6 +150,11 @@ export function EntryPage() {
         <Link to={`/tag/${date}/schreiben`} className="mt-4 inline-flex h-11 items-center rounded-full bg-accent-soft px-5 font-semibold text-accent hover:brightness-[0.98]">
           {t('entry.write')}
         </Link>
+        {family && (
+          <div className="mt-6">
+            <FamilyOfDay card={family} />
+          </div>
+        )}
       </div>
     )
   if (!data) return <div className="page pt-10 pb-28 lg:pb-12">{problem && <p className="text-sm text-bad">{errorText(problem)}</p>}</div>
@@ -173,6 +187,9 @@ export function EntryPage() {
               </Link>
               <button type="button" onClick={() => setLocking(true)} className="inline-flex h-8 items-center justify-center gap-2 rounded-full px-3.5 text-sm font-semibold text-ink-2 transition hover:bg-sheet-2">
                 <Lock size={15} aria-hidden /> {t('lock.action')}
+              </button>
+              <button type="button" onClick={() => setDeleting(true)} aria-label={t('entry.delete')} title={t('entry.delete')} className="inline-flex h-8 items-center justify-center gap-2 rounded-full px-3 text-sm font-semibold text-ink-2 transition hover:bg-sheet-2 hover:text-bad">
+                <Trash2 size={15} aria-hidden /> <span className="hidden sm:inline" aria-hidden>{t('entry.delete')}</span>
               </button>
             </>
           )}
@@ -283,7 +300,31 @@ export function EntryPage() {
           )}
         </div>
       </article>
+      {family && (
+        <div className="mt-6">
+          <FamilyOfDay card={family} />
+        </div>
+      )}
       {yearAgo && <YearAgo day={yearAgo} />}
+      {deleting && !day.locked && (
+        <DeletePageDialog
+          date={date}
+          shared={shares.people}
+          onClose={() => setDeleting(false)}
+          onDeleted={async () => {
+            setDeleting(false)
+            // Today's page gone (after midnight: the day the notes go to): back to "Today", where the day goes on; any
+            // other day shows what is left of it.
+            const now = await diaryApi.today().catch(() => null)
+            if (now?.date === date) navigate('/', { state: { notice: t('entry.deleted') } })
+            else {
+              say(t('entry.deleted'))
+              setData(null)
+              void load()
+            }
+          }}
+        />
+      )}
       {share && (
         <ShareDialog
           date={date}

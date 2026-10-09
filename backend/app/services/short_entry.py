@@ -2,8 +2,10 @@
 make the page of today. It counts as a written day like any other page (streak, weekly goal, statistics); with at most
 ``TEXT_MAX`` characters it is never a long page, so it earns no shield.
 
-Only today, only while the day has no page: a page that stands is never written over. The notes stay as they are, the
-page can grow later like any other (writing it up with the AI, or by hand). Pressing "Speichern" twice keeps one page.
+Only today, and only on an empty day: no notes, no page, no draft (``short_day_not_empty``; ratings and tags set before
+do not count, they are kept). A day with notes or something begun is for writing up, not for one sentence over it. The
+server decides that in the transaction that writes the page, so a note arriving between the check and the write is
+never left under a short page. The page can grow later like any other. Pressing "Speichern" twice keeps one page.
 """
 
 from __future__ import annotations
@@ -37,10 +39,21 @@ def first_value(db: Session, account_id: int, dek: bytes) -> dict[str, Any] | No
                  if value["active"] and not value["unreadable"]), None)
 
 
+def not_empty() -> Exception:
+    return error("short_day_not_empty", "Today has notes or a page begun: write it up instead.", 409)
+
+
+def check_empty(db: Session, account_id: int, day: str) -> None:
+    """``short_day_not_empty`` while the day has notes or a draft (a page is ``apply``'s to refuse)."""
+    if diary.has_notes(db, account_id, day) or diary.has_draft(db, account_id, day):
+        raise not_empty()
+
+
 def save(db: Session, account_id: int, dek: bytes, day: str, sentence: str, title: str, rating: Any,
          cover: Any) -> dict[str, Any]:
     """Makes the page of ``day`` out of the sentence (the caller checked that ``day`` is today). ``title`` is used
-    only when the sentence is too long to be the title itself (the date, as the interface writes it)."""
+    only when the sentence is too long to be the title itself (the date, as the interface writes it). Whether the day
+    is empty is asked in the transaction that writes the page (``guard``), never only before it."""
     sentence = diary.clean_line(sentence, TEXT_MAX, "short_too_long")
     if not sentence:
         raise error("short_empty", "A short entry needs a sentence.", 422)
@@ -56,11 +69,15 @@ def save(db: Session, account_id: int, dek: bytes, day: str, sentence: str, titl
             raise error("value_out_of_range", "A value is a whole number from 1 to 10.", 422)
         patch["values"] = {value["id"]: rating}
     chosen = diary.check_cover(db, account_id, day, cover)
+    #: Whether the page that stands is this very entry (a double press): then nothing new is written over anything.
+    again = [False]
 
     def apply(content: dict[str, Any]) -> dict[str, Any]:
-        if content["text"].strip():
+        again[0] = False
+        if diary.has_page(content):
             # The same entry once more (a double press) is the page that stands; any other page is never written over.
             if content["text"] == patch["text"]:
+                again[0] = True
                 return content
             raise error("day_written", "This day has a page already.", 409)
         out = diary.merge(content, patch)
@@ -68,7 +85,13 @@ def save(db: Session, account_id: int, dek: bytes, day: str, sentence: str, titl
         out["cover"] = chosen or content.get("cover") or covers.suggested_cover(day, out.get("tags") or [])
         return out
 
-    return diary.change_day(db, account_id, dek, day, apply)
+    def guard() -> None:
+        # Inside the writing transaction, after the write: what it sees cannot change before the commit, and a note or a
+        # draft that came while the page was read and made undoes the write. Not for the same press again.
+        if not again[0]:
+            check_empty(db, account_id, day)
+
+    return diary.change_day(db, account_id, dek, day, apply, guard=guard)
 
 
-__all__ = ["TEXT_MAX", "TITLE_FROM_TEXT", "as_paragraph", "first_value", "save"]
+__all__ = ["TEXT_MAX", "TITLE_FROM_TEXT", "as_paragraph", "check_empty", "first_value", "save"]

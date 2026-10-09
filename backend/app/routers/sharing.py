@@ -80,7 +80,8 @@ def journal_page(payload: JournalIn, account: Account, db: DbSession) -> dict[st
 @router.get("/journal/overview", summary="How many own days there are, since when, their tags and the volumes per year")
 def journal_overview(account: Account, db: DbSession) -> dict[str, Any]:
     # The year of today in the person's time zone: the volume that is still being written.
-    return {**journal.overview(db, account.id, vault.dek_for(account.id)), "year": diary.today_of(account).year}
+    today = diary.today_of(account)
+    return {**journal.overview(db, account.id, vault.dek_for(account.id), today), "year": today.year}
 
 
 # --- Sharing: the owner ---------------------------------------------------------------------------------------------

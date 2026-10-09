@@ -1,6 +1,7 @@
 """The short entry ("Heute nur kurz"): one sentence and the first value make the page of today. It counts for the
-streak, the weekly goal and the statistics, never as a long page for a shield; only today, only while the day has no
-page; the first value the person rates (in their order), or none; pressing twice keeps one page."""
+streak, the weekly goal and the statistics, never as a long page for a shield; only today, only on an empty day (no
+notes, no page, no draft; decided in the writing transaction); the first value the person rates (in their order), or
+none; pressing twice keeps one page."""
 
 from __future__ import annotations
 
@@ -13,7 +14,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import clock
-from app.services import covers, short_entry
+from app.db import SessionLocal
+from app.services import covers, diary, short_entry, vault
 
 from .conftest import person
 
@@ -41,8 +43,6 @@ def values(browser: TestClient) -> list[dict[str, Any]]:
 
 
 def test_a_sentence_and_the_mood_make_the_page_of_today(jule: TestClient) -> None:
-    note = {"id": str(uuid.uuid4()), "text": "kastanien mit mia"}
-    assert jule.post("/api/notes", json=note).status_code == 201
     mood = values(jule)[0]
     made = short(jule, "Kastanien mit Mia, sonst nur müde.", rating=4)
     assert made.status_code == 200, made.text
@@ -52,8 +52,6 @@ def test_a_sentence_and_the_mood_make_the_page_of_today(jule: TestClient) -> Non
     assert page["values"] == {mood["id"]: 4}
     assert page["written_by"] == "self"
     assert page["cover"] == covers.suggested_cover(TODAY, []) and page["cover_chosen"] is True
-    # The notes stay as they were.
-    assert [item["text"] for item in jule.get("/api/notes", params={"date": TODAY}).json()] == ["kastanien mit mia"]
 
 
 def test_a_long_sentence_leaves_the_title_to_the_date(jule: TestClient) -> None:
@@ -156,3 +154,95 @@ def test_the_sentence_is_read_as_written() -> None:
     assert short_entry.as_paragraph("Ganz normal.") == "Ganz normal."
     # A character reference stays its letters: the reader and the editor show the same.
     assert short_entry.as_paragraph("Tom & Jerry &amp; &#64;") == "Tom \\& Jerry \\&amp; \\&\\#64;"
+
+
+# --- Only on an empty day ----------------------------------------------------------------------------------------------
+
+
+def refused_as_not_empty(browser: TestClient) -> None:
+    refused = short(browser, "Nur kurz.")
+    assert (refused.status_code, refused.json()["detail"]["code"]) == (409, "short_day_not_empty"), refused.text
+    assert browser.get(f"/api/days/{TODAY}").status_code == 404 or not browser.get(f"/api/days/{TODAY}").json()["text"]
+
+
+def test_a_day_with_notes_is_written_up_not_cut_short(jule: TestClient) -> None:
+    note = {"id": str(uuid.uuid4()), "text": "kastanien mit mia"}
+    assert jule.post("/api/notes", json=note).status_code == 201
+    assert jule.get("/api/today").json()["notes"]
+    refused_as_not_empty(jule)
+    # The note gone again: the day is empty, and the short entry may come.
+    assert jule.delete(f"/api/notes/{note['id']}").status_code == 204
+    assert short(jule, "Doch nur kurz.").status_code == 200
+
+
+def test_a_day_with_a_draft_is_not_cut_short(jule: TestClient) -> None:
+    assert jule.put(f"/api/days/{TODAY}/draft", json={"text": "Angefangen", "base_revision": -1}).status_code == 200
+    assert jule.get("/api/today").json()["has_draft"] is True
+    refused_as_not_empty(jule)
+    assert jule.delete(f"/api/days/{TODAY}/draft").status_code == 204
+    assert jule.get("/api/today").json()["has_draft"] is False
+    assert short(jule, "Doch nur kurz.").status_code == 200
+
+
+def test_a_title_alone_is_a_page_already(jule: TestClient) -> None:
+    assert jule.put(f"/api/days/{TODAY}", json={"title": "Nur ein Titel"}).status_code == 200
+    refused = short(jule, "Nur kurz.")
+    assert (refused.status_code, refused.json()["detail"]["code"]) == (409, "day_written")
+    assert jule.get(f"/api/days/{TODAY}").json()["title"] == "Nur ein Titel"
+
+
+def sneak_in(monkeypatch: pytest.MonkeyPatch, what: str) -> list[int]:
+    """Between reading the day and writing the short page: a note (another device) or a draft arrives, written and
+    committed by a session of its own. The ids of the accounts it happened for."""
+    happened: list[int] = []
+    real = diary.merge
+    account = [0]
+    real_save = short_entry.save
+
+    def save(db, account_id, *args):  # type: ignore[no-untyped-def]
+        account[0] = account_id
+        return real_save(db, account_id, *args)
+
+    def merge_then_sneak(content, patch):  # type: ignore[no-untyped-def]
+        if not happened:
+            with SessionLocal() as other:
+                dek = vault.dek_for(account[0])
+                if what == "note":
+                    diary.add_note(other, account[0], dek, str(uuid.uuid4()), TODAY, "von unterwegs", None)
+                else:
+                    diary.save_draft(other, account[0], dek, TODAY,
+                                     diary.clean_draft(other, account[0], TODAY, {"text": "angefangen"}), -1)
+            happened.append(account[0])
+        return real(content, patch)
+
+    monkeypatch.setattr(short_entry, "save", save)
+    monkeypatch.setattr(diary, "merge", merge_then_sneak)
+    return happened
+
+
+@pytest.mark.parametrize("what", ["note", "draft"])
+def test_a_note_or_draft_between_check_and_write_undoes_the_short_page(jule: TestClient,
+                                                                      monkeypatch: pytest.MonkeyPatch,
+                                                                      what: str) -> None:
+    mood = values(jule)[0]
+    assert jule.put(f"/api/days/{TODAY}/values", json={"values": {mood["id"]: 5}}).status_code == 200
+    happened = sneak_in(monkeypatch, what)
+    refused = short(jule, "Nur kurz.", rating=2)
+    assert happened, "the note or draft was not written in between"
+    assert (refused.status_code, refused.json()["detail"]["code"]) == (409, "short_day_not_empty"), refused.text
+    # Nothing of the short entry stayed: the rating set before is untouched, no text, the newcomer stands.
+    day = jule.get(f"/api/days/{TODAY}").json()
+    assert day["text"] == "" and day["title"] == "" and day["values"] == {mood["id"]: 5}
+    if what == "note":
+        assert [note["text"] for note in jule.get("/api/notes", params={"date": TODAY}).json()] == ["von unterwegs"]
+    else:
+        assert jule.get(f"/api/days/{TODAY}/draft").json()["text"] == "angefangen"
+
+
+def test_the_same_press_again_stands_even_after_a_note(jule: TestClient) -> None:
+    assert short(jule, "Kurz und gut.").status_code == 200
+    note = {"id": str(uuid.uuid4()), "text": "noch was"}
+    assert jule.post("/api/notes", json=note).status_code == 201
+    # The retry of a press whose reply was lost: the page that stands, not a refusal.
+    again = short(jule, "Kurz und gut.")
+    assert again.status_code == 200 and again.json()["text"] == "Kurz und gut."

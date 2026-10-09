@@ -8,6 +8,7 @@ is shared with. Everything here is the signed-in person's own; nothing of anybod
 from __future__ import annotations
 
 from collections import Counter
+from datetime import date
 from typing import Any
 
 from sqlalchemy import select
@@ -111,10 +112,24 @@ def days_in_year(year: int) -> int:
     return 366 if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0) else 365
 
 
-def overview(db: Session, account_id: int, dek: bytes) -> dict[str, Any]:
+def days_left(today: date) -> int:
+    """The days after ``today`` up to and with the 31 December of its year (0 on New Year's Eve)."""
+    return (date(today.year, 12, 31) - today).days
+
+
+def volume_days(year: int, first: date | None) -> int:
+    """How many pages a volume has room for: a whole year, but the first volume only from the day of the first page
+    on (that day and the 31 December included)."""
+    if first is not None and first.year == year:
+        return (date(year, 12, 31) - first).days + 1
+    return days_in_year(year)
+
+
+def overview(db: Session, account_id: int, dek: bytes, today: date) -> dict[str, Any]:
     """How many days there are, since when, every tag with the number of days that carry it, most used first, and the
-    volumes of the shelf: for every year with a page how many pages it holds, out of how many days, and how many in
-    each month."""
+    volumes of the shelf: for every year with a page how many pages it holds, out of how many days (the first volume
+    from its first page on), and how many in each month; and how many days are left in the year of ``today`` (the
+    person's), the days after today up to and with the 31 December."""
     count, since = 0, None
     tags: Counter[str] = Counter()
     years: Counter[int] = Counter()
@@ -130,6 +145,8 @@ def overview(db: Session, account_id: int, dek: bytes) -> dict[str, Any]:
         if content is not None:
             tags.update(set(content["tags"]))
     ordered = sorted(tags.items(), key=lambda pair: (-pair[1], pair[0]))
+    first = date.fromisoformat(since) if since else None
     return {"count": int(count or 0), "since": since, "tags": [{"tag": tag, "count": n} for tag, n in ordered],
-            "volumes": [{"year": year, "pages": n, "days": days_in_year(year), "months": months[year]}
-                        for year, n in sorted(years.items())]}
+            "volumes": [{"year": year, "pages": n, "days": volume_days(year, first), "months": months[year]}
+                        for year, n in sorted(years.items())],
+            "days_left": days_left(today)}

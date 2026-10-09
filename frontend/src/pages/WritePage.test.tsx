@@ -32,6 +32,8 @@ let meanwhile: Day | null = null
 let aiState: Record<string, unknown> = { provider: 'local', to: '', model: 'llama3.1:8b', mine: true, available: true }
 let pool: { id: string; text: string; answered: boolean }[] = []
 let dayNotes: Record<string, unknown>[] = []
+/** Who the day is shared with. */
+let sharedWith: Record<string, unknown>[] = []
 /** What the router holds as the history state, seen from outside the page. */
 let seenState: unknown = 'unset'
 /** What the AI answers next: a suggestion, or an error code. */
@@ -60,6 +62,12 @@ function serve(): void {
           return new Response(null, { status: 204 })
         }
         return json(draft)
+      }
+      if (url === `/api/days/${DATE}/shares`) return json({ date: DATE, people: sharedWith, with_values: false, with_notes: false })
+      if (url === `/api/days/${DATE}` && method === 'DELETE') {
+        day = null
+        draft = null
+        return new Response(null, { status: 204 })
       }
       if (url === `/api/days/${DATE}/lock` && method === 'POST') {
         day = { ...day!, locked: true, locked_at: '2026-10-07T10:00:00+00:00' }
@@ -116,7 +124,7 @@ function Away() {
   return null
 }
 
-async function show(state: unknown = null): Promise<void> {
+async function show(state: unknown = null, ready: () => unknown = () => box.querySelector('[contenteditable]') || box.textContent?.includes('verschlossen')): Promise<void> {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   box = document.createElement('div')
   document.body.appendChild(box)
@@ -132,7 +140,7 @@ async function show(state: unknown = null): Promise<void> {
       </MemoryRouter>,
     ),
   )
-  await until(() => box.querySelector('[contenteditable]') || box.textContent?.includes('verschlossen'), 'the page opening')
+  await until(ready, 'the page opening')
   await idle()
 }
 
@@ -178,6 +186,7 @@ beforeEach(async () => {
   photos = []
   pool = []
   dayNotes = []
+  sharedWith = []
   seenState = 'unset'
   aiState = { provider: 'local', to: '', model: 'llama3.1:8b', mine: true, available: true }
   suggestion = { title: 'Kastanien', text: 'Am Abend habe ich mit Mia Kastanien gesammelt.' }
@@ -635,5 +644,117 @@ describe('the bar at the top, Ctrl+S, and locking', () => {
     await act(async () => window.dispatchEvent(event))
     expect(puts()).toHaveLength(0)
     expect(box.querySelector('a')!.getAttribute('href')).toBe(`/tag/${DATE}`)
+  })
+})
+
+describe('a draft older than the saved page', () => {
+  const stale = () => document.querySelector('[data-stale-draft]')
+  const choice = (text: string) => [...document.querySelectorAll<HTMLButtonElement>('[role=dialog] button')].find((item) => item.textContent?.trim() === text)!
+
+  beforeEach(() => {
+    // Begun on revision 1; "Nur kurz" or another tab saved the page since (revision 3).
+    day = page({ title: 'Nur kurz', text: 'Müde.', revision: 3 })
+    draft = { title: 'Langer Entwurf', text: 'Am Morgen war es neblig.', tags: [], cover: null, base_revision: 1, updated_at: '2026-10-06T17:30:00+00:00' }
+  })
+
+  it('asks which one to edit, and the saved page throws the draft away', async () => {
+    await show(null, stale)
+    expect(document.querySelector('[role=dialog]')!.getAttribute('aria-label')).toBe('Seite oder Entwurf?')
+    expect(stale()!.textContent).toBe('Du hast nach diesem Entwurf eine Seite gespeichert. Welche willst du bearbeiten?')
+    // Nothing of either is on the page while the question stands, and no draft goes out.
+    expect(box.querySelector('[contenteditable]')).toBeNull()
+    expect(choice('Entwurf von 19:30')).toBeTruthy()
+    await act(async () => choice('Gespeicherte Seite').click())
+    await until(() => box.querySelector('[contenteditable]'), 'the editor')
+    await idle()
+    expect(title().value).toBe('Nur kurz')
+    expect(box.textContent).not.toContain('ist wieder da')
+    expect(calls.filter((call) => call.method === 'DELETE' && call.url === `/api/days/${DATE}/draft`)).toHaveLength(1)
+    expect(drafts()).toHaveLength(0)
+  })
+
+  it('brings the draft back when chosen, and a save meets the page saved since', async () => {
+    await show(null, stale)
+    await act(async () => choice('Entwurf von 19:30').click())
+    await until(() => box.querySelector('[contenteditable]'), 'the editor')
+    await idle()
+    expect(title().value).toBe('Langer Entwurf')
+    expect(box.textContent).toContain('Dein Entwurf von 19:30 ist wieder da.')
+    expect(calls.some((call) => call.method === 'DELETE')).toBe(false)
+    await act(async () => saveButtons()[0].click())
+    await idle()
+    // Saved onto the revision the draft began on: refused, and the other version stands there to copy.
+    expect(puts().map((call) => call.body!.base_revision)).toEqual([1])
+    expect(box.textContent).toContain('Dieser Tag wurde inzwischen auf einem anderen Gerät geändert.')
+    expect(day!.text).toBe('Müde.')
+  })
+
+  it('comes back without asking when it was begun on the page that stands', async () => {
+    draft = { ...draft!, base_revision: 3 }
+    await show()
+    expect(stale()).toBeNull()
+    expect(title().value).toBe('Langer Entwurf')
+  })
+
+  it('comes back without asking over a day that holds no page, only ratings', async () => {
+    day = page({ title: '', text: '', revision: 2, values: { v1: 4 } })
+    await show()
+    expect(stale()).toBeNull()
+    expect(title().value).toBe('Langer Entwurf')
+  })
+})
+
+describe('deleting the page', () => {
+  it('asks first, says what stays and who loses the share, then leaves the writing page', async () => {
+    day = page({ title: 'Versehen', text: 'Nur kurz.', revision: 2 })
+    sharedWith = [{ id: 7, name: 'tom', display_name: 'Tom', avatar: null, with_values: false, with_notes: false, heart: null }]
+    await show()
+    await act(async () => button('Seite löschen').click())
+    await idle()
+    const dialog = document.querySelector('[role=dialog]')!
+    expect(dialog.getAttribute('aria-label')).toBe('Seite löschen?')
+    expect(dialog.textContent).toContain('Deine Notizen und die Fotos des Tages bleiben')
+    expect(dialog.querySelector('[data-delete-shared]')!.textContent).toBe('Geteilt ist der Tag dann nicht mehr: Tom sieht ihn nicht mehr.')
+    expect(calls.some((call) => call.method === 'DELETE')).toBe(false)
+    await act(async () => [...dialog.querySelectorAll('button')].find((item) => item.textContent?.trim() === 'Löschen')!.click())
+    await idle()
+    expect(calls.filter((call) => call.method === 'DELETE').map((call) => call.url)).toEqual([`/api/days/${DATE}`])
+    expect(box.textContent).toContain('woanders')
+    // Nothing went out as a draft afterwards.
+    expect(drafts()).toHaveLength(0)
+  })
+
+  it('warns that changes not saved go too, and is not there for a page never saved or a locked day', async () => {
+    day = page({ title: 'Versehen', text: 'Nur kurz.', revision: 2 })
+    await show()
+    type(title(), 'Doch anders')
+    await act(async () => button('Seite löschen').click())
+    await idle()
+    const dialog = document.querySelector('[role=dialog]')!
+    expect(dialog.textContent).toContain('Was du hier noch nicht gespeichert hast, geht auch verloren.')
+    await act(async () => [...dialog.querySelectorAll('button')].find((item) => item.textContent?.trim() === 'Löschen')!.click())
+    await idle()
+    expect(box.textContent).toContain('woanders')
+    // What was typed and not saved does not come back as a draft over the deleted page.
+    expect(drafts()).toHaveLength(0)
+    act(() => root.unmount())
+    box.remove()
+    day = null
+    await show()
+    expect(button('Seite löschen')).toBeUndefined()
+    act(() => root.unmount())
+    box.remove()
+    day = page({ title: 'Fest', text: 'Bleibt.', revision: 2, locked: true })
+    await show()
+    expect(button('Seite löschen')).toBeUndefined()
+  })
+})
+
+describe('"Erst fragen lassen" in the bar', () => {
+  it('says what it does when pointed at, on a saved page with notes', async () => {
+    day = page({ title: 'Kastanien', text: 'Die Nacht war kurz.', revision: 3 })
+    dayNotes = [{ id: 'n1', date: DATE, text: 'kastanien', prompt: null, created_at: '2026-10-06T16:00:00+00:00', photo_id: null, unreadable: false }]
+    await show()
+    expect(button('Erst fragen lassen').title).toBe('Die KI stellt dir bis zu zwei Fragen zu dem, was in deinen Notizen offen bleibt. Deine Antworten kommen zu den Notizen, dann schreibt sie die Seite.')
   })
 })

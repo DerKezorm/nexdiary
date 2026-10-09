@@ -351,6 +351,8 @@ export type TodayData = {
   question?: Question | null
   night?: Night
   catch_up?: CatchUp
+  /** Something begun on the day and not saved (a draft): with it, as with notes or a page, there is no "Nur kurz". */
+  has_draft?: boolean
   /** The family question of today for whoever joined, else null. */
   family?: FamilyCard | null
   /** Others take part in the family question and this person has not joined nor put the hint away. */
@@ -371,9 +373,12 @@ export type FamilyCard = {
 
 export const familyApi = {
   card: () => api<FamilyCard>('/api/family'),
-  /** The own answer for today, or a change of it (it cannot be taken back); it becomes a note too (`noteId`, the same
-   * id twice keeps one note). */
+  /** The own answer for today, final once given (`family_answered` for a second one); it becomes a note too
+   * (`noteId`: the same words with the same id again are the same press, one answer and one note). */
   answer: (date: string, text: string, noteId: string) => api<FamilyCard>('/api/family/answer', { method: 'PUT', body: { date, text, note_id: noteId } }),
+  /** The question of a date with the answers, for the reading page of that day; null for a person who did not answer
+   * then (nothing is said of the others). */
+  ofDate: (date: string) => api<FamilyCard | null>(`/api/family/day/${encodeURIComponent(date)}`),
 }
 
 export type DayChange = {
@@ -424,6 +429,8 @@ export const diaryApi = {
   deleteNote: (id: string) => api<void>(`/api/notes/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   day: (date: string) => api<DayPage>(`/api/days/${encodeURIComponent(date)}`),
   changeDay: (date: string, change: DayChange) => api<DayPage>(`/api/days/${encodeURIComponent(date)}`, { method: 'PUT', body: change }),
+  /** Deletes the page of a day: its shares and its draft go with it, the notes and the photos of the day stay. */
+  deleteDay: (date: string) => api<void>(`/api/days/${encodeURIComponent(date)}`, { method: 'DELETE' }),
   /** "Heute nur kurz": the page of today out of one sentence and the first value; only while there is no page. */
   short: (date: string, entry: { text: string; title: string; rating?: number; cover: string }) =>
     api<DayPage>(`/api/days/${encodeURIComponent(date)}/short`, { method: 'POST', body: entry }),
@@ -631,7 +638,7 @@ export type JournalDay = {
 export type JournalPage = { days: JournalDay[]; more: boolean }
 /** A volume of the shelf: a year with its pages, out of how many days, and the pages of each month. */
 export type JournalVolume = { year: number; pages: number; days: number; months: number[] }
-export type JournalOverview = { count: number; since: string | null; tags: { tag: string; count: number }[]; volumes?: JournalVolume[]; year?: number }
+export type JournalOverview = { count: number; since: string | null; tags: { tag: string; count: number }[]; volumes?: JournalVolume[]; year?: number; days_left?: number }
 
 export type SearchHit = { date: string; kind: 'title' | 'text' | 'tag' | 'note'; snippet: string; note_id?: string }
 export type SearchResult = { results: SearchHit[]; more: boolean; days: Record<string, JournalDay> }

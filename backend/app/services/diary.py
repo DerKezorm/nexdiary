@@ -1086,6 +1086,15 @@ def _day_view(day: str, content: dict[str, Any] | None, created: datetime, updat
 _DAY_COLUMNS = (Day.id, Day.date, Day.content_enc, Day.revision, Day.created_at, Day.updated_at, Day.locked_at)
 
 
+def has_draft(db: Session, account_id: int, day: str) -> bool:
+    """Whether a draft of the day stands (the person's own or one the morning writing made)."""
+    return db.scalar(select(Draft.date).where(Draft.user_id == account_id, Draft.date == day)) is not None
+
+
+def has_notes(db: Session, account_id: int, day: str) -> bool:
+    return db.scalar(select(Note.uid).where(Note.user_id == account_id, Note.date == day).limit(1)) is not None
+
+
 def day_exists(db: Session, account_id: int, day: str) -> bool:
     return db.scalar(select(Day.id).where(Day.user_id == account_id, Day.date == day)) is not None
 
@@ -1100,14 +1109,16 @@ def get_day(db: Session, account_id: int, dek: bytes, day: str) -> dict[str, Any
 
 def change_day(db: Session, account_id: int, dek: bytes, day: str,
                apply: Callable[[dict[str, Any]], dict[str, Any]], *, base_revision: int | None = None,
-               discard_draft: bool = False) -> dict[str, Any]:
+               discard_draft: bool = False, guard: Callable[[], None] | None = None) -> dict[str, Any]:
     """Reads the day (or an empty one), lets ``apply`` change it and writes it back, atomically: a day that does not
     exist yet is inserted only if no other save inserted it first, one that exists is written only onto the revision
     it was read from. Otherwise it is read again and ``apply`` runs on what stands now.
 
     With ``base_revision`` (the revision the writer started from, -1 for "there was no page") the change is made only
     onto exactly that: a page saved meanwhile on another device is not overwritten unseen (``day_changed``, with the
-    revision that stands). ``discard_draft`` deletes the day's draft in the same transaction."""
+    revision that stands). ``discard_draft`` deletes the day's draft in the same transaction. ``guard`` runs after the
+    write, inside its transaction (which holds the database's write lock from the write on): what it reads cannot change
+    before the commit, and when it raises, nothing of the change stays."""
     for _ in range(CHANGE_TRIES):
         row = db.execute(select(*_DAY_COLUMNS).where(Day.user_id == account_id, Day.date == day)).first()
         if base_revision is not None:
@@ -1143,6 +1154,12 @@ def change_day(db: Session, account_id: int, dek: bytes, day: str,
             growth = len(sealed) - len(row.content_enc)
         if written.rowcount == 1:
             quota.check_after_write(db, account_id, growth)
+        if written.rowcount == 1 and guard is not None:
+            try:
+                guard()
+            except Exception:
+                db.rollback()
+                raise
         if written.rowcount == 1 and discard_draft:
             db.execute(delete(Draft).where(Draft.user_id == account_id, Draft.date == day))
         db.commit()
@@ -1228,8 +1245,13 @@ def check_cover(db: Session, account_id: int, day: str, cover: Any) -> str | Non
 
 
 def delete_day(db: Session, account_id: int, day: str) -> None:
-    """The page of the day; its notes stay (the raw notes are always kept)."""
+    """The page of the day: its title, text, tags, ratings and the choice of its cover, and with it every share of the
+    day (the foreign key cascades) and the draft of the day, in the same transaction, so that no old draft comes back
+    over the empty day. The notes stay (the raw notes are always kept), and the photos of the day; the photos taken for
+    the text alone are the caller's to tidy (``tidy_text_photos``)."""
     gone = db.execute(delete(Day).where(Day.user_id == account_id, Day.date == day, Day.locked_at.is_(None)))
+    if gone.rowcount == 1:
+        db.execute(delete(Draft).where(Draft.user_id == account_id, Draft.date == day))
     db.commit()
     if gone.rowcount != 1:
         ensure_open(db, account_id, day)

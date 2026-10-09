@@ -40,14 +40,69 @@ function namesOf(names: string[], language: string): string {
 
 // --- The family question ---------------------------------------------------------------------------------------------
 
+/** The answers as bubbles: the others' on the left with their name, the own on the right. */
+function AnswerBubbles({ card }: { card: FamilyCard }) {
+  const { t } = useTranslation()
+  const byId = new Map(card.people.map((person) => [person.id, person]))
+  const self = card.people.find((person) => person.me)
+  const mine = card.mine
+  return (
+    <>
+      {(card.answers ?? []).map((item) => {
+        const person = byId.get(item.from)
+        if (!person) return null
+        return (
+          <div key={item.from} className="flex items-end gap-2.5">
+            <Avatar person={person} size={26} />
+            <div className="max-w-[80%] min-w-0 rounded-2xl rounded-bl-md bg-sheet-2 px-3.5 py-2 text-ink">
+              <p className="text-xs font-bold opacity-70">{nameOf(person)}</p>
+              <p className="font-serif leading-snug break-words whitespace-pre-wrap">{item.text}</p>
+            </div>
+          </div>
+        )
+      })}
+      {mine && (
+        <div className="flex flex-row-reverse items-end gap-2.5" data-mine>
+          {self && <Avatar person={self} size={26} />}
+          <div className="max-w-[80%] min-w-0 rounded-2xl rounded-br-md bg-accent px-3.5 py-2 text-accent-ink">
+            <p className="font-serif leading-snug break-words whitespace-pre-wrap">{mine.unreadable ? t('family.unreadable') : mine.text}</p>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+/** The family question of a day, read again on the reading page of that day: the server gives it only to a person who
+ * answered on that date (else null, and nothing shows), with the answers of those who answered too. */
+export function FamilyOfDay({ card }: { card: FamilyCard }) {
+  const { t } = useTranslation()
+  return (
+    <section className="card overflow-hidden" aria-label={t('family.ofDay')} data-family-day>
+      <div className="flex items-start gap-3 px-5 pt-4 pb-3">
+        <Users size={20} className="mt-0.5 shrink-0 text-accent" aria-hidden />
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-bold tracking-wide text-accent uppercase">{t('family.title')}</p>
+          <p className="mt-0.5 font-serif text-lg leading-snug text-ink" data-family-question>
+            {card.question.text}
+          </p>
+        </div>
+      </div>
+      <div className="space-y-2.5 px-5 pb-5" data-answers>
+        <AnswerBubbles card={card} />
+      </div>
+    </section>
+  )
+}
+
 /** Everybody who joined answers the same question; the answers of the others open after the own. The server keeps
- * that rule: before the own answer the card knows who answered, nothing of what. */
+ * that rule: before the own answer the card knows who answered, nothing of what. An answer is final: the card says so
+ * under the field, and there is nothing to change afterwards. */
 export function FamilyQuestion({ today }: { today: TodayState }) {
   const { t, i18n } = useTranslation()
   const card = today.data?.family
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
-  const [editing, setEditing] = useState(false)
   const [problem, setProblem] = useState<{ code: string; values: Record<string, unknown> } | null>(null)
   /** The note the answer becomes: the same id until the server took it, so a double press keeps one note. */
   const noteId = useRef(newId())
@@ -55,8 +110,6 @@ export function FamilyQuestion({ today }: { today: TodayState }) {
   const others = card.people.filter((person) => !person.me)
   const answered = others.filter((person) => person.answered)
   const waiting = others.filter((person) => !person.answered)
-  const byId = new Map(card.people.map((person) => [person.id, person]))
-  const self = card.people.find((person) => person.me)
   const mine = card.mine
 
   const run = async (call: () => Promise<FamilyCard>) => {
@@ -70,6 +123,8 @@ export function FamilyQuestion({ today }: { today: TodayState }) {
       return true
     } catch (error) {
       setProblem(codeOf(error))
+      // Answered already (on another device, or a reply lost on the way): the card shows the answer that stands.
+      if (error instanceof ApiError && error.code === 'family_answered') await today.load().catch(() => undefined)
       return false
     } finally {
       setBusy(false)
@@ -81,11 +136,11 @@ export function FamilyQuestion({ today }: { today: TodayState }) {
     if (await run(() => familyApi.answer(card.date, words, noteId.current))) {
       noteId.current = newId()
       setText('')
-      setEditing(false)
     }
   }
   const field = (
-    <div className="flex items-end gap-2">
+    <>
+      <div className="flex items-end gap-2">
       <textarea
         rows={1}
         value={text}
@@ -105,7 +160,11 @@ export function FamilyQuestion({ today }: { today: TodayState }) {
         {busy ? <Loader2 size={17} className="animate-spin" aria-hidden /> : null}
         {t('family.answer')}
       </button>
-    </div>
+      </div>
+      <p className="mt-1.5 text-xs text-muted" data-family-final>
+        {t('family.final')}
+      </p>
+    </>
   )
 
   return (
@@ -150,52 +209,11 @@ export function FamilyQuestion({ today }: { today: TodayState }) {
         </div>
       ) : (
         <div className="rise space-y-2.5 px-5 pb-5" data-answers>
-          {card.answers.map((item) => {
-            const person = byId.get(item.from)
-            if (!person) return null
-            return (
-              <div key={item.from} className="flex items-end gap-2.5">
-                <Avatar person={person} size={26} />
-                <div className="max-w-[80%] min-w-0 rounded-2xl rounded-bl-md bg-sheet-2 px-3.5 py-2 text-ink">
-                  <p className="text-xs font-bold opacity-70">{nameOf(person)}</p>
-                  <p className="font-serif leading-snug break-words whitespace-pre-wrap">{item.text}</p>
-                </div>
-              </div>
-            )
-          })}
-          {editing ? (
-            <div className="pt-1">{field}</div>
-          ) : (
-            <div className="flex flex-row-reverse items-end gap-2.5" data-mine>
-              {self && <Avatar person={self} size={26} />}
-              <div className="max-w-[80%] min-w-0 rounded-2xl rounded-br-md bg-accent px-3.5 py-2 text-accent-ink">
-                <p className="font-serif leading-snug break-words whitespace-pre-wrap">{mine.unreadable ? t('family.unreadable') : mine.text}</p>
-              </div>
-            </div>
-          )}
+          <AnswerBubbles card={card} />
           <p className="pt-1 text-xs text-muted">
             {waiting.length > 0 && `${t('family.waiting', { count: waiting.length, names: namesOf(waiting.map(nameOf), i18n.language) })} `}
             {t('family.inNotes')}
           </p>
-          {!editing && (
-            <p className="flex flex-wrap gap-3 text-xs font-semibold">
-              <button
-                type="button"
-                className="text-accent hover:underline"
-                onClick={() => {
-                  setText(mine.unreadable ? '' : mine.text)
-                  setEditing(true)
-                }}
-              >
-                {t('family.change')}
-              </button>
-            </p>
-          )}
-          {editing && (
-            <button type="button" className="text-xs font-semibold text-muted hover:text-ink" onClick={() => setEditing(false)}>
-              {t('common.cancel')}
-            </button>
-          )}
         </div>
       )}
       {problem && (
@@ -302,9 +320,14 @@ export function FollowupDialog({ date, onClose, onDone }: { date: string; onClos
   return (
     <Dialog title={t('followups.title')} onClose={onClose}>
       {questions === null ? (
-        <p className="flex items-center gap-2 py-8 text-ink-2" role="status">
-          <Loader2 size={18} className="animate-spin text-accent" aria-hidden /> {t('followups.reading')}
-        </p>
+        <>
+          <p className="-mt-2 text-sm text-ink-2" data-followups-explain>
+            {t('followups.explain')}
+          </p>
+          <p className="flex items-center gap-2 py-8 text-ink-2" role="status">
+            <Loader2 size={18} className="animate-spin text-accent" aria-hidden /> {t('followups.reading')}
+          </p>
+        </>
       ) : (
         <div className="space-y-5">
           {questions.length > 0 ? (

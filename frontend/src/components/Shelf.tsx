@@ -2,7 +2,8 @@
  * The bookshelf, as the mock's `Shelf.tsx`: every year with a page is a volume, as wide as it is full, in the colour
  * of the accent, the year upright on its spine; after them an empty one waits for the next year. Tapping a volume (or
  * "2026 aufschlagen") shows only that year in the journal, tapping it again shows all; "Als Buch" makes a PDF of it.
- * The numbers come from the server (`/api/journal/overview`).
+ * The numbers come from the server (`/api/journal/overview`): the first volume counts from its first page on, the days
+ * left are those after today up to New Year's Eve, in the person's time zone.
  */
 import { BookOpen, Download } from 'lucide-react'
 import { useState } from 'react'
@@ -16,7 +17,7 @@ function shade(index: number, count: number): number {
   return Math.max(40, Math.min(100, 70 + (index - Math.max(0, count - 3)) * 10))
 }
 
-export function Shelf({ volumes, thisYear, year, onYear, name }: { volumes: JournalVolume[]; thisYear: number; year: number | null; onYear: (year: number | null) => void; name: string }) {
+export function Shelf({ volumes, thisYear, daysLeft, year, onYear, name }: { volumes: JournalVolume[]; thisYear: number; daysLeft: number; year: number | null; onYear: (year: number | null) => void; name: string }) {
   const { t } = useTranslation()
   const [book, setBook] = useState<JournalVolume | null>(null)
   const [done, setDone] = useState<string | null>(null)
@@ -24,7 +25,6 @@ export function Shelf({ volumes, thisYear, year, onYear, name }: { volumes: Jour
   const current = volumes.find((volume) => volume.year === (year ?? thisYear)) ?? volumes[volumes.length - 1]
   const share = current.pages / current.days
   const waiting = volumes.some((volume) => volume.year === thisYear) ? thisYear + 1 : Math.max(thisYear, current.year + 1)
-  const open = Math.max(0, current.days - current.pages)
 
   return (
     <section className="card overflow-hidden" data-shelf>
@@ -67,7 +67,7 @@ export function Shelf({ volumes, thisYear, year, onYear, name }: { volumes: Jour
           <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-sheet-2">
             <div className="h-full rounded-full bg-accent" style={{ width: `${Math.max(2, share * 100)}%` }} />
           </div>
-          <p className="mt-2 text-sm text-ink-2">{current.year === thisYear ? t('shelf.open', { count: open }) : t('shelf.closed')}</p>
+          <p className="mt-2 text-sm text-ink-2">{current.year !== thisYear ? t('shelf.closed') : daysLeft > 0 ? t('shelf.open', { count: daysLeft }) : t('shelf.lastDay')}</p>
           <div className="mt-4 flex flex-wrap gap-2">
             <button
               type="button"

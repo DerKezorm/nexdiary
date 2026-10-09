@@ -275,7 +275,7 @@ function PromptCard({ today }: { today: TodayState }) {
 /** "Den Tag aufschreiben", as the mock's finish card: "Ausformulieren" with the AI (short or long) and "Erst fragen
  * lassen" above "Selbst schreiben" when there is an AI for this person and notes to write from. A day that has a page
  * already keeps the button, for notes added later; the writing page asks before the AI writes over the saved page.
- * "Heute nur kurz" below, while the day has no page. */
+ * "Heute nur kurz" below, only on an empty day: no notes, no saved page, no draft (the server decides the same). */
 function FinishCard({ today, ai, now }: { today: TodayState; ai: AiState | null; now?: Date }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -288,6 +288,8 @@ function FinishCard({ today, ai, now }: { today: TodayState; ai: AiState | null;
   const aiOn = Boolean(ai?.available) && !data.day?.locked && data.notes.some((note) => note.text && !note.unreadable)
   const text = written ? t(aiOn ? 'write.finishExistingAi' : 'write.finishExisting') : count > 0 ? t('write.finishText', { count }) : t('write.finishNoNotes')
   const formulate = () => navigate(`/tag/${data.date}/schreiben`, { state: { formulate: length } })
+  /** Nothing on the day yet but ratings or tags: the only day "Heute nur kurz" is for. */
+  const emptyDay = count === 0 && !data.day?.title.trim() && !written && !data.has_draft && !data.day?.locked
   /** The value "Heute nur kurz" asks for: the first one the person rates. */
   const firstValue = data.values.find((value) => value.active && !value.unreadable)
   return (
@@ -323,6 +325,9 @@ function FinishCard({ today, ai, now }: { today: TodayState; ai: AiState | null;
               <button type="button" className={`${SOFT} w-full`} onClick={() => setAsking(true)}>
                 <MessageCircleQuestion size={18} aria-hidden /> {t('followups.button')}
               </button>
+              <p className="-mt-1 text-xs leading-relaxed text-muted" data-followups-explain>
+                {t('followups.explain')}
+              </p>
               <p className="text-xs leading-relaxed text-muted">
                 {aiHint(ai, t)} {t('write.aiPromise')}
               </p>
@@ -331,7 +336,7 @@ function FinishCard({ today, ai, now }: { today: TodayState; ai: AiState | null;
           <Link to={`/tag/${data.date}/schreiben`} className={`${aiOn ? SOFT : PRIMARY} w-full`}>
             <PenLine size={18} aria-hidden /> {written ? t('write.continue') : t('write.self')}
           </Link>
-          {!written && !data.day?.locked && (
+          {emptyDay && (
             <button type="button" onClick={() => setShort(true)} className="w-full pt-1 text-center text-sm font-semibold text-accent hover:underline">
               {firstValue ? t('short.link', { value: firstValue.name }) : t('short.linkNoValue')}
             </button>

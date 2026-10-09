@@ -20,17 +20,18 @@
       {
         "title": "Familienfrage",
         "where": "Mein Konto, Schreiben",
-        "body": "Jeden Tag eine Frage für alle, die mitmachen. Die Antworten der anderen siehst du, sobald du selbst geantwortet hast. Ab Werk aus, jede Person schaltet sie selbst ein."
+        "body": "Jeden Tag eine Frage für alle, die mitmachen. Die Antworten der anderen siehst du, sobald du selbst geantwortet hast, und später noch einmal beim Lesen des Tages. Ab Werk aus, jede Person schaltet sie selbst ein."
       },
       {
         "title": "Heute nur kurz",
         "where": "Heute",
-        "body": "An müden Tagen reichen dein erster Wert und ein Satz, und der Tag zählt für deine Serie. Mehr daraus machen kannst du später."
+        "body": "An müden Tagen ohne Notizen reichen dein erster Wert und ein Satz, und der Tag zählt für deine Serie. Mehr daraus machen kannst du später."
       }
     ],
     "smallTitle": "Außerdem",
     "small": [
-      "Mit „Erst fragen lassen“ stellt die KI vor dem Ausformulieren bis zu zwei Fragen zu dem, was in deinen Notizen offen bleibt. Deine Antworten kommen zu den Notizen."
+      "Mit „Erst fragen lassen“ stellt die KI vor dem Ausformulieren bis zu zwei Fragen zu dem, was in deinen Notizen offen bleibt. Deine Antworten kommen zu den Notizen.",
+      "Eine Seite lässt sich jetzt löschen, beim Lesen des Tages und beim Schreiben. Deine Notizen und die Fotos des Tages bleiben."
     ]
   },
   "0.4.0": {

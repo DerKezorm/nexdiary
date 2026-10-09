@@ -50,7 +50,7 @@ function serve(): void {
       const body = init?.body ? JSON.parse(String(init.body)) : undefined
       calls.push({ method, url, body })
       const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
-      if (url === '/api/journal/overview') return json({ count: 517, since: '2024-01-01', tags: [], volumes: VOLUMES, year: 2026 })
+      if (url === '/api/journal/overview') return json({ count: 517, since: '2024-01-01', tags: [], volumes: VOLUMES, year: 2026, days_left: 83 })
       if (url === '/api/journal') {
         const year = body?.year
         const days = year === 2026 ? [day('2026-10-08', 'Neu'), day('2026-09-02', 'Lang', 'x'.repeat(250))] : [day('2026-10-08', 'Neu'), day('2025-07-01', 'Alt')]
@@ -107,20 +107,39 @@ afterEach(() => {
 describe('the shelf', () => {
   it('has a volume per year, as wide as it is full, and an empty one for next year', async () => {
     const onYear = vi.fn()
-    await show(<Shelf volumes={VOLUMES} thisYear={2026} year={null} onYear={onYear} name="Jule" />)
+    await show(<Shelf volumes={VOLUMES} thisYear={2026} daysLeft={83} year={null} onYear={onYear} name="Jule" />)
     const spines = [...box.querySelectorAll<HTMLElement>('[data-volume]')]
     expect(spines.map((spine) => spine.style.width)).toEqual(['76px', '35px', '44px'])
     expect(spines[0].getAttribute('aria-label')).toBe('Band 2024, 366 Seiten')
     expect(box.querySelector('[title="Band 2027 wartet"]')).not.toBeNull()
     expect(box.textContent).toContain('Band 2026')
     expect(box.textContent).toContain('111 von 365 Seiten')
-    expect(box.textContent).toContain('Noch 254 Seiten frei bis Silvester. Jede Seite bleibt, auch wenn mal eine Woche fehlt.')
+    // The days after today up to New Year's Eve, as the server counts them; not the pages still free.
+    expect(box.textContent).toContain('Noch 83 Tage bis Silvester. Jede Seite bleibt, auch wenn mal eine Woche fehlt.')
     await click(spines[0])
     expect(onYear).toHaveBeenCalledWith(2024)
   })
 
+  it('says one day, and the last day of the year, in their own words', async () => {
+    await show(<Shelf volumes={VOLUMES} thisYear={2026} daysLeft={1} year={null} onYear={() => undefined} name="Jule" />)
+    expect(box.textContent).toContain('Noch 1 Tag bis Silvester.')
+    act(() => root.unmount())
+    box.remove()
+    await show(<Shelf volumes={VOLUMES} thisYear={2026} daysLeft={0} year={null} onYear={() => undefined} name="Jule" />)
+    expect(box.textContent).toContain('Heute ist Silvester. Jede Seite bleibt, auch wenn mal eine Woche fehlt.')
+    expect(box.textContent).not.toContain('Noch 0')
+  })
+
+  it('draws the first volume as full as the server counts it, from its first page on', async () => {
+    const first = [{ year: 2026, pages: 3, days: 84, months: [0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0] }]
+    await show(<Shelf volumes={first} thisYear={2026} daysLeft={83} year={null} onYear={() => undefined} name="Jule" />)
+    expect(box.textContent).toContain('3 von 84 Seiten')
+    const spine = box.querySelector<HTMLElement>('[data-volume]')!
+    expect(spine.style.width).toBe(`${30 + Math.round((3 / 84) * 46)}px`)
+  })
+
   it('counts a leap year as 366 days and calls an old volume finished', async () => {
-    await show(<Shelf volumes={VOLUMES} thisYear={2026} year={2024} onYear={() => undefined} name="Jule" />)
+    await show(<Shelf volumes={VOLUMES} thisYear={2026} daysLeft={83} year={2024} onYear={() => undefined} name="Jule" />)
     expect(box.textContent).toContain('366 von 366 Seiten')
     expect(box.textContent).toContain('Ein abgeschlossener Band.')
     expect(button('Nur 2024')!.getAttribute('aria-pressed')).toBe('true')
@@ -230,7 +249,7 @@ describe('the book', () => {
 
   it('opens from the shelf', async () => {
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
-    await show(<Shelf volumes={VOLUMES} thisYear={2026} year={null} onYear={() => undefined} name="Jule" />)
+    await show(<Shelf volumes={VOLUMES} thisYear={2026} daysLeft={83} year={null} onYear={() => undefined} name="Jule" />)
     await click(button('Als Buch'))
     expect(document.querySelector('[role="dialog"]')).not.toBeNull()
   })
