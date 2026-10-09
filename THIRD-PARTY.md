@@ -10,6 +10,7 @@ These files travel inside the container image, so their notices travel with them
 | What | Copyright | Licence | Notice in the app |
 |---|---|---|---|
 | Fonts Fraunces, Lora and Nunito (via Fontsource) | The Fraunces, Lora and Nunito Project Authors | OFL-1.1 | `/licenses/fonts.txt` |
+| Fonts of the book: Fraunces SemiBold and Lora as "Diary Serif" (static cuts made from the Fontsource files by `backend/scripts/book_fonts.py`; Lora renamed for its Reserved Font Name) | The Fraunces and Lora Project Authors | OFL-1.1 | `backend/app/assets/fonts/*-OFL.txt`, and embedded in each PDF only as the glyphs it uses |
 | Lucide icons (partly from Feather) | Lucide Contributors; Cole Bemis | ISC, MIT | `/licenses/lucide.txt` |
 
 nexdiary loads no font, icon or script from another host.
@@ -37,6 +38,8 @@ what the container image installs; on Linux `uvicorn[standard]` adds uvloop).
 | cbor2 | MIT |
 | pyOpenSSL | Apache-2.0 |
 | pyasn1, pyasn1-modules | BSD-2-Clause, BSD-3-Clause |
+| reportlab (sets the book as a PDF) | BSD-3-Clause |
+| charset-normalizer (brought by reportlab) | MIT |
 
 ### HEIC photos: pillow-heif and the libraries it brings
 
@@ -64,7 +67,7 @@ with an AGPL-3.0 work, and the source of every part is public.
 The editor package also installs a few packages for parts of Milkdown that nexdiary does not use (such as DOMPurify,
 MPL-2.0 or Apache-2.0, and Vue, MIT). The build leaves them out: they are not in the image.
 
-Build and test tools (Vite, TypeScript, Tailwind CSS, Vitest, ruff, pytest) are not part of the image.
+Build and test tools (Vite, TypeScript, Tailwind CSS, Vitest, ruff, pytest, pypdf) are not part of the image.
 
 ## Compatibility
 

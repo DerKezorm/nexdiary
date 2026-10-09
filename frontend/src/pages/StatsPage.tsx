@@ -4,7 +4,7 @@
  * about. Everything is worked out by the server from the own days only; this page draws it. The value most of it is
  * about is the first one the person asks for, under whatever name they gave it.
  */
-import { BookOpen, CalendarDays, Flame, Heart, Image, PenLine, Shield, Sparkles, Trophy } from 'lucide-react'
+import { BookOpen, CalendarDays, Flame, Heart, History, Image, PenLine, Shield, Sparkles, Trophy } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
@@ -130,6 +130,8 @@ export function StatsPage() {
 
       {data.unreadable > 0 && <p className="text-sm text-muted">{t('stats.unreadable', { count: data.unreadable })}</p>}
 
+      {data.pages > 0 && <ReviewLinks />}
+
       {data.pages === 0 ? (
         <div className="card p-6 text-ink-2">{t('stats.empty')}</div>
       ) : (
@@ -154,6 +156,31 @@ export function StatsPage() {
         </>
       )}
     </div>
+  )
+}
+
+/** The way into looking back: last week, last month (`/rueckblick`). */
+function ReviewLinks() {
+  const { t } = useTranslation()
+  const link = 'inline-flex h-8 items-center justify-center gap-2 rounded-full bg-accent-soft px-3.5 text-sm font-semibold text-accent transition hover:brightness-[0.98]'
+  return (
+    <section className="card flex flex-wrap items-center justify-between gap-4 p-5" data-review-links>
+      <div className="flex items-center gap-3">
+        <History size={20} className="shrink-0 text-accent" aria-hidden />
+        <div>
+          <h2 className="font-display text-lg font-semibold">{t('review.statsTitle')}</h2>
+          <p className="text-sm text-ink-2">{t('review.statsText')}</p>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Link to="/rueckblick/woche" className={link}>
+          {t('review.lastWeek')}
+        </Link>
+        <Link to="/rueckblick/monat" className={link}>
+          {t('review.lastMonth')}
+        </Link>
+      </div>
+    </section>
   )
 }
 

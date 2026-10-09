@@ -10,6 +10,7 @@ import { EntryPage } from './pages/EntryPage'
 import { JournalPage } from './pages/JournalPage'
 import { LibraryPage } from './pages/LibraryPage'
 import { QuickPage } from './pages/QuickPage'
+import { ReviewPage } from './pages/ReviewPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { SharedEntryPage, SharedPage } from './pages/SharedPage'
 import { StatsPage } from './pages/StatsPage'
@@ -61,6 +62,8 @@ export default function App() {
         <Route path="tagebuch" element={<JournalPage />} />
         <Route path="fotos" element={<LibraryPage />} />
         <Route path="statistik" element={<StatsPage />} />
+        <Route path="rueckblick/:kind" element={<ReviewPage />} />
+        <Route path="rueckblick/:kind/:start" element={<ReviewPage />} />
         <Route path="zeitkapseln" element={<CapsulesPage />} />
         <Route path="geteilt" element={<SharedPage />} />
         <Route path="geteilt/:from/:date" element={<SharedEntryPage />} />

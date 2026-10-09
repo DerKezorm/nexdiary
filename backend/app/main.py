@@ -26,6 +26,7 @@ from .routers import (
     ai,
     apitokens,
     auth,
+    book,
     capsules,
     diary,
     health,
@@ -37,6 +38,7 @@ from .routers import (
     prompts,
     push,
     resets,
+    review,
     sharing,
     stats,
     templates,
@@ -63,6 +65,7 @@ from .services import (
     vault,
 )
 from .services import apitokens as apitokens_service
+from .services import book as book_service
 from .services import capsules as capsules_service
 from .services import passkeys as passkeys_service
 
@@ -71,7 +74,7 @@ logger = logging.getLogger("nexdiary")
 ROUTERS = [
     health, about, locales_router, logs_router, auth, totp_router, oidc, invites, settings_router, backups_router,
     avatars_router, apitokens, v1_router, diary, photos, sharing, ai, prompts, immich, push, passkeys, stats,
-    resets, templates, capsules,
+    resets, templates, capsules, review, book,
 ]
 
 
@@ -95,6 +98,7 @@ async def _sweep_forever(stop: asyncio.Event) -> None:
     while not stop.is_set():
         totp.sweep()
         passkeys_service.sweep()
+        book_service.sweep()
         if rounds % 60 == 0:
             with SessionLocal() as db:
                 purge_sessions(db)
@@ -112,6 +116,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     init_db()
     # The master key is there and fits the database, or the start stops here with the reason.
     vault.startup()
+    # Books of the last run were sealed with keys that died with it.
+    book_service.startup()
     apitokens_service.seal_legacy_names()
     private.tighten_all()
     logs.attach_store(_read_log_mode, _write_log_mode)

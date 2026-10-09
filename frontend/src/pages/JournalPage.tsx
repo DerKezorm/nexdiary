@@ -15,6 +15,7 @@ import { ApiError, authApi, diaryApi, journalApi, type CatchUp, type JournalDay,
 import { Avatar } from '../components/Avatar'
 import { CatchUpCard } from '../components/CatchUp'
 import { Chip } from '../components/Chip'
+import { Shelf } from '../components/Shelf'
 import { CoverImage } from '../covers/Cover'
 import { longDate } from '../lib/dates'
 import { errorText } from '../lib/errors'
@@ -121,6 +122,8 @@ export function JournalPage() {
   const [problem, setProblem] = useState<string | null>(null)
   const [q, setQ] = useState('')
   const [tag, setTag] = useState<string | null>(null)
+  /** The volume opened on the shelf: only its year, asked of the server. */
+  const [year, setYear] = useState<number | null>(null)
   const [found, setFound] = useState<SearchResult | null>(null)
   const [searching, setSearching] = useState(false)
   /** Counts the loads: an answer to an older one (another tag meanwhile) is thrown away. */
@@ -132,10 +135,10 @@ export function JournalPage() {
     diaryApi.catchUp().then(setCatchUp, () => undefined)
   }, [])
 
-  const load = useCallback(async (before: string | undefined, withTag: string | null, current: number) => {
+  const load = useCallback(async (before: string | undefined, withTag: string | null, current: number, inYear: number | null) => {
     setLoading(true)
     try {
-      const page = await journalApi.page(before, withTag ?? undefined)
+      const page = await journalApi.page(before, withTag ?? undefined, undefined, inYear ?? undefined)
       if (current !== round.current) return
       setDays((shown) => (before ? [...shown, ...page.days.filter((day) => !shown.some((other) => other.date === day.date))] : page.days))
       setMore(page.more)
@@ -147,13 +150,13 @@ export function JournalPage() {
     }
   }, [])
 
-  // The first page, again when the tag changes.
+  // The first page, again when the tag or the year changes.
   useEffect(() => {
     const current = ++round.current
     setDays([])
     setMore(false)
-    void load(undefined, tag, current)
-  }, [tag, load])
+    void load(undefined, tag, current, year)
+  }, [tag, year, load])
 
   // The search, once typing rests.
   useEffect(() => {
@@ -187,8 +190,8 @@ export function JournalPage() {
 
   const next = useCallback(() => {
     if (loading || !more || query) return
-    void load(days.at(-1)?.date, tag, round.current)
-  }, [loading, more, query, days, tag, load])
+    void load(days.at(-1)?.date, tag, round.current, year)
+  }, [loading, more, query, days, tag, year, load])
 
   // The next page when the end of the list comes into view.
   const end = useRef<HTMLDivElement>(null)
@@ -203,9 +206,9 @@ export function JournalPage() {
   const list: Shown[] = useMemo(() => {
     if (!query) return days
     if (!found) return []
-    const entries = searchEntries(found)
+    const entries = searchEntries(found).filter((entry) => !year || entry.date.startsWith(`${year}-`))
     return tag ? entries.filter((entry) => entry.tags.includes(tag)) : entries
-  }, [query, found, days, tag])
+  }, [query, found, days, tag, year])
 
   const since = overview?.since ? new Intl.DateTimeFormat(i18n.language, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${overview.since}T12:00:00Z`)) : ''
   const empty = overview?.count === 0
@@ -220,6 +223,11 @@ export function JournalPage() {
         </div>
         {!empty && <LookSwitch look={look} />}
       </header>
+      {overview?.volumes && overview.volumes.length > 0 && (
+        <div className="mb-6">
+          <Shelf volumes={overview.volumes} thisYear={overview.year ?? new Date().getFullYear()} year={year} onYear={setYear} name={me?.display_name || me?.name || ''} />
+        </div>
+      )}
       {!query && <CatchUpCard data={catchUp} className="mb-5" />}
       {empty ? (
         <div className="card p-8 text-center text-ink-2">

@@ -56,9 +56,10 @@ def has_page(content: dict[str, Any] | None) -> bool:
 
 
 def page(db: Session, account_id: int, dek: bytes, *, before: str | None, limit: int,
-         tag: str | None) -> dict[str, Any]:
-    """One page of the own days before ``before`` (all when None), with ``tag`` only those that carry it, and whether
-    there are more. Only days with a page: one that holds just values or tags is not listed."""
+         tag: str | None, year: int | None = None) -> dict[str, Any]:
+    """One page of the own days before ``before`` (all when None), with ``tag`` only those that carry it, with
+    ``year`` only those of that year (the volume opened on the shelf), and whether there are more. Only days with a
+    page: one that holds just values or tags is not listed."""
     limit = min(max(limit, 1), PAGE_MAX)
     found: list[tuple[str, dict[str, Any] | None]] = []
     more = False
@@ -66,6 +67,8 @@ def page(db: Session, account_id: int, dek: bytes, *, before: str | None, limit:
     size = limit + 1 if tag is None else BATCH
     while True:
         query = select(Day.date, Day.content_enc).where(Day.user_id == account_id)
+        if year is not None:
+            query = query.where(Day.date >= f"{year:04d}-01-01", Day.date <= f"{year:04d}-12-31")
         if cursor:
             query = query.where(Day.date < cursor)
         rows = db.execute(query.order_by(Day.date.desc()).limit(size)).all()
@@ -104,17 +107,29 @@ def items_for_dates(db: Session, account_id: int, dek: bytes, dates: list[str]) 
     return {item["date"]: item for item in items(db, account_id, dek, found)}
 
 
+def days_in_year(year: int) -> int:
+    return 366 if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0) else 365
+
+
 def overview(db: Session, account_id: int, dek: bytes) -> dict[str, Any]:
-    """How many days there are, since when, and every tag with the number of days that carry it, most used first."""
+    """How many days there are, since when, every tag with the number of days that carry it, most used first, and the
+    volumes of the shelf: for every year with a page how many pages it holds, out of how many days, and how many in
+    each month."""
     count, since = 0, None
     tags: Counter[str] = Counter()
+    years: Counter[int] = Counter()
+    months: dict[int, list[int]] = {}
     for row in db.execute(select(Day.date, Day.content_enc).where(Day.user_id == account_id).order_by(Day.date)):
         content = diary._readable_content(account_id, dek, row.date, row.content_enc)
         if not has_page(content):
             continue
         count += 1
         since = since or row.date
+        years[int(row.date[:4])] += 1
+        months.setdefault(int(row.date[:4]), [0] * 12)[int(row.date[5:7]) - 1] += 1
         if content is not None:
             tags.update(set(content["tags"]))
     ordered = sorted(tags.items(), key=lambda pair: (-pair[1], pair[0]))
-    return {"count": int(count or 0), "since": since, "tags": [{"tag": tag, "count": n} for tag, n in ordered]}
+    return {"count": int(count or 0), "since": since, "tags": [{"tag": tag, "count": n} for tag, n in ordered],
+            "volumes": [{"year": year, "pages": n, "days": days_in_year(year), "months": months[year]}
+                        for year, n in sorted(years.items())]}

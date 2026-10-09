@@ -15,3 +15,5 @@ tzdata==2026.1
 http-ece==1.2.1
 # Passkeys (WebAuthn): the browser's answers checked; brings cbor2, pyOpenSSL, pyasn1.
 webauthn==3.0.1
+# A year as a book: the PDF is set on the server (pure Python; brings charset-normalizer).
+reportlab==5.0.1
