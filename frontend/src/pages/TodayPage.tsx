@@ -27,6 +27,7 @@ import { NoteMenu } from '../components/NoteMenu'
 import { useOwnPhotoViewer } from '../components/ownPhotoViewer'
 import { useDeletePhotos } from '../components/PhotoDelete'
 import { PhotoTile } from '../components/PhotoViews'
+import { ReviewTeaser } from '../components/ReviewTeaser'
 import { StreakBadges } from '../components/Streak'
 import { FamilyHint, FamilyQuestion, FollowupDialog, ShortEntry } from '../components/TodayExtras'
 import { Scale } from '../components/Scale'
@@ -91,7 +92,8 @@ export function TodayPage({ now }: { now?: Date }) {
       <div className="page flex min-h-[calc(100dvh-5rem)] flex-col lg:min-h-dvh">
         <Header now={now} today={today} onDay={() => setDrawer(true)} />
         <Before today={today} />
-        <div className="mb-3">
+        <div className="mb-3 space-y-3">
+          <ReviewTeaser />
           <FinishCard today={today} ai={ai} now={now} />
         </div>
         <div className="flex-1 pb-4">
@@ -134,6 +136,7 @@ export function TodayPage({ now }: { now?: Date }) {
             <Timeline today={today} />
           </div>
           <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
+            <ReviewTeaser />
             <FinishCard today={today} ai={ai} now={now} />
             <ValuesBlock today={today} />
             <PhotosBlock today={today} />
@@ -147,6 +150,7 @@ export function TodayPage({ now }: { now?: Date }) {
   return (
     <div className="page space-y-5 pb-28 lg:pb-12">
       <Header now={now} today={today} />
+      <ReviewTeaser />
       <Before today={today} />
       <Capture today={today} />
       {problem}

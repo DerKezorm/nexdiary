@@ -3,3 +3,5 @@ pytest==9.1.1
 pytest-asyncio==1.4.0
 httpx==0.28.1
 ruff==0.16.9
+# Reads the book's PDF in the tests; not in the image.
+pypdf==6.19.0

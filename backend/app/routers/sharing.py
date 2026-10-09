@@ -62,6 +62,8 @@ class JournalIn(Strict):
     #: Only the days with this tag (empty: all). In the body, not in the address: tags are sealed like the text, and an
     #: address ends up in proxy logs and the browser's history.
     tag: str = Field(default="", max_length=diary.TAG_MAX * 4)
+    #: Only the days of this year (the volume opened on the shelf); left out: all years.
+    year: int | None = Field(default=None, ge=diary.EARLIEST.year, le=9999)
 
 
 @router.post("/journal", summary="The own days page by page, newest first, for the journal")
@@ -72,12 +74,13 @@ def journal_page(payload: JournalIn, account: Account, db: DbSession) -> dict[st
     cleaned = diary.clean_tags([payload.tag])
     wanted = cleaned[0] if cleaned else None
     return journal.page(db, account.id, vault.dek_for(account.id), before=payload.before or None, limit=payload.limit,
-                        tag=wanted)
+                        tag=wanted, year=payload.year)
 
 
-@router.get("/journal/overview", summary="How many own days there are, since when, and their tags")
+@router.get("/journal/overview", summary="How many own days there are, since when, their tags and the volumes per year")
 def journal_overview(account: Account, db: DbSession) -> dict[str, Any]:
-    return journal.overview(db, account.id, vault.dek_for(account.id))
+    # The year of today in the person's time zone: the volume that is still being written.
+    return {**journal.overview(db, account.id, vault.dek_for(account.id)), "year": diary.today_of(account).year}
 
 
 # --- Sharing: the owner ---------------------------------------------------------------------------------------------

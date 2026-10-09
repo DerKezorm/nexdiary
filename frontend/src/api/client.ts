@@ -629,7 +629,9 @@ export type JournalDay = {
 }
 
 export type JournalPage = { days: JournalDay[]; more: boolean }
-export type JournalOverview = { count: number; since: string | null; tags: { tag: string; count: number }[] }
+/** A volume of the shelf: a year with its pages, out of how many days, and the pages of each month. */
+export type JournalVolume = { year: number; pages: number; days: number; months: number[] }
+export type JournalOverview = { count: number; since: string | null; tags: { tag: string; count: number }[]; volumes?: JournalVolume[]; year?: number }
 
 export type SearchHit = { date: string; kind: 'title' | 'text' | 'tag' | 'note'; snippet: string; note_id?: string }
 export type SearchResult = { results: SearchHit[]; more: boolean; days: Record<string, JournalDay> }
@@ -660,7 +662,8 @@ export type SharedDay = {
 
 export const journalApi = {
   /** In the body, never in the address: tags are as private as the text. */
-  page: (before?: string, tag?: string, limit = 24) => api<JournalPage>('/api/journal', { method: 'POST', body: { limit, ...(before ? { before } : {}), ...(tag ? { tag } : {}) } }),
+  page: (before?: string, tag?: string, limit = 24, year?: number) =>
+    api<JournalPage>('/api/journal', { method: 'POST', body: { limit, ...(before ? { before } : {}), ...(tag ? { tag } : {}), ...(year ? { year } : {}) } }),
   overview: () => api<JournalOverview>('/api/journal/overview'),
   /** In the body, never in the address: an address ends up in logs and the history. */
   search: (q: string) => api<SearchResult>('/api/search', { method: 'POST', body: { q } }),

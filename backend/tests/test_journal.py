@@ -114,13 +114,18 @@ def test_the_start_of_a_long_text_is_cut_at_a_word() -> None:
     assert diary.plain_text("1. erst\n2. dann\n\n### tief") == "erst dann tief"
 
 
+def counted(found: dict) -> dict:
+    """What the overview says of days and tags; the volumes of the shelf are tested in ``test_review.py``."""
+    return {key: found[key] for key in ("count", "since", "tags")}
+
+
 def test_the_overview_counts_days_and_tags(client: TestClient, account: Account) -> None:
     client.put("/api/me/preferences", json={"timezone": "UTC"})
-    assert client.get("/api/journal/overview").json() == {"count": 0, "since": None, "tags": []}
+    assert counted(client.get("/api/journal/overview").json()) == {"count": 0, "since": None, "tags": []}
     client.put("/api/days/2026-10-05", json={"title": "Am See", "tags": ["familie", "see"]})
     client.put("/api/days/2026-10-01", json={"text": "Ein Tag.", "tags": ["familie"]})
     client.put("/api/days/2026-09-20", json={"title": "Arbeit", "tags": ["arbeit"]})
-    assert client.get("/api/journal/overview").json() == {
+    assert counted(client.get("/api/journal/overview").json()) == {
         "count": 3, "since": "2026-09-20",
         "tags": [{"tag": "familie", "count": 2}, {"tag": "arbeit", "count": 1}, {"tag": "see", "count": 1}]}
 
@@ -136,7 +141,7 @@ def test_a_day_with_only_values_tags_or_notes_is_no_page_and_stays_out_of_the_jo
     client.put("/api/days/2026-10-02", json={"text": "Nur Text."})
     assert [item["date"] for item in client.post("/api/journal", json={}).json()["days"]] == ["2026-10-03", "2026-10-02"]
     assert client.post("/api/journal", json={"tag": "herbst"}).json()["days"] == []
-    assert client.get("/api/journal/overview").json() == {"count": 2, "since": "2026-10-02", "tags": []}
+    assert counted(client.get("/api/journal/overview").json()) == {"count": 2, "since": "2026-10-02", "tags": []}
     # The page of such a day still opens (the statistics and the quick note work with it); it is only not listed.
     assert client.get("/api/days/2026-10-06").status_code == 200
 
@@ -166,7 +171,7 @@ def test_the_journal_is_the_own_only(client: TestClient, account: Account) -> No
     client.put("/api/days/2026-10-05", json={"title": "Geheim", "tags": ["privat"]})
     with person("tom") as tom:
         assert tom.post("/api/journal", json={}).json() == {"days": [], "more": False}
-        assert tom.get("/api/journal/overview").json() == {"count": 0, "since": None, "tags": []}
+        assert counted(tom.get("/api/journal/overview").json()) == {"count": 0, "since": None, "tags": []}
         assert tom.post("/api/journal", json={"tag": "privat"}).json()["days"] == []
 
 
