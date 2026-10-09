@@ -4,10 +4,12 @@
  * anew after a drawing changed:
  *
  *     UPDATE_COVERS=1 npx vitest run src/covers/export.test.tsx
+ *
+ * The file is read at run time, not imported: the image builds the interface from `frontend/` alone, where
+ * `tsc -b` would not find a file of the backend.
  */
 import { renderToStaticMarkup } from 'react-dom/server'
 
-import stored from '../../../backend/app/assets/covers.json'
 import { Illustration } from './drawings'
 import { ALL_ILLUS } from './suggest'
 
@@ -32,13 +34,15 @@ describe('the illustrations for the book', () => {
   it('lie on the server as they are drawn here', async () => {
     const made = all()
     const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env
+    const fs = await import(/* @vite-ignore */ 'node:' + 'fs')
+    const url = await import(/* @vite-ignore */ 'node:' + 'url')
+    const file = url.fileURLToPath(new URL(TARGET, import.meta.url))
     if (env?.UPDATE_COVERS === '1') {
-      const fs = await import(/* @vite-ignore */ 'node:' + 'fs')
-      const url = await import(/* @vite-ignore */ 'node:' + 'url')
       // One illustration per line: a changed drawing shows as its own lines changed.
       const lines = Object.entries(made).map(([id, svg]) => `${JSON.stringify(id)}:${JSON.stringify(svg)}`)
-      fs.writeFileSync(url.fileURLToPath(new URL(TARGET, import.meta.url)), `{\n${lines.join(',\n')}\n}\n`)
+      fs.writeFileSync(file, `{\n${lines.join(',\n')}\n}\n`)
     }
+    const stored: unknown = JSON.parse(fs.readFileSync(file, 'utf-8'))
     expect(Object.keys(made)).toHaveLength(ALL_ILLUS.length)
     expect(stored).toEqual(made)
   })
