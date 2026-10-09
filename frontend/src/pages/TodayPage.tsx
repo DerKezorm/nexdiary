@@ -284,6 +284,8 @@ function FinishCard({ today, ai, now }: { today: TodayState; ai: AiState | null;
   const aiOn = Boolean(ai?.available) && !data.day?.locked && data.notes.some((note) => note.text && !note.unreadable)
   const text = written ? t(aiOn ? 'write.finishExistingAi' : 'write.finishExisting') : count > 0 ? t('write.finishText', { count }) : t('write.finishNoNotes')
   const formulate = () => navigate(`/tag/${data.date}/schreiben`, { state: { formulate: length } })
+  /** The value "Heute nur kurz" asks for: the first one the person rates. */
+  const firstValue = data.values.find((value) => value.active && !value.unreadable)
   return (
     <>
       <section id="aufschreiben" className="card scroll-mt-6 overflow-hidden">
@@ -327,7 +329,7 @@ function FinishCard({ today, ai, now }: { today: TodayState; ai: AiState | null;
           </Link>
           {!written && !data.day?.locked && (
             <button type="button" onClick={() => setShort(true)} className="w-full pt-1 text-center text-sm font-semibold text-accent hover:underline">
-              {t('short.link')}
+              {firstValue ? t('short.link', { value: firstValue.name }) : t('short.linkNoValue')}
             </button>
           )}
         </div>

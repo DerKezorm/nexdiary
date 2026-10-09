@@ -1,7 +1,7 @@
 """The family question: only who joined takes part, the others' answers come out only after the own one (on every
-way), leaving takes the answers along, blocked accounts vanish, the question is the same for everybody on the same
-date whatever the time zone, an answer is a note of the day with its question, and answering twice at once keeps one
-answer and one note."""
+way) and the own one cannot be taken back, leaving takes the answers along, blocked accounts vanish, the date is the
+server's for everybody (a zone of one's own reaches no other day), an answer is a note with its question on the
+person's own day of notes, and answering twice at once keeps one answer and one note."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import threading
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi.testclient import TestClient
@@ -23,6 +24,12 @@ from .conftest import PASSWORD, make_account, new_client
 
 NOON = datetime(2026, 10, 9, 12, 0, tzinfo=UTC)
 DAY = "2026-10-09"
+
+
+@pytest.fixture(autouse=True)
+def server_in_utc(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The server's own zone, whatever the machine running the tests is set to."""
+    monkeypatch.setattr(family, "server_zone", lambda: ZoneInfo("UTC"))
 
 
 @pytest.fixture
@@ -70,7 +77,7 @@ def test_nobody_takes_part_from_the_start_and_who_has_not_joined_sees_and_answer
         assert today["family"] is None
         refused = answer(jule, "Apfel")
         assert (refused.status_code, refused.json()["detail"]["code"]) == (403, "family_not_joined")
-        assert jule.request("DELETE", "/api/family/answer", params={"date": DAY}).status_code == 403
+        assert jule.request("DELETE", "/api/family/answer", params={"date": DAY}).status_code == 405
         # Nothing of tom's answer, not even his name, on any way.
         for text in (looked.text, refused.text, jule.get("/api/today").text):
             assert "Kürbissuppe" not in text and "tom" not in text
@@ -121,11 +128,12 @@ def test_the_answers_of_the_others_come_out_only_after_the_own(at_noon: list[dat
     assert [(item["from"], item["text"]) for item in card["answers"]] == [
         (account_id(tom), "Die Kürbissuppe von gestern."), (account_id(ruth), "Ein Apfel vom alten Baum.")]
     assert jule.get("/api/today").json()["family"]["answers"] == card["answers"]
-    # Mia, who has not answered yet, still sees nothing; taking the own answer back hides them again.
+    # Mia, who has not answered yet, still sees nothing; and an answer cannot be taken back, so reading leaves a trace.
     assert mia.get("/api/family").json()["answers"] is None
-    back = jule.request("DELETE", "/api/family/answer", params={"date": DAY})
-    assert back.status_code == 200 and back.json()["answers"] is None and back.json()["mine"] is None
-    assert "Kürbissuppe" not in jule.get("/api/family").text
+    assert jule.request("DELETE", "/api/family/answer", params={"date": DAY}).status_code == 405
+    empty = answer(jule, "  ")
+    assert (empty.status_code, empty.json()["detail"]["code"]) == (422, "answer_empty")
+    assert jule.get("/api/family").json()["mine"]["text"] == "Kastanien, geröstet."
     for browser in (tom, ruth, mia, jule):
         browser.close()
 
@@ -200,10 +208,7 @@ def test_an_answer_is_a_note_of_the_day_with_its_question_and_changes_with_it(at
     assert changed.json()["mine"]["text"] == "Kastanien und Tee"
     notes = jule.get("/api/notes", params={"date": DAY}).json()
     assert [(note["id"], note["text"]) for note in notes] == [(note_id, "Kastanien und Tee")]
-    # Taken back: the note stays.
-    jule.request("DELETE", "/api/family/answer", params={"date": DAY})
-    assert [note["text"] for note in jule.get("/api/notes", params={"date": DAY}).json()] == ["Kastanien und Tee"]
-    assert count(FamilyAnswer) == 0
+    assert count(FamilyAnswer) == 1
     jule.close()
 
 
@@ -227,8 +232,6 @@ def test_an_answer_has_words_and_a_limit_and_is_for_today_only(at_noon: list[dat
     for other in ("2026-10-08", "2026-10-10"):
         late = answer(jule, "gestern", day=other)
         assert (late.status_code, late.json()["detail"]["code"]) == (409, "family_day_over")
-        gone = jule.request("DELETE", "/api/family/answer", params={"date": other})
-        assert gone.status_code == 409
     bad = jule.put("/api/family/answer", json={"date": DAY, "text": "a", "note_id": "nope"})
     assert bad.status_code == 422
     assert count(FamilyAnswer) == 1
@@ -282,27 +285,74 @@ def make_account_row(account: int) -> Account:
 # --- The question ---------------------------------------------------------------------------------------------------
 
 
-def test_the_same_question_for_everybody_on_the_same_date_across_time_zones(at_noon: list[datetime]) -> None:
-    # 23:30 in UTC: in Berlin it is the next day already, in New York still the evening before.
+def test_one_date_for_everybody_and_a_zone_of_ones_own_reaches_no_other_day(at_noon: list[datetime],
+                                                                             monkeypatch: pytest.MonkeyPatch) -> None:
+    # 23:30 in UTC, the server's zone: in Berlin it is the next day already, in New York still the evening.
     at_noon[0] = datetime(2026, 10, 9, 23, 30, tzinfo=UTC)
     berlin, new_york = joined("jule", "Europe/Berlin"), joined("tom", "America/New_York")
     early, late = berlin.get("/api/family").json(), new_york.get("/api/family").json()
-    assert (early["date"], late["date"]) == ("2026-10-10", "2026-10-09")
-    assert early["question"]["id"] == family.question_of("2026-10-10")
-    assert late["question"]["id"] == family.question_of("2026-10-09")
-    assert early["question"]["id"] != late["question"]["id"]
-    # Jule answers for her 10 October; Tom on his 9 October sees nothing of it, even after his own answer.
-    assert answer(berlin, "Frühstück", day="2026-10-10").status_code == 200
-    assert answer(new_york, "Abendbrot", day="2026-10-09").json()["answers"] == []
-    # Twelve hours later both are on the 10th: the same question, and her answer opens after his.
-    at_noon[0] = datetime(2026, 10, 10, 15, 0, tzinfo=UTC)
+    assert early["date"] == late["date"] == "2026-10-09"
+    assert early["question"]["id"] == late["question"]["id"] == family.question_of("2026-10-09")
+    # The 10th of Berlin is no day of the family question yet.
+    refused = answer(berlin, "Frühstück", day="2026-10-10")
+    assert (refused.status_code, refused.json()["detail"]["code"]) == (409, "family_day_over")
+    assert answer(new_york, "Abendbrot").status_code == 200
+    # Moving the own clock east or west changes nothing: the same day, the same answers, after the own one only.
+    for zone in ("Pacific/Kiritimati", "Pacific/Pago_Pago"):
+        assert berlin.put("/api/me/preferences", json={"timezone": zone}).status_code == 200
+        card = berlin.get("/api/family").json()
+        assert card["date"] == "2026-10-09" and card["answers"] is None
+        assert answer(berlin, "Gestern", day="2026-10-08").status_code == 409
+    assert [item["text"] for item in answer(berlin, "Brot").json()["answers"]] == ["Abendbrot"]
+    # Past the server's midnight, the next day for everybody: nothing of yesterday is shown any more.
+    at_noon[0] = datetime(2026, 10, 10, 0, 30, tzinfo=UTC)
     card = new_york.get("/api/family").json()
-    assert card["question"]["id"] == early["question"]["id"] and card["answers"] is None
-    assert card["people"][0]["answered"] is True
-    assert [item["text"] for item in answer(new_york, "Pfannkuchen", day="2026-10-10").json()["answers"]] == [
-        "Frühstück"]
+    assert card["date"] == "2026-10-10" and card["mine"] is None and not any(p["answered"] for p in card["people"])
     berlin.close()
     new_york.close()
+
+
+def test_the_date_follows_the_servers_own_zone(at_noon: list[datetime], monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(family, "server_zone", lambda: ZoneInfo("America/New_York"))
+    at_noon[0] = datetime(2026, 10, 10, 2, 0, tzinfo=UTC)
+    with joined("jule", "Europe/Berlin") as jule:
+        assert jule.get("/api/family").json()["date"] == "2026-10-09"
+
+
+def test_the_answer_note_goes_to_the_persons_own_day_at_night(at_noon: list[datetime]) -> None:
+    """After midnight, with "this night belongs to yesterday" answered: the answer is for the server's day, its note
+    stands with yesterday's notes."""
+    at_noon[0] = datetime(2026, 10, 10, 1, 0, tzinfo=UTC)
+    jule = joined("jule")
+    assert jule.put("/api/night", json={"choice": "yesterday"}).status_code == 200
+    card = jule.get("/api/today").json()["family"]
+    assert card["date"] == "2026-10-10"
+    assert answer(jule, "Nachts", day="2026-10-10").status_code == 200
+    assert [note["text"] for note in jule.get("/api/notes", params={"date": "2026-10-09"}).json()] == ["Nachts"]
+    assert jule.get("/api/notes", params={"date": "2026-10-10"}).json() == []
+    # Changed later, the note changes where it stands.
+    assert answer(jule, "Nachts, mit Tee", day="2026-10-10").status_code == 200
+    assert [note["text"] for note in jule.get("/api/notes", params={"date": "2026-10-09"}).json()] == ["Nachts, mit Tee"]
+    jule.close()
+
+
+def test_many_taking_part_keep_the_person_on_the_card_and_today_never_fails(at_noon: list[datetime],
+                                                                            monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(family, "PEOPLE_MAX", 2)
+    others = [joined(name) for name in ("tom", "ruth", "mia")]
+    with joined("jule") as jule:
+        people = jule.get("/api/family").json()["people"]
+        assert len(people) == 2 and [person["name"] for person in people if person["me"]] == ["jule"]
+        assert answer(jule, "Suppe").status_code == 200
+
+        def broken(*_args: object, **_kwargs: object) -> None:
+            raise family.error("family_not_joined", "x", 403)
+
+        monkeypatch.setattr(family, "view", broken)
+        today = jule.get("/api/today")
+        assert today.status_code == 200 and today.json()["family"] is None
+    for browser in others:
+        browser.close()
 
 
 def test_the_question_comes_in_each_persons_language_with_the_same_id(at_noon: list[datetime]) -> None:

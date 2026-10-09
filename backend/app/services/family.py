@@ -5,17 +5,19 @@ The rules, all of them kept here on the server:
 * **Only who joined.** Joining is a choice of each person (``profile.family``, off from the start). Whoever has not
   joined sees no question, no answer and nobody's name here, and cannot answer. Blocked accounts are as if they had not
   joined: they are not listed and their answers are not shown.
-* **The same question for everybody on the same date.** The date is the calendar day in each person's own time zone; the
-  question is picked from the date alone, so two people on the same date get the same one, whatever their zone. The
-  language only chooses its words.
-* **The others' answers only after the own.** The server gives out the answers of the others for a date only to a person
-  who answered for that date themselves, and only while both have joined. Before that it says who answered, nothing of
-  what (not even how long). Taking the own answer back hides the others' again.
+* **One date for everybody.** The family question belongs to the calendar day of the server's own time zone (``TZ`` of
+  the container, the zone the app falls back to for anybody without one), the same for every person whatever their own
+  zone: changing the own zone reaches no other day. Answers are taken and shown for that one date only. The question is
+  picked from the date; the language only chooses its words.
+* **The others' answers only after the own.** The server gives out the answers of the others only to a person who
+  answered that day themselves, and only while both have joined. Before that it says who answered, nothing of what
+  (not even how long). An answer cannot be taken back, only changed (never to nothing): whoever read the others has
+  left a trace.
 * **Leaving takes the answers along.** Whoever leaves loses all their answers in the same transaction (``leave``): from
   then on nobody sees them. The notes the answers became stay with the person.
 * **Sealed with the key of the one who answered**, at most ``ANSWER_MAX`` characters, one per person and day (changed
-  or taken back on the same day). The answer is a note of the day as well, with the question, like the question of the
-  day. Only today counts: there is no archive.
+  on the same day). The answer is a note as well, with the question, like the question of the day: on the person's own
+  day of notes (after midnight the day they said the night belongs to). Only today counts: there is no archive.
 
 The operator has no route here. Answering twice at once leaves one answer and one note (``answer`` writes the answer and
 its note in one transaction).
@@ -24,13 +26,14 @@ its note in one transaction).
 from __future__ import annotations
 
 import hashlib
-from datetime import date
+from datetime import date, datetime, tzinfo
 from typing import Any
 
 from fastapi import HTTPException
 from sqlalchemy import bindparam, delete, select, text, update
 from sqlalchemy.orm import Session
 
+from .. import clock
 from ..errors import error
 from ..models import Account, FamilyAnswer, Note, UtcDateTime
 from . import diary, vault
@@ -140,14 +143,21 @@ def words_of(question_id: str, language: str) -> str:
     return german if language.split("-")[0].lower() == "de" else english
 
 
-def today_of(account: Account) -> str:
-    """The date the family question of this person is about: the calendar day of their own time zone."""
-    return diary.today_of(account).isoformat()
+def server_zone() -> tzinfo:
+    """The time zone of the server: the one the app falls back to for a person without a zone of their own."""
+    zone = datetime.now().astimezone().tzinfo
+    assert zone is not None
+    return zone
 
 
-def check_today(account: Account, day: str) -> str:
+def today() -> str:
+    """The date of the family question, the same for everybody: the calendar day on the server's clock."""
+    return clock.now().astimezone(server_zone()).date().isoformat()
+
+
+def check_today(day: str) -> str:
     """An answer is for today only: a date that has passed meanwhile (the page was open over midnight) is refused."""
-    if day != today_of(account):
+    if day != today():
         raise error("family_day_over", "The day of this question is over.", 409)
     return day
 
@@ -159,10 +169,15 @@ def _aad(account_id: int, day: str) -> bytes:
 _PERSON = (Account.id, Account.name, Account.display_name, Account.avatar_at, Account.profile)
 
 
-def members(db: Session) -> list[Any]:
-    """Everybody who joined and is not blocked, in the order they came."""
+def members(db: Session, keep: int | None = None) -> list[Any]:
+    """Everybody who joined and is not blocked, in the order they came; at most ``PEOPLE_MAX``, with the person
+    ``keep`` always among them."""
     rows = db.execute(select(*_PERSON).where(Account.blocked_at.is_(None)).order_by(Account.id)).all()
-    return [row for row in rows if joined(row.profile)][:PEOPLE_MAX]
+    taking_part = [row for row in rows if joined(row.profile)]
+    if len(taking_part) <= PEOPLE_MAX:
+        return taking_part
+    own = [row for row in taking_part if row.id == keep]
+    return [row for row in taking_part if row.id != keep][:PEOPLE_MAX - len(own)] + own
 
 
 def hint_due(db: Session, account: Account) -> bool:
@@ -183,13 +198,13 @@ def _open(row: Any) -> str | None:
         return None
 
 
-def view(db: Session, account: Account, language: str, day: str | None = None) -> dict[str, Any]:
+def view(db: Session, account: Account, language: str) -> dict[str, Any]:
     """The family question of today as this person may see it. ``family_not_joined`` (403) for anybody who has not
     joined: they see nothing, not even who did."""
     if not joined(account.profile) or account.blocked_at is not None:
         raise error("family_not_joined", "You have not joined the family question.", 403)
-    day = day or today_of(account)
-    people = members(db)
+    day = today()
+    people = members(db, keep=account.id)
     ids = [row.id for row in people]
     if account.id not in ids:
         raise error("family_not_joined", "You have not joined the family question.", 403)
@@ -232,10 +247,10 @@ def _error_code(exc: HTTPException) -> str:
 
 
 def answer(db: Session, account: Account, day: str, words: str, note_uid: str, language: str) -> dict[str, Any]:
-    """Keeps the person's answer for today, or changes it, and makes it a note of the day with the question (a changed
-    answer changes that note). The answer and its note are written in one transaction, and only while the person has
-    joined and is not blocked: decided in the statement that writes."""
-    check_today(account, day)
+    """Keeps the person's answer for today, or changes it, and makes it a note with the question, on the person's own
+    day of notes (a changed answer changes that note). The answer and its note are written in one transaction, and
+    only while the person has joined and is not blocked: decided in the statement that writes."""
+    check_today(day)
     words = diary.clean_text(words, ANSWER_MAX, "answer_too_long")
     if not words:
         raise error("answer_empty", "An answer needs words.", 422)
@@ -257,7 +272,7 @@ def answer(db: Session, account: Account, day: str, words: str, note_uid: str, l
              "now": moment},
         )
         if inserted.rowcount == 1:
-            _note_for(db, account, dek, day, words, note_uid, question, language)
+            _note_for(db, account, dek, diary.note_day(account).isoformat(), words, note_uid, question, language)
         else:
             standing = db.execute(select(FamilyAnswer.id, FamilyAnswer.text_enc, FamilyAnswer.note_uid)
                                   .where(FamilyAnswer.user_id == account.id, FamilyAnswer.date == day)).first()
@@ -271,13 +286,13 @@ def answer(db: Session, account: Account, day: str, words: str, note_uid: str, l
             if before != words:
                 db.execute(update(FamilyAnswer).where(FamilyAnswer.id == standing.id)
                            .values(text_enc=sealed, updated_at=moment))
-                _change_note(db, account, dek, day, words, standing.note_uid)
+                _change_note(db, account, dek, words, standing.note_uid)
         db.commit()
     except Exception:
         db.rollback()
         raise
     db.expire_all()
-    return view(db, account, language, day)
+    return view(db, account, language)
 
 
 def _note_for(db: Session, account: Account, dek: bytes, day: str, words: str, note_uid: str, question: str,
@@ -294,12 +309,13 @@ def _note_for(db: Session, account: Account, dek: bytes, day: str, words: str, n
             raise
 
 
-def _change_note(db: Session, account: Account, dek: bytes, day: str, words: str, note_uid: str | None) -> None:
+def _change_note(db: Session, account: Account, dek: bytes, words: str, note_uid: str | None) -> None:
     """The note of a changed answer, changed with it: only while it stands and its day is open. A note the person
-    deleted stays deleted."""
-    if note_uid is None or diary.is_locked(db, account.id, day):
+    deleted (or moved to a locked day) stays as it is."""
+    if note_uid is None:
         return
-    if db.scalar(select(Note.id).where(Note.user_id == account.id, Note.uid == note_uid)) is None:
+    found = db.scalar(select(Note.date).where(Note.user_id == account.id, Note.uid == note_uid))
+    if found is None or diary.is_locked(db, account.id, found):
         return
     try:
         diary.change_note(db, account.id, dek, note_uid, words)
@@ -308,20 +324,10 @@ def _change_note(db: Session, account: Account, dek: bytes, day: str, words: str
             raise
 
 
-def withdraw(db: Session, account: Account, day: str, language: str) -> dict[str, Any]:
-    """Takes the own answer of today back; the note it became stays. The others' answers are hidden again."""
-    if not joined(account.profile):
-        raise error("family_not_joined", "You have not joined the family question.", 403)
-    check_today(account, day)
-    db.execute(delete(FamilyAnswer).where(FamilyAnswer.user_id == account.id, FamilyAnswer.date == day))
-    db.commit()
-    return view(db, account, language, day)
-
-
 def leave(db: Session, account_id: int) -> None:
     """Every answer of a person who leaves, gone in the caller's transaction (the one that switches it off)."""
     db.execute(delete(FamilyAnswer).where(FamilyAnswer.user_id == account_id))
 
 
-__all__ = ["ANSWER_MAX", "QUESTIONS", "answer", "hint_due", "joined", "leave", "members", "question_of", "view",
-           "withdraw", "words_of"]
+__all__ = ["ANSWER_MAX", "QUESTIONS", "answer", "hint_due", "joined", "leave", "members", "question_of", "today",
+           "view", "words_of"]

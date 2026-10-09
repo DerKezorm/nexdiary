@@ -141,6 +141,8 @@ def _escape(heading: str) -> str:
 #: Characters that print as nothing without being white space or a character of format: the fillers of Hangul, the
 #: empty Braille cell and the joiner of combining marks. The selectors of a variant are taken out by their ranges.
 _BLANKS = frozenset(chr(code) for code in (0x3164, 0x115F, 0x1160, 0xFFA0, 0x2800, 0x034F))
+#: The same, for whoever else cleans a line of text.
+INVISIBLE = _BLANKS
 
 
 def _blank(char: str) -> bool:

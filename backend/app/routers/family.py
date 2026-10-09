@@ -4,9 +4,9 @@ person answered reaches the log."""
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Any
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..deps import Account, DbSession
@@ -31,14 +31,7 @@ def today(request: Request, account: Account, db: DbSession) -> dict[str, Any]:
     return family.view(db, account, language(account, request))
 
 
-@router.put("/answer", summary="Answer the family question of today, or change the answer")
+@router.put("/answer", summary="Answer the family question of today, or change the answer; it cannot be taken back")
 def put_answer(payload: AnswerIn, request: Request, account: Account, db: DbSession) -> dict[str, Any]:
     brakes.take("family", account.id)
     return family.answer(db, account, payload.date, payload.text, payload.note_id, language(account, request))
-
-
-@router.delete("/answer", summary="Take the own answer of today back (the note it became stays)")
-def delete_answer(request: Request, account: Account, db: DbSession,
-                  date: Annotated[str, Query(max_length=10)]) -> dict[str, Any]:
-    brakes.take("family", account.id)
-    return family.withdraw(db, account, date, language(account, request))

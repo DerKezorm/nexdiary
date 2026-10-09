@@ -20,13 +20,13 @@ from . import covers, diary
 TEXT_MAX = 280
 TITLE_FROM_TEXT = 48
 
-_MARKS = re.compile(r"([\\`*_\[\]<>#~|!])")
+_MARKS = re.compile(r"([\\`*_\[\]<>#~|!&])")
 _BLOCK_START = re.compile(r"^(\s*)([-+>]|\d{1,9}[.)])")
 
 
 def as_paragraph(sentence: str) -> str:
-    """The sentence as one paragraph of Markdown, read as written: nothing in it becomes a heading, a list, a link or
-    emphasis."""
+    """The sentence as one paragraph of Markdown, read as written: nothing in it becomes a heading, a list, a link,
+    emphasis or a character reference (``&amp;`` stays those five letters, in the reader and in the editor alike)."""
     escaped = _MARKS.sub(r"\\\1", sentence)
     return _BLOCK_START.sub(lambda found: found.group(1) + "\\" + found.group(2), escaped)
 

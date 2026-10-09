@@ -186,7 +186,7 @@ describe('the family question', () => {
     expect(after.querySelector('[data-answers]')!.textContent).toContain('Die Kürbissuppe von gestern, aufgewärmt sogar noch besser.')
     expect(after.querySelector('[data-answers]')!.textContent).toContain('Oma Ruth')
     expect(after.querySelector('[data-mine] p')!.textContent).toBe('Kastanien, geröstet.')
-    expect(after.textContent).toContain('Mia hat noch nicht geantwortet. Deine Antwort steht auch in deinen Notizen von heute.')
+    expect(after.textContent).toContain('Mia hat noch nicht geantwortet. Deine Antwort steht auch in deinen Notizen.')
     // The day was loaded again: the note with its question stands among the notes.
     expect(box.textContent).toContain('Kastanien, geröstet.')
   })
@@ -202,7 +202,8 @@ describe('the family question', () => {
     await idle()
     const ids = calls.filter((call) => call.url === '/api/family/answer').map((call) => call.body!.note_id)
     expect(new Set(ids).size).toBe(1)
-    // Changing the answer goes out again; taking it back hides the answers.
+    // Changing the answer goes out again; there is no way to take it back.
+    expect(button('Zurücknehmen')).toBeUndefined()
     await act(async () => button('Ändern')!.click())
     type(box.querySelector<HTMLTextAreaElement>('textarea[aria-label="Deine Antwort auf die Familienfrage"]')!, 'Suppe und Brot')
     await act(async () => button('Antworten')!.click())
@@ -210,10 +211,8 @@ describe('the family question', () => {
     const changes = calls.filter((call) => call.url === '/api/family/answer' && call.method === 'PUT')
     expect(changes.at(-1)!.body!.text).toBe('Suppe und Brot')
     expect(changes.at(-1)!.body!.note_id).not.toBe(ids[0])
-    await act(async () => button('Zurücknehmen')!.click())
-    await idle()
-    expect(calls.some((call) => call.method === 'DELETE' && call.url === `/api/family/answer?date=${DATE}`)).toBe(true)
-    expect(box.querySelector('[data-answers]')).toBeNull()
+    expect(calls.some((call) => call.method === 'DELETE')).toBe(false)
+    expect(box.querySelector('[data-answers]')).not.toBeNull()
   })
 
   it('says so when nobody answered yet, and is not there for whoever has not joined', async () => {
@@ -346,13 +345,23 @@ describe('just briefly today', () => {
   it('takes only the sentence for a person who rates nothing', async () => {
     today = { ...today, values: VALUES.map((value) => ({ ...value, active: false })) }
     await show()
-    await act(async () => button('Heute nur kurz: Stimmung und ein Satz')!.click())
+    await act(async () => button('Heute nur kurz: ein Satz')!.click())
     expect(dialog().querySelector('[role=group]')).toBeNull()
+    expect(dialog().textContent).toContain('Ein Satz, und der Tag zählt für deine Serie.')
     type(dialog().querySelector<HTMLInputElement>('input')!, 'Nur ein Satz.')
     await act(async () => button('Speichern', dialog())!.click())
     await idle()
     const body = calls.find((call) => call.url === `/api/days/${DATE}/short`)!.body!
     expect('rating' in body).toBe(false)
+  })
+
+  it('names the first value the person rates, in the link and in the dialog', async () => {
+    today = { ...today, values: VALUES.map((value) => (value.id === 'v1' ? { ...value, active: false } : value)) }
+    await show()
+    expect(button('Heute nur kurz: Stimmung und ein Satz')).toBeUndefined()
+    await act(async () => button('Heute nur kurz: Schlaf und ein Satz')!.click())
+    expect(dialog().textContent).toContain('Für Tage, an denen nicht mehr geht. Schlaf und ein Satz, und der Tag zählt für deine Serie.')
+    expect(dialog().querySelector('[role=group]')!.getAttribute('aria-label')).toBe('Schlaf')
   })
 
   it('is not offered once the day has a page', async () => {

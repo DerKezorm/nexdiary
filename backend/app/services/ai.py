@@ -34,6 +34,7 @@ import logging
 import re
 import threading
 import time
+import unicodedata
 from collections import deque
 from collections.abc import Callable, Hashable, Iterator
 from contextlib import contextmanager
@@ -805,6 +806,14 @@ def _followup_body(found: Service, user: str, language: str, temperature: bool) 
 _CONTROLS = re.compile(r"[\x00-\x1f\x7f]+")
 
 
+def _visible(question: str) -> str:
+    """A question as one line of what can be seen: control characters become spaces, characters that print as nothing
+    (of format: joiners, marks of direction; the fillers ``templates`` knows) go, spaces are gathered."""
+    kept = "".join(char for char in _CONTROLS.sub(" ", question)
+                   if unicodedata.category(char) != "Cf" and char not in templates.INVISIBLE)
+    return " ".join(kept.split())
+
+
 def parse_followups(answer: str, refs: dict[str, dict[str, Any]]) -> list[dict[str, str]]:
     """The questions out of the model's answer, checked strictly: one JSON object with a list ``questions`` (else
     ``ai_unreadable``); a question is kept only when it names a note of the day by its id and is one line of words not
@@ -831,7 +840,7 @@ def parse_followups(answer: str, refs: dict[str, dict[str, Any]]) -> list[dict[s
         ref, question = item.get("note"), item.get("question")
         if not isinstance(ref, str) or ref not in refs or not isinstance(question, str):
             continue
-        question = " ".join(_CONTROLS.sub(" ", question).split())
+        question = _visible(question)
         if not question or len(question) > FOLLOWUP_CHARS or question in seen:
             continue
         seen.add(question)

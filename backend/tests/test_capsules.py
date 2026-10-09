@@ -974,3 +974,22 @@ def test_a_change_moving_the_day_just_before_the_push_stops_it(family: Family, m
     assert capsules.run_once(datetime(2026, 12, 24, 7, 0, tzinfo=UTC)) == 0
     assert bodies(push_service, tom) == []
     assert family.jule.delete(f"/api/capsules/{made['id']}").status_code == 204
+
+
+def test_a_change_of_the_day_measures_a_recipient_by_the_zone_kept_not_the_one_set_since(family: Family) -> None:
+    """Tom was in Berlin when the capsule came, then set his clock to Kiritimati (UTC+14). On the 23rd at noon UTC it is
+    the 24th there, in Berlin not yet: Jule may still move the day to the 24th, and Tom still reads nothing."""
+    made = close(family.jule, [family.ids["tom"]], opens="2026-12-31", text="Erst später")
+    assert family.tom.put("/api/me/preferences", json={"timezone": "Pacific/Kiritimati"}).status_code == 200
+    family.at(datetime(2026, 12, 23, 12, 0, tzinfo=UTC))
+    moved = family.jule.put(f"/api/capsules/{made['id']}", json={
+        "revision": made["revision"], "to": [family.ids["tom"]], "opens_on": OPENS, "title": "Für Heiligabend",
+        "text": "Erst später"})
+    assert moved.status_code == 200, moved.text
+    assert moved.json()["opens_on"] == OPENS
+    assert "text" not in family.tom.get(f"/api/capsules/{made['id']}").json()
+    # The 23rd itself has come in Berlin: refused, for the sender and for the zone kept.
+    refused = family.jule.put(f"/api/capsules/{made['id']}", json={
+        "revision": moved.json()["revision"], "to": [family.ids["tom"]], "opens_on": "2026-12-23",
+        "title": "Für Heiligabend", "text": "Erst später"})
+    assert refused.status_code == 422 and refused.json()["detail"]["code"] == "capsule_date_past"

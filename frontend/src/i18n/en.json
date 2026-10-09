@@ -1466,9 +1466,8 @@
     "answer": "Answer",
     "waiting_one": "{{names}} has not answered yet.",
     "waiting_other": "{{names}} have not answered yet.",
-    "inNotes": "Your answer is in your notes of today as well.",
+    "inNotes": "Your answer is in your notes as well.",
     "change": "Change",
-    "withdraw": "Take back",
     "unreadable": "Cannot be read.",
     "hint": "There is a family question here: every day one question for everybody who takes part.",
     "hintJoin": "Take part",
@@ -1486,9 +1485,10 @@
     "nothingOpen": "Nothing in your notes is open."
   },
   "short": {
-    "link": "Just briefly today: mood and one sentence",
+    "link": "Just briefly today: {{value}} and one sentence",
+    "linkNoValue": "Just briefly today: one sentence",
     "title": "Just briefly today",
-    "intro": "For days when nothing more is possible. Mood and one sentence, and the day counts for your streak. Your notes stay, you can make more of them later.",
+    "intro": "For days when nothing more is possible. {{value}} and one sentence, and the day counts for your streak. Your notes stay, you can make more of them later.",
     "introNoValue": "For days when nothing more is possible. One sentence, and the day counts for your streak. Your notes stay, you can make more of them later.",
     "how": "How was the day?",
     "sentence": "One sentence about it",

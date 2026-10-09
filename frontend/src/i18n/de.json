@@ -1466,9 +1466,8 @@
     "answer": "Antworten",
     "waiting_one": "{{names}} hat noch nicht geantwortet.",
     "waiting_other": "{{names}} haben noch nicht geantwortet.",
-    "inNotes": "Deine Antwort steht auch in deinen Notizen von heute.",
+    "inNotes": "Deine Antwort steht auch in deinen Notizen.",
     "change": "Ändern",
-    "withdraw": "Zurücknehmen",
     "unreadable": "Nicht lesbar.",
     "hint": "Bei euch gibt es die Familienfrage: jeden Tag eine Frage für alle, die mitmachen.",
     "hintJoin": "Mitmachen",
@@ -1486,9 +1485,10 @@
     "nothingOpen": "Zu deinen Notizen ist nichts offen."
   },
   "short": {
-    "link": "Heute nur kurz: Stimmung und ein Satz",
+    "link": "Heute nur kurz: {{value}} und ein Satz",
+    "linkNoValue": "Heute nur kurz: ein Satz",
     "title": "Nur kurz heute",
-    "intro": "Für Tage, an denen nicht mehr geht. Stimmung und ein Satz, und der Tag zählt für deine Serie. Deine Notizen bleiben, du kannst später mehr daraus machen.",
+    "intro": "Für Tage, an denen nicht mehr geht. {{value}} und ein Satz, und der Tag zählt für deine Serie. Deine Notizen bleiben, du kannst später mehr daraus machen.",
     "introNoValue": "Für Tage, an denen nicht mehr geht. Ein Satz, und der Tag zählt für deine Serie. Deine Notizen bleiben, du kannst später mehr daraus machen.",
     "how": "Wie war der Tag?",
     "sentence": "Ein Satz dazu",

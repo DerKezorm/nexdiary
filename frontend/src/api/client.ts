@@ -371,11 +371,9 @@ export type FamilyCard = {
 
 export const familyApi = {
   card: () => api<FamilyCard>('/api/family'),
-  /** The own answer for today, or a change of it; it becomes a note of the day too (`noteId`, the same id twice keeps
-   * one note). */
+  /** The own answer for today, or a change of it (it cannot be taken back); it becomes a note too (`noteId`, the same
+   * id twice keeps one note). */
   answer: (date: string, text: string, noteId: string) => api<FamilyCard>('/api/family/answer', { method: 'PUT', body: { date, text, note_id: noteId } }),
-  /** Takes the own answer back; its note stays. */
-  withdraw: (date: string) => api<FamilyCard>('/api/family/answer', { method: 'DELETE', query: { date } }),
 }
 
 export type DayChange = {

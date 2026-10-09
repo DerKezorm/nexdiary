@@ -189,9 +189,6 @@ export function FamilyQuestion({ today }: { today: TodayState }) {
               >
                 {t('family.change')}
               </button>
-              <button type="button" className="text-muted hover:text-ink hover:underline" disabled={busy} onClick={() => void run(() => familyApi.withdraw(card.date))}>
-                {t('family.withdraw')}
-              </button>
             </p>
           )}
           {editing && (
@@ -383,6 +380,7 @@ export function ShortEntry({ today, onClose, now }: { today: TodayState; onClose
   const photos = data.photos.filter((photo) => !photo.on_note && !notes.some((note) => note.photo_id === photo.id))
   const cover = data.day?.cover_chosen ? data.day.cover : defaultCover(data.date, data.day?.tags ?? [], photos, timeOfHour(hourIn(moment, me?.profile?.timezone)))
   const ok = line.trim().length > 0 && (value === null || rating !== undefined)
+  const named = value ? { value: value.name } : {}
 
   const save = async () => {
     if (!ok || busy) return
@@ -406,7 +404,7 @@ export function ShortEntry({ today, onClose, now }: { today: TodayState; onClose
 
   return (
     <Dialog title={t('short.title')} onClose={onClose}>
-      <p className="-mt-2 mb-5 text-sm text-ink-2">{value ? t('short.intro') : t('short.introNoValue')}</p>
+      <p className="-mt-2 mb-5 text-sm text-ink-2">{value ? t('short.intro', named) : t('short.introNoValue')}</p>
       <div className="space-y-5">
         {value && (
           <div>

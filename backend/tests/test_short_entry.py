@@ -154,3 +154,5 @@ def test_the_sentence_is_read_as_written() -> None:
     assert short_entry.as_paragraph("- keine Liste") == "\\- keine Liste"
     assert short_entry.as_paragraph("1. keine Zahl") == "\\1. keine Zahl"
     assert short_entry.as_paragraph("Ganz normal.") == "Ganz normal."
+    # A character reference stays its letters: the reader and the editor show the same.
+    assert short_entry.as_paragraph("Tom & Jerry &amp; &#64;") == "Tom \\& Jerry \\&amp; \\&\\#64;"

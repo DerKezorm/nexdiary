@@ -143,6 +143,14 @@ def test_at_most_two_questions_and_none_too_long(client: TestClient, account: Ac
         ("Mit wem?", first["id"]), ("Was war die Idee?", second["id"])]
 
 
+def test_characters_that_print_as_nothing_go(client: TestClient, account: Account, model: Model) -> None:
+    ready(client)
+    note(client, "kastanien")
+    said(model, [{"note": "n1", "question": "Mit\u200b wem\u2066 warst\u202e du\u3164 da?"},
+                 {"note": "n1", "question": "\u200b\u2060\ufeff"}])
+    assert [item["question"] for item in ask(client).json()["questions"]] == ["Mit wem warst du da?"]
+
+
 def test_a_fenced_answer_is_read(client: TestClient, account: Account, model: Model) -> None:
     ready(client)
     note(client, "kastanien")

@@ -9,6 +9,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 
 import '../i18n'
 import { changeLanguage } from '../i18n'
+import { Markdown } from '../components/Markdown'
 import { FamilyCard } from './settings/PersonalCards'
 import WritePage from './WritePage'
 import { eventually, idle, until } from '../test/wait'
@@ -23,6 +24,8 @@ const NOTE = { id: 'n1', date: DATE, text: 'lena fand die idee mit dem board gut
 type Call = { method: string; url: string; body: Record<string, unknown> | undefined }
 let calls: Call[] = []
 let notes: Record<string, unknown>[] = []
+/** The page of the day; null: none yet. */
+let page: Record<string, unknown> | null = null
 
 function serve(): void {
   calls = []
@@ -34,7 +37,7 @@ function serve(): void {
       calls.push({ method, url, body })
       const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
       if (url === `/api/days/${DATE}/draft`) return json(null)
-      if (url === `/api/days/${DATE}`) return json({ detail: { code: 'not_found', message: 'x' } }, 404)
+      if (url === `/api/days/${DATE}`) return page ? json(page) : json({ detail: { code: 'not_found', message: 'x' } }, 404)
       if (url === '/api/ai') return json({ provider: 'local', to: '', model: 'm', mine: true, available: true })
       if (url === '/api/ai/followups') return json({ questions: [{ question: 'Was war die Idee?', note_id: 'n1', at: NOTE.created_at }] })
       if (url === '/api/ai/formulate') return json({ title: 'Das Board', text: 'Lena fand die Idee gut.', length: body!.length })
@@ -78,6 +81,7 @@ function button(text: string, inside: ParentNode = box): HTMLButtonElement | und
 
 beforeEach(async () => {
   await changeLanguage('de', false)
+  page = null
   notes = [NOTE]
   serve()
 })
@@ -126,6 +130,51 @@ describe('the writing page of a past day', () => {
     // The answer stands beside the page with its question.
     expect(box.textContent).toContain('Ein Board für die Woche.')
     expect(box.querySelector<HTMLTextAreaElement>('textarea[aria-label="Überschrift"]')!.value).toBe('Das Board')
+  })
+})
+
+async function showWriting(): Promise<void> {
+  box = document.createElement('div')
+  document.body.appendChild(box)
+  root = createRoot(box)
+  ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+  await act(async () =>
+    root.render(
+      <MemoryRouter initialEntries={[`/tag/${DATE}/schreiben`]}>
+        <Routes>
+          <Route path="/tag/:date/schreiben" element={<WritePage />} />
+        </Routes>
+      </MemoryRouter>,
+    ),
+  )
+  await until(() => box.querySelector('[contenteditable]'), 'the editor')
+  await idle()
+}
+
+const WRITTEN = { date: DATE, title: 'Tom & Jerry', text: 'Tom \\& Jerry \\&amp; Co.', tags: [], values: {}, cover: 'illu:baum.abend.herbst', cover_chosen: true, written_by: 'self', words: 4, revision: 3, created_at: '', updated_at: '2026-10-01T20:00:00+00:00' }
+
+describe('a day that has a page already', () => {
+  it('lets the AI ask first from the bar too, and asks before it writes over the page', async () => {
+    page = WRITTEN
+    await showWriting()
+    const ask = box.querySelector<HTMLButtonElement>('[data-write-bar] button[aria-label="Erst fragen lassen"]')!
+    await act(async () => ask.click())
+    const dialog = () => document.querySelector<HTMLElement>('[role=dialog]')!
+    await eventually(() => expect(dialog().textContent).toContain('Was war die Idee?'), 'the question')
+    await act(async () => button('Ohne Antworten weiter', dialog())!.click())
+    await idle()
+    expect(dialog().textContent).toContain('Seite neu ausformulieren?')
+    expect(calls.some((call) => call.url === '/api/ai/formulate')).toBe(false)
+  })
+
+  it('shows an escaped & of a short entry as written, in the reader and in the editor', async () => {
+    page = WRITTEN
+    await showWriting()
+    expect(box.querySelector('[contenteditable]')!.textContent).toBe('Tom & Jerry &amp; Co.')
+    act(() => root.unmount())
+    box.remove()
+    await render(<Markdown text={String(WRITTEN.text)} />)
+    expect(box.textContent).toBe('Tom & Jerry &amp; Co.')
   })
 })
 

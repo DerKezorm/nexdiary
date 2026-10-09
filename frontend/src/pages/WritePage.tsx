@@ -771,6 +771,17 @@ export default function WritePage() {
                 <Sparkles size={15} aria-hidden /> {t('write.aiAnew')}
               </button>
             )}
+            {offerAnew && (
+              <button
+                type="button"
+                onClick={() => setAskingFirst(true)}
+                disabled={formulating}
+                aria-label={t('followups.button')}
+                className="inline-flex h-8 items-center justify-center gap-2 rounded-full px-2.5 text-sm font-semibold text-ink-2 transition hover:bg-sheet-2 disabled:pointer-events-none disabled:opacity-50 sm:px-3.5"
+              >
+                <MessageCircleQuestion size={15} aria-hidden /> <span className="hidden sm:inline">{t('followups.button')}</span>
+              </button>
+            )}
             {kept && (
               <span className="text-xs text-muted" role="status">
                 {t('write.draftKept')}

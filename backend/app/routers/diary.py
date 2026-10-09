@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Query, Request, Response
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..deps import Account, DbSession
@@ -174,9 +174,19 @@ def today(request: Request, account: Account, db: DbSession) -> dict[str, Any]:
         "question": prompts.question_of_day(db, account.id, dek, day, _language(account, request)),
         # The family question of today for whoever joined (``services/family.py``), else null; and whether to tell
         # somebody who has not joined that others take part.
-        "family": family.view(db, account, _language(account, request)) if family.joined(account.profile) else None,
+        "family": _family(db, account, request),
         "family_hint": family.hint_due(db, account),
     }
+
+
+def _family(db: DbSession, account: Any, request: Request) -> dict[str, Any] | None:
+    """The family question for "Today": null for whoever has not joined, and never the reason "Today" fails."""
+    if not family.joined(account.profile):
+        return None
+    try:
+        return family.view(db, account, _language(account, request))
+    except HTTPException:
+        return None
 
 
 # --- Notes ----------------------------------------------------------------------------------------------------------
