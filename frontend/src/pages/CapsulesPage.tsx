@@ -86,6 +86,7 @@ export function CapsulesPage() {
   const [reading, setReading] = useState<CapsuleForMe | null>(null)
   const [editing, setEditing] = useState<CapsuleView | 'neu' | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  const [asking, setAsking] = useState<CapsuleFromMe | null>(null)
 
   const load = useCallback(() => {
     capsulesApi.lists().then(setData, (error) => setProblem(error instanceof ApiError ? error.code : 'internal_error'))
@@ -94,6 +95,7 @@ export function CapsulesPage() {
   // Stable, so that the dialogs do not take the focus back while the page around them changes.
   const closeReading = useCallback(() => setReading(null), [])
   const closeEditing = useCallback(() => setEditing(null), [])
+  const closeAsking = useCallback(() => setAsking(null), [])
 
   const say = (notice: string, to?: Tab) => {
     const search = to === undefined ? location.search : to === 'von-mir' ? '?tab=von-mir' : ''
@@ -111,7 +113,9 @@ export function CapsulesPage() {
   const fresh = todays.find((item) => item.new) ?? todays[0]
   const date = (day: string) => longDate(day, i18n.language, true)
   const fromName = (item: { from: Person | null; self: boolean }) => (item.self ? t('capsules.fromYou') : item.from ? nameOf(item.from) : t('capsules.fromGone'))
-  const names = (people: Person[]) => listOf(i18n.language, people.map((person) => (person.id === me.id ? t('capsules.yourself') : nameOf(person))))
+  /** Who a capsule goes to, in words; recipients blocked since (the server only counts them) as "2 weitere Personen". */
+  const names = (people: Person[], hidden = 0) =>
+    listOf(i18n.language, [...people.map((person) => (person.id === me.id ? t('capsules.yourself') : nameOf(person))), ...(hidden > 0 ? [t('capsules.hiddenPeople', { count: hidden })] : [])])
 
   const change = async (item: CapsuleFromMe) => {
     setBusy(item.id)
@@ -127,6 +131,7 @@ export function CapsulesPage() {
 
   const withdraw = async (item: CapsuleFromMe) => {
     if (busy) return
+    setAsking(null)
     setBusy(item.id)
     setProblem(null)
     try {
@@ -215,7 +220,7 @@ export function CapsulesPage() {
               <div className="min-w-0 flex-1">
                 <div className="truncate font-display text-lg font-semibold">{item.title}</div>
                 <div className="text-xs text-muted">
-                  {item.opened ? t('capsules.toLineOpen', { names: names(item.to), date: date(item.opens_on) }) : t('capsules.toLine', { names: names(item.to), date: date(item.opens_on), until: untilText(t, today, item.opens_on) })}
+                  {item.opened ? t('capsules.toLineOpen', { names: names(item.to, item.hidden), date: date(item.opens_on) }) : t('capsules.toLine', { names: names(item.to, item.hidden), date: date(item.opens_on), until: untilText(t, today, item.opens_on) })}
                 </div>
               </div>
               {!item.opened && (
@@ -229,7 +234,7 @@ export function CapsulesPage() {
                       <Pencil size={14} aria-hidden /> {t('capsules.change')}
                     </button>
                   )}
-                  <button type="button" className={GHOST_SMALL} onClick={() => void withdraw(item)} disabled={busy !== null}>
+                  <button type="button" className={GHOST_SMALL} onClick={() => setAsking(item)} disabled={busy !== null}>
                     <Trash2 size={14} aria-hidden /> {t('capsules.withdraw')}
                   </button>
                 </div>
@@ -239,6 +244,21 @@ export function CapsulesPage() {
         </div>
       )}
 
+      {asking && (
+        <Dialog title={t('capsules.withdrawTitle')} onClose={closeAsking}>
+          <p className="text-ink-2" data-withdraw-text>
+            {t('capsules.withdrawText')}
+          </p>
+          <div className="mt-6 flex justify-end gap-2">
+            <button type="button" className={GHOST} onClick={closeAsking}>
+              {t('common.cancel')}
+            </button>
+            <button type="button" className={PRIMARY} onClick={() => void withdraw(asking)}>
+              <Trash2 size={16} aria-hidden /> {t('capsules.withdrawConfirm')}
+            </button>
+          </div>
+        </Dialog>
+      )}
       {reading && (
         <Letter
           item={reading}
@@ -405,8 +425,11 @@ function Compose({ start, today, me, onClose, onSaved }: { start: CapsuleView | 
   const everyone = useMemo<Person[]>(() => [{ id: me.id, name: me.name, display_name: me.display_name, avatar: me.avatar }, ...(people ?? [])], [me, people])
   const chosen = everyone.filter((person) => to.includes(person.id))
   const others = chosen.filter((person) => person.id !== me.id)
-  const onlyMe = to.length === 1 && to[0] === me.id
-  const otherNames = listOf(i18n.language, others.map(nameOf))
+  // Recipients blocked since stay with the capsule: they count among the others, by number only.
+  const hidden = start?.hidden ?? 0
+  const othersCount = others.length + hidden
+  const onlyMe = to.length === 1 && to[0] === me.id && hidden === 0
+  const otherNames = listOf(i18n.language, [...others.map(nameOf), ...(hidden > 0 ? [t('capsules.hiddenPeople', { count: hidden })] : [])])
   const latest = yearsLater(today, 50)
   const inFuture = daysBetween(today, opens) > 0 && opens <= latest
   const ok = to.length > 0 && title.trim() !== '' && body.trim() !== '' && inFuture && !uploading && !busy
@@ -418,6 +441,16 @@ function Compose({ start, today, me, onClose, onSaved }: { start: CapsuleView | 
     { label: t('capsules.inFiveYears'), date: addDays(today, 1826) },
     { label: t('capsules.newYearsEve'), date: silvester },
   ]
+
+  /** A photo chosen here and not sealed with the capsule goes at once, not after a day. */
+  const sealedWith = useRef<string | null>(null)
+  const chosenPhoto = photo.kind === 'new' ? photo.id : null
+  useEffect(
+    () => () => {
+      if (chosenPhoto && sealedWith.current !== chosenPhoto) capsulesApi.dropPhoto(chosenPhoto).then(() => undefined, () => undefined)
+    },
+    [chosenPhoto],
+  )
 
   const pick = async (picked: File) => {
     setUploading(true)
@@ -437,12 +470,16 @@ function Compose({ start, today, me, onClose, onSaved }: { start: CapsuleView | 
     setBusy(true)
     setProblem(null)
     const draft: CapsuleDraft = { to, opens_on: opens, title, text: body }
-    if (photo.kind === 'new') draft.photo = photo.id
+    if (photo.kind === 'new') {
+      draft.photo = photo.id
+      sealedWith.current = photo.id
+    }
     else if (photo.kind === 'none' && (!start || start.photo)) draft.photo = null
     try {
       const saved = start ? await capsulesApi.change(start.id, start.revision ?? 0, draft) : await capsulesApi.create(clientId, draft)
       onSaved(saved)
     } catch (error) {
+      sealedWith.current = null
       setProblem(error instanceof ApiError ? error.code : 'internal_error')
       setBusy(false)
     }
@@ -518,7 +555,7 @@ function Compose({ start, today, me, onClose, onSaved }: { start: CapsuleView | 
           />
         </div>
         <p className="text-sm text-ink-2" data-hint>
-          {onlyMe || others.length === 0 ? t('capsules.hintSelf') : t('capsules.hintOthers', { count: others.length, names: otherNames })} {t('capsules.hintPush')}
+          {onlyMe || othersCount === 0 ? t('capsules.hintSelf') : t('capsules.hintOthers', { count: othersCount, names: otherNames })} {t('capsules.hintPush')}
         </p>
         {problem && <p className="text-sm text-bad">{errorText(problem)}</p>}
         <div className="flex justify-end gap-2">

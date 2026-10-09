@@ -2,7 +2,7 @@
  * The own account in tabs, everything personal in one place: Profile (picture, display name, name, role, mail
  * address, language), Security (password, second factor, the link to the provider, the notice of a new sign-in),
  * Look (colour, light or dark, the layout of "Today" and of the journal, where a phone starts), Writing (the values,
- * the writing prompts and the templates), Reminders (Web Push on this device and the others, when to remind), AI (the own switch,
+ * the writing prompts, the templates and taking part in the family question), Reminders (Web Push on this device and the others, when to remind), AI (the own switch,
  * and what the operator set up) and Connections (the own Immich, API tokens for programs). The tab stands in the
  * address (`?tab=`). Settings are the operator's.
  */
@@ -18,7 +18,7 @@ import { providerName } from '../lib/aiProviders'
 import { useAiState } from '../state/ai'
 import { useAuth } from '../state/auth'
 import { ImmichCard } from './settings/ImmichCards'
-import { GoalCard, JournalCard, LanguageCard, LayoutCard, LooksCard, PhoneCard } from './settings/PersonalCards'
+import { FamilyCard, GoalCard, JournalCard, LanguageCard, LayoutCard, LooksCard, PhoneCard } from './settings/PersonalCards'
 import { PromptsCard } from './settings/PromptsCard'
 import { RemindersPart } from './settings/PushCards'
 import { DevicesCard, PasskeysCard, SecondFactorCard } from './settings/SecurityCards'
@@ -72,6 +72,7 @@ export function AccountPage() {
             <ValuesCard />
             <PromptsCard />
             <TemplatesCard />
+            <FamilyCard />
           </>
         )}
         {part === 'reminders' && <RemindersPart me={me} />}

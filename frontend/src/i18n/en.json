@@ -287,6 +287,11 @@
     "change": "Change",
     "withdraw": "Take back",
     "withdrawn": "Taken back. Nobody can see it any more.",
+    "hiddenPeople_one": "{{count}} more person",
+    "hiddenPeople_other": "{{count}} more people",
+    "withdrawTitle": "Take the time capsule back?",
+    "withdrawText": "It disappears for everybody it is for and cannot be brought back.",
+    "withdrawConfirm": "Take back",
     "closedUntil": "Closed until {{date}}.",
     "openedToday": "Opened today",
     "read": "Read the letter",
@@ -356,6 +361,13 @@
     "signOut": "Sign out"
   },
   "settings": {
+    "family": {
+      "title": "Family question",
+      "text": "One question a day for the whole family, for every age.",
+      "join": "Take part in the family question",
+      "hint": "Every day one question for everybody who takes part. You see the others' answers as soon as you have answered yourself.",
+      "leave": "If you stop taking part, nobody sees your answers any more. What of them is in your notes stays."
+    },
     "title": "Settings",
     "saved": "Saved.",
     "ownPassword": "Your own password",
@@ -1443,6 +1455,46 @@
     "confirm_one": "Delete photo",
     "confirm_other": "Delete {{count}} photos"
   },
+  "family": {
+    "title": "Family question",
+    "people": "Who takes part",
+    "answeredBefore_one": "{{names}} has answered already. You see the answers as soon as you answer yourself.",
+    "answeredBefore_other": "{{names}} have answered already. You see the answers as soon as you answer yourself.",
+    "nobodyYet": "Nobody has answered yet. You see the others' answers as soon as you answer yourself.",
+    "placeholder": "Your answer",
+    "label": "Your answer to the family question",
+    "answer": "Answer",
+    "waiting_one": "{{names}} has not answered yet.",
+    "waiting_other": "{{names}} have not answered yet.",
+    "inNotes": "Your answer is in your notes of today as well.",
+    "change": "Change",
+    "withdraw": "Take back",
+    "unreadable": "Cannot be read.",
+    "hint": "There is a family question here: every day one question for everybody who takes part.",
+    "hintJoin": "Take part",
+    "hintDismiss": "Do not show again"
+  },
+  "followups": {
+    "button": "Ask me first",
+    "title": "A few questions first",
+    "reading": "Reading your notes …",
+    "intro": "Something in your notes is still open. Answer as much as you like. Anything left empty is simply passed over. Your answers go with your notes.",
+    "about": "about your note from {{time}}",
+    "placeholder": "A few words will do.",
+    "skip": "Go on without answers",
+    "go": "Write it up",
+    "nothingOpen": "Nothing in your notes is open."
+  },
+  "short": {
+    "link": "Just briefly today: mood and one sentence",
+    "title": "Just briefly today",
+    "intro": "For days when nothing more is possible. Mood and one sentence, and the day counts for your streak. Your notes stay, you can make more of them later.",
+    "introNoValue": "For days when nothing more is possible. One sentence, and the day counts for your streak. Your notes stay, you can make more of them later.",
+    "how": "How was the day?",
+    "sentence": "One sentence about it",
+    "placeholder": "Chestnuts with Mia, otherwise just tired.",
+    "cover": "The cover is chosen already."
+  },
   "errors": {
     "day_locked": "This day is locked for good and cannot be changed any more.",
     "not_written": "Only a day with a page can be locked.",
@@ -1674,6 +1726,7 @@
     "bad_autowrite": "nexdiary does not offer this value.",
     "immich_search_empty": "Type a search term.",
     "immich_until_invalid": "This is not a day or a month.",
+    "capsule_photos_waiting": "{{max}} photos are already waiting for a time capsule that is not sealed yet. Seal it, or wait a day for the old ones to go.",
     "capsule_date_past": "A time capsule opens on a day still to come for everybody it is for.",
     "capsule_date_far": "A time capsule opens within {{max}} years.",
     "capsule_nobody": "Choose whom the time capsule is for.",
@@ -1687,7 +1740,15 @@
     "capsule_changed": "This time capsule was changed meanwhile. Open it again.",
     "capsule_closed": "This time capsule is still closed.",
     "capsule_unreadable": "This time capsule cannot be read. You can only take it back.",
-    "too_many_capsules": "You have sent as many time capsules as there may be (at most {{max}})."
+    "too_many_capsules": "You have sent as many time capsules as there may be (at most {{max}}).",
+    "family_not_joined": "You do not take part in the family question.",
+    "family_day_over": "The day of this question is over. Load the page again.",
+    "answer_empty": "Write a few words as your answer.",
+    "answer_too_long": "The answer is too long (at most {{max}} characters).",
+    "short_empty": "Write one sentence about it.",
+    "short_too_long": "The sentence is too long (at most {{max}} characters).",
+    "short_only_today": "Just briefly works for today only.",
+    "day_written": "This day has a page already."
   },
   "entry": {
     "back": "← Journal",

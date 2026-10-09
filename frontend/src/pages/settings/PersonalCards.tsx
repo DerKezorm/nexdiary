@@ -3,7 +3,7 @@
  * layout of "Today" and of the journal, and the writing goal. Each is kept with the account (never only in this
  * browser).
  */
-import { Database, Globe, ListChecks, Palette, Smartphone, Target } from 'lucide-react'
+import { Database, Globe, ListChecks, Palette, Smartphone, Target, Users } from 'lucide-react'
 import { useEffect, useId, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -190,6 +190,19 @@ export function GoalCard() {
       <p className="text-sm text-ink-2">{goal === 7 ? t('settings.goal.hintDays') : t('settings.goal.hintWeeks')}</p>
       <p className="text-sm text-ink-2">{t('settings.goal.hintLong')}</p>
       <p className="text-xs text-muted">{t('settings.goal.hintChange')}</p>
+      <Feedback problem={problem} />
+    </Card>
+  )
+}
+
+/** Taking part in the family question: off from the start. What leaving means is said before the switch is used. */
+export function FamilyCard() {
+  const { t } = useTranslation()
+  const { profile, choose, problem } = useProfileChoice()
+  return (
+    <Card icon={Users} title={t('settings.family.title')} text={t('settings.family.text')}>
+      <Toggle label={t('settings.family.join')} hint={t('settings.family.hint')} checked={profile?.family ?? false} onChange={(family) => choose({ family })} />
+      <p className="mt-3 text-xs text-muted">{t('settings.family.leave')}</p>
       <Feedback problem={problem} />
     </Card>
   )

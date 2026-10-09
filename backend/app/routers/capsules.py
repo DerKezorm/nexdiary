@@ -95,6 +95,12 @@ async def upload(
     return kept
 
 
+@router.delete("/capsules/photos/{photo_id}", status_code=204,
+               summary="A photo chosen for a time capsule that is not going to be closed with it")
+def drop_upload(photo_id: str, account: Account, db: DbSession) -> None:
+    capsules.drop_upload(db, account, capsules.check_uid(photo_id))
+
+
 @router.get("/capsules/{capsule_id}", summary="One time capsule, as far as I may see it now")
 def one(capsule_id: str, account: Account, db: DbSession) -> dict[str, Any]:
     return capsules.one(db, account, capsules.check_uid(capsule_id))

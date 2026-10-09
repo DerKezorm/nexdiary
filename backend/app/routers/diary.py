@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..deps import Account, DbSession
 from ..errors import error
-from ..services import brakes, diary, journal, photos, prompts, streaks, vault
+from ..services import brakes, diary, family, journal, photos, prompts, short_entry, streaks, vault
 
 router = APIRouter(prefix="/api", tags=["diary"])
 logger = logging.getLogger("nexdiary.diary")
@@ -92,6 +92,17 @@ class DraftIn(Strict):
     base_revision: int = Field(ge=-1)
 
 
+class ShortIn(Strict):
+    #: One sentence; it is the text of the page, and its title while it is short.
+    text: str = Field(max_length=short_entry.TEXT_MAX * 4)
+    #: The title when the sentence is too long for one: the date as the interface writes it.
+    title: str = Field(default="", max_length=diary.TITLE_MAX * 4)
+    #: The rating of the first value the person rates; null for a person who rates none.
+    rating: int | None = Field(default=None, strict=True)
+    #: The cover the dialog showed (the suggestion), like ``DayIn.cover``.
+    cover: str | None = Field(default=None, max_length=diary.COVER_MAX)
+
+
 class ValuesOfDayIn(Strict):
     values: dict[Annotated[str, Field(max_length=32)], Any] = Field(max_length=diary.VALUE_DEFS_MAX * 2)
 
@@ -161,6 +172,10 @@ def today(request: Request, account: Account, db: DbSession) -> dict[str, Any]:
         "photos": photos.list_of_day(db, account.id, key),
         # The question of the day (writing prompts); null when the person switched questions off.
         "question": prompts.question_of_day(db, account.id, dek, day, _language(account, request)),
+        # The family question of today for whoever joined (``services/family.py``), else null; and whether to tell
+        # somebody who has not joined that others take part.
+        "family": family.view(db, account, _language(account, request)) if family.joined(account.profile) else None,
+        "family_hint": family.hint_due(db, account),
     }
 
 
@@ -251,6 +266,18 @@ def put_day(date: str, payload: DayIn, request: Request, account: Account, db: D
     # The photos taken for the text that nothing holds any more go now, their files after the commit.
     photos.remove_files(diary.tidy_text_photos(db, account.id, dek, key))
     return saved
+
+
+@router.post("/days/{date}/short", summary="Today's page out of one sentence and the first value: the short entry")
+def short(date: str, payload: ShortIn, request: Request, account: Account, db: DbSession) -> dict[str, Any]:
+    """Only for today and only while the day has no page (``day_written`` else). Counts as a written day."""
+    key = diary.check_date(account, date)
+    if key != diary.note_day(account).isoformat():
+        raise error("short_only_today", "A short entry is for today only.", 409)
+    dek = _values_ready(db, account, request)
+    if not diary.day_exists(db, account.id, key):
+        brakes.take("new_day", account.id)
+    return short_entry.save(db, account.id, dek, key, payload.text, payload.title, payload.rating, payload.cover)
 
 
 # --- Drafts ---------------------------------------------------------------------------------------------------------

@@ -776,3 +776,201 @@ def test_the_photo_keeps_nothing_but_its_pixels(family: Family) -> None:
     assert word.encode() not in picture
     for path in MEDIA.iterdir():
         assert word.encode() not in path.read_bytes()
+
+
+# --- Second round: the kept zone, retries, races with the photo, hidden people, chosen photos, the seal ------------
+
+
+def test_a_recipient_who_moves_their_clock_east_opens_nothing_earlier(family: Family, push_service: Any) -> None:
+    """Tom was in Berlin when the capsule came. Setting his zone to Kiritimati (UTC+14) afterwards changes nothing: it
+    opens at Berlin's midnight, the push comes at Berlin's eight, and until then Jule can still take it back."""
+    tom = device(family.tom, push_service)
+    first = close(family.jule, [family.ids["tom"]], text="Bis Heiligabend")["id"]
+    second = close(family.jule, [family.ids["tom"]], text="Auch das")["id"]
+    assert family.tom.put("/api/me/preferences", json={"timezone": "Pacific/Kiritimati"}).status_code == 200
+    from app.services import notices
+
+    notices.settle()
+    push_service.received.clear()
+    # Kiritimati has the 24th from 10:00 UTC on the 23rd; Berlin only from 23:00 UTC.
+    family.at(datetime(2026, 12, 23, 12, 0, tzinfo=UTC))
+    assert "text" not in family.tom.get(f"/api/capsules/{first}").json()
+    assert family.tom.get(f"/api/capsules/{first}/photo").status_code == 404
+    assert family.tom.get("/api/capsules/count").json() == {"new": 0}
+    assert family.tom.get("/api/capsules").json()["for_me"][0]["open"] is False
+    assert family.tom.post(f"/api/capsules/{first}/read").status_code == 409
+    assert capsules.run_once(datetime(2026, 12, 23, 18, 0, tzinfo=UTC)) == 0, "08:00 in Kiritimati is not the hour"
+    assert family.jule.delete(f"/api/capsules/{second}").status_code == 204, "it opened nowhere yet"
+    family.at(berlin_midnight(OPENS))
+    assert family.tom.get(f"/api/capsules/{first}").json()["text"] == "Bis Heiligabend"
+    assert capsules.run_once(datetime(2026, 12, 24, 6, 59, tzinfo=UTC)) == 0
+    assert capsules.run_once(datetime(2026, 12, 24, 7, 0, tzinfo=UTC)) == 1
+    assert len(bodies(push_service, tom)) == 1
+
+
+def test_a_sealed_letter_answers_a_retry_only_right_after_closing(family: Family) -> None:
+    """The same request again (a double click, a lost answer) gets the letter back for a few minutes; later the same
+    id answers 409 whatever it carries, so that its sender cannot test guesses of the sealed words."""
+    client_id = str(uuid.uuid4())
+    me = [family.ids["jule"]]
+    close(family.jule, me, title="An mich", text="Geheim", client_id=client_id)
+    close(family.jule, me, title="An mich", text="Geheim", client_id=client_id, status=200)
+    guess = family.jule.post("/api/capsules", json={"id": client_id, "to": me, "opens_on": OPENS, "title": "An mich",
+                                                    "text": "Geraten"})
+    assert guess.status_code == 409
+    family.at(NOON + capsules.RETRY_WINDOW + timedelta(seconds=1))
+    for words in ("Geheim", "Geraten"):
+        late = family.jule.post("/api/capsules", json={"id": client_id, "to": me, "opens_on": OPENS,
+                                                       "title": "An mich", "text": words})
+        assert late.status_code == 409 and late.json()["detail"]["code"] == "capsule_id_taken", words
+    with SessionLocal() as db:
+        mac = db.scalar(select(Capsule.request_mac))
+    assert mac and len(mac) == 64 and "Geheim" not in mac
+
+
+def test_taking_back_while_a_change_swaps_the_photo_leaves_no_file(family: Family,
+                                                                   monkeypatch: pytest.MonkeyPatch) -> None:
+    before = media_files()
+    made = close(family.jule, [family.ids["tom"]], with_photo=photo(family.jule))
+    swap = photo(family.jule)
+    real = capsules._refuse_when_open
+    jule = family.accounts["jule"]
+
+    def change_in_between(db: Any, capsule: Any) -> None:
+        real(db, capsule)
+        monkeypatch.setattr(capsules, "_refuse_when_open", real)
+        with SessionLocal() as other:
+            capsules.change(other, jule, made["id"], made["revision"], [family.ids["tom"]], OPENS, "x", "y", swap)
+
+    monkeypatch.setattr(capsules, "_refuse_when_open", change_in_between)
+    assert family.jule.delete(f"/api/capsules/{made['id']}").status_code == 204
+    assert count(Capsule) == 0 and count(CapsuleUpload) == 0
+    assert media_files() == before, "neither the first photo nor the one the change brought is left"
+
+
+def test_the_sender_learns_how_many_recipients_are_hidden(family: Family) -> None:
+    made = close(family.jule, [family.ids["tom"], family.ids["mia"]])
+    only_mia = close(family.jule, [family.ids["mia"]])
+    assert family.operator.post(f"/api/accounts/{family.ids['mia']}/block",
+                                json={"current_password": PASSWORD}).status_code == 204
+    sent = {item["id"]: item for item in family.jule.get("/api/capsules").json()["from_me"]}
+    assert ([person["name"] for person in sent[made["id"]]["to"]], sent[made["id"]]["hidden"]) == (["tom"], 1)
+    assert (sent[only_mia["id"]]["to"], sent[only_mia["id"]]["hidden"]) == ([], 1)
+    assert sent[only_mia["id"]]["sealed"] is False
+    assert family.jule.get(f"/api/capsules/{made['id']}").json()["hidden"] == 1
+
+
+def test_a_chosen_photo_left_behind_goes_at_once_and_the_waiting_ones_have_a_limit(
+    family: Family, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    before = media_files()
+    chosen = photo(family.jule)
+    assert family.tom.delete(f"/api/capsules/photos/{chosen}").status_code == 404, "only the own"
+    assert family.jule.delete(f"/api/capsules/photos/{chosen}").status_code == 204
+    assert family.jule.delete(f"/api/capsules/photos/{chosen}").status_code == 404
+    assert count(CapsuleUpload) == 0 and media_files() == before
+    monkeypatch.setattr(capsules, "UPLOADS_MAX", 1)
+    photo(family.jule)
+    full = family.jule.post("/api/capsules/photos", params={"upload_id": str(uuid.uuid4())}, content=jpeg())
+    assert full.status_code == 409 and full.json()["detail"] == {
+        "code": "capsule_photos_waiting", "message": "Too many photos are waiting for a time capsule.", "max": 1}
+
+
+def test_the_day_and_the_seal_are_bound_into_the_sealed_words_and_photo(family: Family) -> None:
+    import sqlite3
+    from contextlib import closing
+
+    from app.config import get_settings
+
+    made = close(family.jule, [family.ids["tom"]], title="Gebunden", with_photo=photo(family.jule))
+    # Changed in the database alone: nothing opens any more.
+    with closing(sqlite3.connect(get_settings().database_path)) as connection:
+        connection.execute("UPDATE capsules SET opens_on = ?", ("2026-10-10",))
+        connection.commit()
+    family.at(berlin_midnight("2026-10-10"))
+    assert family.tom.get("/api/capsules").json()["for_me"] == []
+    assert family.tom.get(f"/api/capsules/{made['id']}").status_code == 404
+    assert family.tom.get(f"/api/capsules/{made['id']}/photo").status_code == 404
+
+
+def test_a_change_of_the_day_seals_the_kept_photo_anew(family: Family) -> None:
+    made = close(family.jule, [family.ids["tom"]], with_photo=photo(family.jule))
+    files = media_files()
+    moved = family.jule.put(f"/api/capsules/{made['id']}", json={
+        "revision": made["revision"], "to": [family.ids["tom"]], "opens_on": "2026-12-31", "title": "x", "text": "y"})
+    assert moved.status_code == 200 and moved.json()["photo"] is True
+    assert len(media_files()) == len(files) and media_files() != files, "the same photo, sealed anew"
+    assert family.jule.get(f"/api/capsules/{made['id']}/photo").status_code == 200
+    family.at(berlin_midnight("2026-12-31"))
+    assert family.tom.get(f"/api/capsules/{made['id']}/photo").status_code == 200
+
+
+def test_a_change_to_only_oneself_seals_the_letter(family: Family) -> None:
+    made = close(family.jule, [family.ids["tom"], family.ids["jule"]], text="Erst für zwei")
+    changed = family.jule.put(f"/api/capsules/{made['id']}", json={
+        "revision": made["revision"], "to": [family.ids["jule"]], "opens_on": OPENS, "title": "Nur für mich",
+        "text": "Jetzt versiegelt"})
+    assert changed.status_code == 200
+    body = changed.json()
+    assert body["sealed"] is True and "text" not in body and "photo" not in body
+    again = family.jule.put(f"/api/capsules/{made['id']}", json={
+        "revision": body["revision"], "to": [family.ids["jule"]], "opens_on": OPENS, "title": "x", "text": "y"})
+    assert again.json()["detail"]["code"] == "capsule_sealed"
+    assert family.jule.get("/api/capsules").json()["from_me"][0]["sealed"] is True
+    family.at(berlin_midnight(OPENS))
+    assert family.jule.get(f"/api/capsules/{made['id']}").json()["text"] == "Jetzt versiegelt"
+
+
+def test_a_sealed_letter_that_opened_says_it_opened(family: Family) -> None:
+    made = close(family.jule, [family.ids["jule"]])
+    family.at(berlin_midnight(OPENS))
+    refused = family.jule.put(f"/api/capsules/{made['id']}", json={
+        "revision": 0, "to": [family.ids["jule"]], "opens_on": "2027-01-01", "title": "x", "text": "y"})
+    assert refused.json()["detail"]["code"] == "capsule_open"
+
+
+def move_the_day_first(family: Family, monkeypatch: pytest.MonkeyPatch, uid: str, revision: int) -> None:
+    """Just before the opening is marked, Jule's change moves the day (her own look at the clock came a moment
+    earlier and found it closed)."""
+    real_mark = capsules._mark_opened
+    real_refuse = capsules._refuse_when_open
+    jule = family.accounts["jule"]
+
+    def changed_first(db: Any, capsule_id: int, today: str | None = None) -> bool:
+        capsules._mark_opened = real_mark  # type: ignore[assignment]
+        capsules._refuse_when_open = lambda _db, _capsule: None  # type: ignore[assignment]
+        try:
+            with SessionLocal() as other:
+                capsules.change(other, jule, uid, revision, [family.ids["tom"]], "2026-12-31", "x", "verschoben")
+        finally:
+            capsules._refuse_when_open = real_refuse  # type: ignore[assignment]
+        return real_mark(db, capsule_id, today)
+
+    monkeypatch.setattr(capsules, "_mark_opened", changed_first)
+
+
+def test_a_change_moving_the_day_just_before_the_first_look_leaves_it_closed(
+    family: Family, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    made = close(family.jule, [family.ids["tom"]], text="alt")
+    family.at(berlin_midnight(OPENS))
+    move_the_day_first(family, monkeypatch, made["id"], made["revision"])
+    seen = family.tom.get(f"/api/capsules/{made['id']}").json()
+    assert "text" not in seen and seen["opens_on"] == "2026-12-31"
+    # Not marked opened: its sender can still take it back.
+    assert family.jule.delete(f"/api/capsules/{made['id']}").status_code == 204
+
+
+def test_a_change_moving_the_day_just_before_the_push_stops_it(family: Family, monkeypatch: pytest.MonkeyPatch,
+                                                                 push_service: Any) -> None:
+    tom = device(family.tom, push_service)
+    made = close(family.jule, [family.ids["tom"]])
+    from app.services import notices
+
+    notices.settle()
+    push_service.received.clear()
+    family.at(datetime(2026, 12, 24, 7, 0, tzinfo=UTC))
+    move_the_day_first(family, monkeypatch, made["id"], made["revision"])
+    assert capsules.run_once(datetime(2026, 12, 24, 7, 0, tzinfo=UTC)) == 0
+    assert bodies(push_service, tom) == []
+    assert family.jule.delete(f"/api/capsules/{made['id']}").status_code == 204

@@ -95,6 +95,28 @@ def write_everywhere(client: TestClient, word: str) -> None:
         {"heading": f"Kopf {word}", "question": f"Frage {word}?"}]}], "default": None, "revision": -1}).status_code == 200
     share_everything(client, word)
     capsule_everything(client, word)
+    family_everything(client, word)
+
+
+def family_everything(client: TestClient, word: str) -> None:
+    """The family question answered by both, read by both, changed once: the answers are sealed, each with the key of
+    the one who wrote it, and the note an answer became as well."""
+    from .conftest import new_client
+
+    with SessionLocal() as db:
+        rike = db.query(Account).filter_by(name="rike").one()
+        db.expunge(rike)
+    client.put("/api/me/preferences", json={"family": True})
+    today = client.get("/api/family").json()["date"]
+    first = client.put("/api/family/answer", json={"date": today, "text": f"Antwort {word}", "note_id": str(uuid.uuid4())})
+    assert first.status_code == 200
+    assert client.put("/api/family/answer", json={"date": today, "text": f"Geändert {word}",
+                                                  "note_id": str(uuid.uuid4())}).status_code == 200
+    with new_client(rike) as reader:
+        reader.put("/api/me/preferences", json={"timezone": "UTC", "family": True})
+        seen = reader.put("/api/family/answer", json={"date": today, "text": f"Rike {word}",
+                                                      "note_id": str(uuid.uuid4())})
+        assert seen.status_code == 200 and f"Geändert {word}" in seen.text
 
 
 def capsule_everything(client: TestClient, word: str) -> None:
@@ -235,7 +257,8 @@ def test_a_backup_cannot_be_read_without_the_master_key_and_comes_back_on_the_sa
     vault.startup()
     sign_in(client, account)
     restored = client.get("/api/notes", params={"date": day}).json()
-    assert [item["text"] for item in restored if item["text"]] == [f"heute {word} gesehen"]
+    # (The note the family answer became may stand on the same day.)
+    assert [item["text"] for item in restored if item["text"] and not item["prompt_id"]] == [f"heute {word} gesehen"]
     with_photo = [item for item in restored if item["photo_id"]]
     assert len(with_photo) == 1
     assert client.get(f"/api/photos/{with_photo[0]['photo_id']}").headers["content-type"] == "image/webp"
@@ -246,6 +269,8 @@ def test_a_backup_cannot_be_read_without_the_master_key_and_comes_back_on_the_sa
     to_rike = next(item for item in sent if item["title"] == f"Kapsel {word}")
     assert client.get(f"/api/capsules/{to_rike['id']}").json()["text"] == f"Geändert {word}"
     assert client.get(f"/api/capsules/{to_rike['id']}/photo").status_code == 200
+    # The answer to the family question came back too.
+    assert client.get("/api/family").json()["mine"]["text"] == f"Geändert {word}"
 
 
 def test_a_deleted_account_leaves_neither_its_key_nor_its_texts_in_the_files(

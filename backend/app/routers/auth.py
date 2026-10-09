@@ -54,6 +54,7 @@ from ..services import (
     autowrite,
     capsules,
     diary,
+    family,
     locales,
     mailer,
     notices,
@@ -549,6 +550,10 @@ PROFILE: dict[str, tuple[Any, ...]] = {
     "notify_login": (True, False),
     #: Pages a week the person wants to write, 1 to 7 (``services/streaks.py``); 7 is every day.
     "goal": (7, 1, 2, 3, 4, 5, 6),
+    #: Taking part in the family question (``services/family.py``); off from the start. Leaving takes the answers along.
+    "family": (False, True),
+    #: The quiet hint on "Today" that others take part in the family question; put away for good with false.
+    "family_hint": (True, False),
 }
 
 
@@ -587,7 +592,11 @@ def set_preferences(payload: dict[str, Any], account: Account, db: DbSession) ->
         if allowed is None or value not in allowed or type(value) is not type(allowed[0]):
             raise error("bad_preference", "This value is not one nexdiary offers.", 422, field=key)
         current[key] = value
+    left = family.joined(row.profile) and not current["family"]
     row.profile = current
+    if left:
+        # Whoever leaves the family question takes their answers along, in the same transaction.
+        family.leave(db, row.id)
     db.commit()
     return current
 

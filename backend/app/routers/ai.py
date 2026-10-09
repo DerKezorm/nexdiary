@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..deps import Account, DbSession, OperatorAccount
@@ -28,6 +28,10 @@ class FormulateIn(Strict):
     length: Literal["short", "long"] = "long"
     #: The id of one of the person's templates, ``"none"`` for no template; left out, the person's default counts.
     template: str | None = Field(default=None, max_length=32)
+
+
+class FollowupsIn(Strict):
+    date: str = Field(max_length=10)
 
 
 class AiSettingsIn(Strict):
@@ -70,6 +74,23 @@ def formulate(payload: FormulateIn, account: Account, db: DbSession) -> dict[str
     notes = diary.list_notes(db, account.id, dek, day)
     return ai.formulate(db, account.id, switch, notes, diary.zone_of(account), payload.length,
                         sections=chosen["sections"] if chosen else None)
+
+
+@router.post("/ai/followups", summary="Up to two questions of the AI about what the notes of a day leave open")
+def followups(payload: FollowupsIn, request: Request, account: Account, db: DbSession) -> dict[str, Any]:
+    """Only on a press of "Erst fragen lassen", and under the same rules and limits as ``formulate``: the own notes of
+    the one day go to the operator's service. The answers come back as notes of the day (``POST /api/notes``), so a
+    locked day is refused before anything goes out."""
+    from .prompts import language
+
+    switch = own_switch(account)
+    ai.check_allowed(db, account.id)
+    ai.usable(db, switch)
+    day = diary.check_date(account, payload.date)
+    diary.ensure_open(db, account.id, day)
+    notes = diary.list_notes(db, account.id, vault.dek_for(account.id), day)
+    return {"questions": ai.followups(db, account.id, switch, notes, diary.zone_of(account),
+                                      language(account, request))}
 
 
 # --- The operator ---------------------------------------------------------------------------------------------------

@@ -29,7 +29,7 @@
  * (each with a line to write on, the question as a grey hint in it, `sections` of the editor); the AI buttons carry
  * the chosen one (`template`), and on saving the sections of the template that stayed empty fall away.
  */
-import { Check, Crop, ImageIcon, Loader2, Lock, Shuffle, Sparkles, ZoomIn } from 'lucide-react'
+import { Check, Crop, ImageIcon, Loader2, Lock, MessageCircleQuestion, Shuffle, Sparkles, ZoomIn } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
@@ -42,6 +42,7 @@ import { ImmichPicker } from '../components/ImmichPicker'
 import { LockDialog, LockedMark } from '../components/LockDay'
 import { useOwnPhotoViewer } from '../components/ownPhotoViewer'
 import { TagPicker } from '../components/TagPicker'
+import { FollowupDialog } from '../components/TodayExtras'
 import { CoverImage, CoverPicker, defaultCover } from '../covers/Cover'
 import { timeOfHour, type Time } from '../covers/suggest'
 import { DiaryEditor, type DiaryEditorHandle } from '../editor/DiaryEditor'
@@ -185,6 +186,8 @@ export default function WritePage() {
    * stands. */
   const [redo, setRedo] = useState<{ length: AiLength; over: 'draft' | 'suggestion' | 'page' } | null>(null)
   const [length, setLength] = useState<AiLength>('long')
+  /** "Erst fragen lassen": the questions of the AI about the notes, before it writes. */
+  const [askingFirst, setAskingFirst] = useState(false)
   /** The person's templates (none: an empty list) and the one the page is written under, by its id. */
   const [templateSet, setTemplateSet] = useState<TemplateSet | null>(null)
   const [chosen, setChosen] = useState<string | null>(null)
@@ -885,6 +888,13 @@ export default function WritePage() {
                       ))}
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setAskingFirst(true)}
+                    className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-accent-soft px-5 text-[0.95rem] font-semibold text-accent transition hover:brightness-[0.98]"
+                  >
+                    <MessageCircleQuestion size={18} aria-hidden /> {t('followups.button')}
+                  </button>
                   <p className="text-xs leading-relaxed text-muted">
                     {aiHint(ai, t)} {t('write.aiPromise')}
                   </p>
@@ -1031,6 +1041,18 @@ export default function WritePage() {
       <div className="fixed inset-x-0 z-30 border-t border-line bg-sheet/95 px-4 pt-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur lg:hidden" style={{ bottom: inset }}>
         <SaveButton className="h-11 w-full px-5 text-[0.95rem]" onSave={() => void save()} disabled={!canSave} saving={saving} />
       </div>
+
+      {askingFirst && (
+        <FollowupDialog
+          date={date}
+          onClose={() => setAskingFirst(false)}
+          onDone={() => {
+            setAskingFirst(false)
+            // The answers are notes of the day now: they show beside the page, and the AI writes from all of them.
+            void diaryApi.notes(date).then(setNotes, () => undefined).finally(() => ask(length))
+          }}
+        />
+      )}
 
       {redo && (
         <Dialog title={t(REDO[redo.over].title)} onClose={() => setRedo(null)}>

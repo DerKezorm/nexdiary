@@ -32,9 +32,10 @@ const LISTS: CapsuleLists = {
     { id: ID(3), from: null, self: false, title: 'Von früher', opens_on: '2031-05-12', written_on: '2026-05-12', open: false, new: false },
   ],
   from_me: [
-    { id: ID(4), title: 'Vorsätze', opens_on: '2027-01-01', written_on: '2026-10-01', to: [ME_PERSON, TOM], sealed: false, opened: false, revision: 2 },
-    { id: ID(5), title: 'Wo stehe ich in einem Jahr?', opens_on: '2027-10-06', written_on: '2026-10-06', to: [ME_PERSON], sealed: true, opened: false, revision: 0 },
-    { id: ID(1), title: 'An mich, in einem Jahr', opens_on: '2026-10-09', written_on: '2025-10-06', to: [ME_PERSON], sealed: true, opened: true, revision: 0 },
+    { id: ID(4), title: 'Vorsätze', opens_on: '2027-01-01', written_on: '2026-10-01', to: [ME_PERSON, TOM], hidden: 0, sealed: false, opened: false, revision: 2 },
+    { id: ID(5), title: 'Wo stehe ich in einem Jahr?', opens_on: '2027-10-06', written_on: '2026-10-06', to: [ME_PERSON], hidden: 0, sealed: true, opened: false, revision: 0 },
+    { id: ID(1), title: 'An mich, in einem Jahr', opens_on: '2026-10-09', written_on: '2025-10-06', to: [ME_PERSON], hidden: 0, sealed: true, opened: true, revision: 0 },
+    { id: ID(6), title: 'Für Ruth', opens_on: '2028-03-01', written_on: '2026-10-02', to: [], hidden: 1, sealed: false, opened: false, revision: 1 },
   ],
   new: 1,
 }
@@ -68,6 +69,8 @@ function serve(): void {
       if (url === `/api/capsules/${ID(1)}`) return json(LETTER)
       if (url === `/api/capsules/${ID(4)}` && method === 'GET') return json(OWN)
       if (url === `/api/capsules/${ID(4)}` && method === 'PUT') return json({ ...OWN, revision: 3 })
+      if (url.startsWith('/api/capsules/photos?') && method === 'POST') return json({ id: ID(8), width: 64, height: 48 }, 201)
+      if (url === `/api/capsules/${ID(6)}` && method === 'GET') return json({ ...OWN, id: ID(6), title: 'Für Ruth', to: [], hidden: 1, revision: 1 })
       if (url.endsWith('/read') || method === 'DELETE') return new Response(null, { status: 204 })
       return json({ detail: { code: 'not_found', message: 'Not found.' } }, 404)
     }),
@@ -132,7 +135,7 @@ describe('the time capsules page', () => {
   it('shows both tabs with their counts, and for me the envelopes that tell only who and when', async () => {
     await show()
     expect(box.querySelector('h1')?.textContent).toBe('Zeitkapseln')
-    expect(tabs()).toEqual(['Für mich (3)', 'Von mir (3)'])
+    expect(tabs()).toEqual(['Für mich (3)', 'Von mir (4)'])
     const sealed = [...box.querySelectorAll('[data-sealed]')]
     expect(sealed.map((card) => card.getAttribute('data-sealed'))).toEqual([ID(2), ID(3)])
     const first = sealed[0].textContent ?? ''
@@ -183,8 +186,16 @@ describe('the time capsules page', () => {
     const done = row(ID(1))
     expect(done.textContent).toContain('An dich selbst · geöffnet am Freitag, 9. Oktober 2026')
     expect(done.querySelectorAll('button').length).toBe(0)
+    // Asked first, quietly; "Abbrechen" leaves it where it is.
     await click(buttonNamed('Zurückziehen', toMe))
-    expect(calls.some((call) => call.method === 'DELETE' && call.url === `/api/capsules/${ID(5)}`)).toBe(true)
+    expect(dialog()?.getAttribute('aria-label')).toBe('Zeitkapsel zurückziehen?')
+    expect(dialog()?.querySelector('[data-withdraw-text]')?.textContent?.trim()).toBe('Sie verschwindet bei allen Empfängern und lässt sich nicht wiederherstellen.')
+    await click(buttonNamed('Abbrechen', dialog()!))
+    expect(dialog()).toBeNull()
+    expect(calls.some((call) => call.method === 'DELETE')).toBe(false)
+    await click(buttonNamed('Zurückziehen', toMe))
+    await click(buttonNamed('Zurückziehen', dialog()!))
+    expect(calls.filter((call) => call.method === 'DELETE').map((call) => call.url)).toEqual([`/api/capsules/${ID(5)}`])
     expect(row(ID(5))).toBeNull()
   })
 
@@ -227,6 +238,37 @@ describe('the time capsules page', () => {
     expect(String((sent.body as { id: string }).id)).toMatch(/^[0-9a-f-]{36}$/)
     expect(dialog()).toBeNull()
     expect(box.querySelector('[data-testid="where"]')?.textContent).toBe('?tab=von-mir')
+  })
+
+  it('names recipients blocked since by their number, and never calls their letter sealed', async () => {
+    await show('/zeitkapseln?tab=von-mir')
+    const row = box.querySelector(`[data-capsule="${ID(6)}"]`) as HTMLElement
+    expect(row.textContent).toContain('An 1 weitere Person · öffnet sich am Mittwoch, 1. März 2028')
+    expect(row.textContent).not.toContain('versiegelt')
+    await click(buttonNamed('Ändern', row))
+    await until(() => buttonNamed('Tom', dialog()!), 'the people')
+    expect(hint()).toContain('1 weitere Person sieht bis dahin nur, dass ein Brief von dir wartet')
+    await click(buttonNamed('Mich selbst', dialog()!))
+    expect(hint()).toContain('1 weitere Person sieht bis dahin nur')
+    expect(hint()).not.toContain('versiegelt')
+  })
+
+  it('lets go of a chosen photo at once when the dialog is left without sealing', async () => {
+    await show()
+    await click(buttonNamed('Neue Zeitkapsel'))
+    await until(() => buttonNamed('Tom', dialog()!), 'the people')
+    const file = new File([new Uint8Array([255, 216, 255])], 'bild.jpg', { type: 'image/jpeg' })
+    const input = dialog()!.querySelector('input[type="file"]') as HTMLInputElement
+    Object.defineProperty(input, 'files', { value: [file], configurable: true })
+    // jsdom draws no pictures: a stand-in address for the preview.
+    URL.createObjectURL = () => 'blob:bild'
+    URL.revokeObjectURL = () => undefined
+    await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
+    await idle()
+    expect(calls.some((call) => call.method === 'POST' && call.url.startsWith('/api/capsules/photos?'))).toBe(true)
+    await click(buttonNamed('Abbrechen', dialog()!))
+    await idle()
+    expect(calls.filter((call) => call.method === 'DELETE').map((call) => call.url)).toEqual([`/api/capsules/photos/${ID(8)}`])
   })
 
   it('changes a capsule to others with its revision, the photo left as it is', async () => {

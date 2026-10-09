@@ -136,6 +136,10 @@ export type Profile = {
   reminder?: Reminder
   /** Having yesterday written up in the morning on its own (changed with `aiApi.autowrite`). */
   autowrite?: Autowrite
+  /** Taking part in the family question; off from the start. Leaving takes the own answers along. */
+  family?: boolean
+  /** The quiet hint on "Today" that others take part; false once put away. */
+  family_hint?: boolean
 }
 
 /** Off from the start; `time` is the person's own clock, 04:00 to 11:59. */
@@ -347,6 +351,31 @@ export type TodayData = {
   question?: Question | null
   night?: Night
   catch_up?: CatchUp
+  /** The family question of today for whoever joined, else null. */
+  family?: FamilyCard | null
+  /** Others take part in the family question and this person has not joined nor put the hint away. */
+  family_hint?: boolean
+}
+
+/** Somebody who joined the family question, and whether they answered today. */
+export type FamilyPerson = Person & { me: boolean; answered: boolean }
+/** The family question of today: who joined, who answered; the others' answers only once the own one is given
+ * (`answers` is null until then). */
+export type FamilyCard = {
+  date: string
+  question: Question
+  people: FamilyPerson[]
+  mine: { text: string; unreadable?: boolean; at: string } | null
+  answers: { from: number; text: string; at: string }[] | null
+}
+
+export const familyApi = {
+  card: () => api<FamilyCard>('/api/family'),
+  /** The own answer for today, or a change of it; it becomes a note of the day too (`noteId`, the same id twice keeps
+   * one note). */
+  answer: (date: string, text: string, noteId: string) => api<FamilyCard>('/api/family/answer', { method: 'PUT', body: { date, text, note_id: noteId } }),
+  /** Takes the own answer back; its note stays. */
+  withdraw: (date: string) => api<FamilyCard>('/api/family/answer', { method: 'DELETE', query: { date } }),
 }
 
 export type DayChange = {
@@ -384,7 +413,7 @@ export const diaryApi = {
   addNote: (id: string, text: string, date?: string, photoId?: string | null, prompt?: Question | null) =>
     api<Note>('/api/notes', {
       method: 'POST',
-      body: { id, text, ...(date ? { date } : {}), ...(photoId ? { photo_id: photoId } : {}), ...(prompt ? { prompt: prompt.text, prompt_id: prompt.id } : {}) },
+      body: { id, text, ...(date ? { date } : {}), ...(photoId ? { photo_id: photoId } : {}), ...(prompt ? { prompt: prompt.text, ...(prompt.id ? { prompt_id: prompt.id } : {}) } : {}) },
     }),
   changeNote: (id: string, text: string) => api<Note>(`/api/notes/${encodeURIComponent(id)}`, { method: 'PUT', body: { text } }),
   /** To the day before or the day after its own; the photo of the note goes along. */
@@ -397,6 +426,9 @@ export const diaryApi = {
   deleteNote: (id: string) => api<void>(`/api/notes/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   day: (date: string) => api<DayPage>(`/api/days/${encodeURIComponent(date)}`),
   changeDay: (date: string, change: DayChange) => api<DayPage>(`/api/days/${encodeURIComponent(date)}`, { method: 'PUT', body: change }),
+  /** "Heute nur kurz": the page of today out of one sentence and the first value; only while there is no page. */
+  short: (date: string, entry: { text: string; title: string; rating?: number; cover: string }) =>
+    api<DayPage>(`/api/days/${encodeURIComponent(date)}/short`, { method: 'POST', body: entry }),
   rate: (date: string, values: Record<string, number | null>) => api<DayPage>(`/api/days/${encodeURIComponent(date)}/values`, { method: 'PUT', body: { values } }),
   values: () => api<ValueDef[]>('/api/values'),
   addValue: (value: { name: string; low: string; high: string; hint?: string }) => api<ValueDef>('/api/values', { method: 'POST', body: value }),
@@ -419,12 +451,16 @@ export type AiLength = 'short' | 'long'
 export type AiState = { provider: AiProvider; to: string; model: string; mine: boolean; allowed?: boolean; available: boolean; auto_allowed?: boolean }
 export type AiSettings = { provider: AiProvider; url: string; model: string; key_set: boolean; auto_allowed?: boolean }
 export type AiModel = { id: string; name: string }
+/** A question of the AI about a note of the day (`note_id`, written at `at`). */
+export type Followup = { question: string; note_id: string; at: string }
 
 export const aiApi = {
   state: () => api<AiState>('/api/ai'),
   /** Only on a press of the button: the own notes of the day go to the operator's service. */
   formulate: (date: string, length: AiLength, template?: string) =>
     api<{ title: string; text: string; length: AiLength }>('/api/ai/formulate', { method: 'POST', body: { date, length, ...(template ? { template } : {}) } }),
+  /** "Erst fragen lassen": up to two questions about what the notes of the day leave open (sent like `formulate`). */
+  followups: (date: string) => api<{ questions: Followup[] }>('/api/ai/followups', { method: 'POST', body: { date } }),
   settings: () => api<AiSettings>('/api/settings/ai'),
   save: (change: Partial<Omit<AiSettings, 'key_set'>> & { key?: string }) => api<AiSettings>('/api/settings/ai', { method: 'PUT', body: change }),
   /** Having yesterday written up in the morning on its own; switching it on needs `confirmed` (the person was told
@@ -691,8 +727,9 @@ export function sharedPhotoUrl(owner: number, date: string, id: string, preview 
 /** A time capsule for me: who sent it (null: an account deleted since), its title and its days; whether it is open
  * for me and not read yet, and whether it holds a photo (only once it is open). */
 export type CapsuleForMe = { id: string; from: Person | null; self: boolean; title: string; opens_on: string; written_on: string; open: boolean; new: boolean; photo?: boolean }
-/** A time capsule I sent: to whom, whether it is sealed for me too (only to myself), whether it opened for anybody. */
-export type CapsuleFromMe = { id: string; title: string; opens_on: string; written_on: string; to: Person[]; sealed: boolean; opened: boolean; revision: number }
+/** A time capsule I sent: to whom (`hidden`: how many more, blocked, that I cannot see now), whether it is sealed for me
+ * too (only to myself), whether it opened for anybody. */
+export type CapsuleFromMe = { id: string; title: string; opens_on: string; written_on: string; to: Person[]; hidden: number; sealed: boolean; opened: boolean; revision: number }
 export type CapsuleLists = { today: string; for_me: CapsuleForMe[]; from_me: CapsuleFromMe[]; new: number }
 /** One capsule as far as I may see it now: `text` and `photo` only once I may read it; `to`, `revision` and `opened`
  * only for its sender. */
@@ -709,6 +746,7 @@ export type CapsuleView = {
   text?: string
   photo?: boolean
   to?: Person[]
+  hidden?: number
   revision?: number
   opened?: boolean
 }
@@ -726,6 +764,8 @@ export const capsulesApi = {
   withdraw: (id: string) => api<void>(capsule(id), { method: 'DELETE' }),
   read: (id: string) => api<void>(`${capsule(id)}/read`, { method: 'POST' }),
   upload: (file: Blob, uploadId: string) => api<{ id: string; width: number; height: number }>('/api/capsules/photos', { method: 'POST', raw: file, query: { upload_id: uploadId } }),
+  /** A chosen photo that is not going to be sealed with a capsule: gone at once. */
+  dropPhoto: (id: string) => api<void>(`/api/capsules/photos/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 }
 
 /** The photo of a capsule, for whoever may read it now. */

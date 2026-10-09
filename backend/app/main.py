@@ -28,6 +28,7 @@ from .routers import (
     auth,
     capsules,
     diary,
+    family,
     health,
     immich,
     invites,
@@ -71,7 +72,7 @@ logger = logging.getLogger("nexdiary")
 ROUTERS = [
     health, about, locales_router, logs_router, auth, totp_router, oidc, invites, settings_router, backups_router,
     avatars_router, apitokens, v1_router, diary, photos, sharing, ai, prompts, immich, push, passkeys, stats,
-    resets, templates, capsules,
+    resets, templates, capsules, family,
 ]
 
 

@@ -509,7 +509,6 @@ class ShareSeen(Base):
     at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
 
 
-
 # --- Time capsules ---------------------------------------------------------------------------------------------------
 #
 # A letter that opens on a date, to oneself or to others on the server (``services/capsules.py``). Its title, text and
@@ -535,6 +534,9 @@ class Capsule(Base):
     sender_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True,
                                                   index=True)
     client_id: Mapped[str] = mapped_column(String(36))
+    #: A keyed hash (with the sender's data key) of what the browser asked to close, to answer the same request sent
+    #: again without opening the capsule: never its words in the clear.
+    request_mac: Mapped[str] = mapped_column(String(64))
     #: ``YYYY-MM-DD``: from 00:00 of this day in each recipient's own time zone the capsule is open for them.
     opens_on: Mapped[str] = mapped_column(String(10))
     #: ``YYYY-MM-DD`` in the sender's time zone, the day it was first closed.
@@ -568,6 +570,9 @@ class CapsuleKey(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True)
     #: The capsule is for this person; false: the sender's own copy of a capsule only for others.
     recipient: Mapped[bool] = mapped_column(Boolean, default=True)
+    #: The person's time zone when the capsule came to them (an IANA name; empty: the server's own). Opening and the
+    #: push of the day follow it: changing one's zone later opens nothing earlier.
+    zone: Mapped[str] = mapped_column(String(64), default="")
     key_enc: Mapped[bytes] = mapped_column(LargeBinary)
     #: The push "a capsule came for you" went out (or is not owed: the sender's own copy).
     arrival_sent: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -593,6 +598,29 @@ class CapsuleUpload(Base):
     preview_size: Mapped[int] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
 
+
+# --- The family question ---------------------------------------------------------------------------------------------
+
+
+class FamilyAnswer(Base):
+    """The answer of one person to the family question of one day (``services/family.py``), sealed with that person's
+    data key. In the clear only the day and which question it was: the question follows from the day for everybody."""
+
+    __tablename__ = "family_answers"
+    __table_args__ = (UniqueConstraint("user_id", "date", name="uq_family_answers_user_date"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    #: ``YYYY-MM-DD`` in the answering person's own time zone.
+    date: Mapped[str] = mapped_column(String(10))
+    question: Mapped[str] = mapped_column(String(16))
+    text_enc: Mapped[bytes] = mapped_column(LargeBinary)
+    #: The note of the day the answer also became (its id), so that changing the answer changes that note too.
+    note_uid: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+
 __all__ = [
     "MEMBER",
     "OPERATOR",
@@ -611,6 +639,7 @@ __all__ = [
     "CapsuleUpload",
     "Day",
     "Draft",
+    "FamilyAnswer",
     "Heart",
     "ImmichLink",
     "Invite",

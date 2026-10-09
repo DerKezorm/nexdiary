@@ -7,6 +7,10 @@
  * did not switch it off ("Ausformulieren": the writing page asks for the suggestion, never on its own). The question of
  * the day stands under the field; its answer becomes a note with the question. With Immich connected, the photos taken
  * there today are suggested in "Fotos von heute" and copied only when chosen.
+ *
+ * Under the question of the day stands the family question for whoever joined (or, once, the quiet hint that others
+ * take part); "Erst fragen lassen" lets the AI ask about the notes before it writes the day up, and "Heute nur kurz"
+ * makes the page of today out of one sentence and the first value (`components/TodayExtras.tsx`).
  */
 import { ArrowUp, Check, ImagePlus, Images, Loader2, MessageCircleQuestion, PenLine, Shuffle, Sparkles, Trash2, X } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
@@ -24,6 +28,7 @@ import { useOwnPhotoViewer } from '../components/ownPhotoViewer'
 import { useDeletePhotos } from '../components/PhotoDelete'
 import { PhotoTile } from '../components/PhotoViews'
 import { StreakBadges } from '../components/Streak'
+import { FamilyHint, FamilyQuestion, FollowupDialog, ShortEntry } from '../components/TodayExtras'
 import { Scale } from '../components/Scale'
 import { TagPicker } from '../components/TagPicker'
 import { longDate, timeOf } from '../lib/dates'
@@ -87,12 +92,14 @@ export function TodayPage({ now }: { now?: Date }) {
         <Header now={now} today={today} onDay={() => setDrawer(true)} />
         <Before today={today} />
         <div className="mb-3">
-          <FinishCard today={today} ai={ai} />
+          <FinishCard today={today} ai={ai} now={now} />
         </div>
         <div className="flex-1 pb-4">
           <Bubbles today={today} />
-          <div className="mt-4">
+          <div className="mt-4 space-y-4">
             <PromptCard today={today} />
+            <FamilyHint today={today} />
+            <FamilyQuestion today={today} />
           </div>
         </div>
         <div className="sticky bottom-[4.5rem] z-20 bg-gradient-to-t from-paper via-paper to-transparent pt-6 pb-3 lg:bottom-0">
@@ -122,10 +129,12 @@ export function TodayPage({ now }: { now?: Date }) {
             <Capture today={today} />
             {problem}
             <PromptCard today={today} />
+            <FamilyHint today={today} />
+            <FamilyQuestion today={today} />
             <Timeline today={today} />
           </div>
           <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
-            <FinishCard today={today} ai={ai} />
+            <FinishCard today={today} ai={ai} now={now} />
             <ValuesBlock today={today} />
             <PhotosBlock today={today} />
             <TagsBlock today={today} />
@@ -142,11 +151,13 @@ export function TodayPage({ now }: { now?: Date }) {
       <Capture today={today} />
       {problem}
       <PromptCard today={today} />
+      <FamilyHint today={today} />
+      <FamilyQuestion today={today} />
       <Timeline today={today} />
       <PhotosBlock today={today} />
       <ValuesBlock today={today} />
       <TagsBlock today={today} />
-      <FinishCard today={today} ai={ai} />
+      <FinishCard today={today} ai={ai} now={now} />
       <NightDialog today={today} />
     </div>
   )
@@ -257,57 +268,82 @@ function PromptCard({ today }: { today: TodayState }) {
   )
 }
 
-/** "Den Tag aufschreiben", as the mock's finish card: "Ausformulieren" with the AI (short or long) above "Selbst
- * schreiben" when there is an AI for this person and notes to write from. A day that has a page already keeps the
- * button, for notes added later; the writing page asks before the AI writes over the saved page. */
-function FinishCard({ today, ai }: { today: TodayState; ai: AiState | null }) {
+/** "Den Tag aufschreiben", as the mock's finish card: "Ausformulieren" with the AI (short or long) and "Erst fragen
+ * lassen" above "Selbst schreiben" when there is an AI for this person and notes to write from. A day that has a page
+ * already keeps the button, for notes added later; the writing page asks before the AI writes over the saved page.
+ * "Heute nur kurz" below, while the day has no page. */
+function FinishCard({ today, ai, now }: { today: TodayState; ai: AiState | null; now?: Date }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [length, setLength] = useState<AiLength>('long')
+  const [asking, setAsking] = useState(false)
+  const [short, setShort] = useState(false)
   const data = today.data as TodayData
   const count = data.notes.length
   const written = Boolean(data.day?.text.trim())
   const aiOn = Boolean(ai?.available) && !data.day?.locked && data.notes.some((note) => note.text && !note.unreadable)
   const text = written ? t(aiOn ? 'write.finishExistingAi' : 'write.finishExisting') : count > 0 ? t('write.finishText', { count }) : t('write.finishNoNotes')
+  const formulate = () => navigate(`/tag/${data.date}/schreiben`, { state: { formulate: length } })
   return (
-    <section id="aufschreiben" className="card scroll-mt-6 overflow-hidden">
-      <div className="bg-accent-soft/70 px-5 pt-5 pb-4">
-        <h2 className="font-display text-lg font-semibold">{t('write.finishTitle')}</h2>
-        <p className="mt-1 text-sm text-ink-2">{text}</p>
-      </div>
-      <div className="space-y-3 p-5">
-        {aiOn && ai && (
-          <>
-            <div className="flex gap-2">
-              {/* The press of the button: the writing page asks for the suggestion once, and forgets that it should. */}
-              <button type="button" className={`${PRIMARY} flex-1`} onClick={() => navigate(`/tag/${data.date}/schreiben`, { state: { formulate: length } })}>
-                <Sparkles size={18} aria-hidden /> {t('write.ai')}
-              </button>
-              <div role="radiogroup" aria-label={t('write.length')} className="flex rounded-full bg-sheet-2 p-1 text-sm font-semibold">
-                {(['short', 'long'] as const).map((value) => (
-                  <button
-                    key={value}
-                    type="button"
-                    role="radio"
-                    aria-checked={length === value}
-                    onClick={() => setLength(value)}
-                    className={`rounded-full px-3 ${length === value ? 'bg-sheet text-ink shadow-sm' : 'text-muted'}`}
-                  >
-                    {value === 'short' ? t('write.lengthShort') : t('write.lengthLong')}
-                  </button>
-                ))}
+    <>
+      <section id="aufschreiben" className="card scroll-mt-6 overflow-hidden">
+        <div className="bg-accent-soft/70 px-5 pt-5 pb-4">
+          <h2 className="font-display text-lg font-semibold">{t('write.finishTitle')}</h2>
+          <p className="mt-1 text-sm text-ink-2">{text}</p>
+        </div>
+        <div className="space-y-3 p-5">
+          {aiOn && ai && (
+            <>
+              <div className="flex gap-2">
+                {/* The press of the button: the writing page asks for the suggestion once, and forgets that it should. */}
+                <button type="button" className={`${PRIMARY} flex-1`} onClick={formulate}>
+                  <Sparkles size={18} aria-hidden /> {t('write.ai')}
+                </button>
+                <div role="radiogroup" aria-label={t('write.length')} className="flex rounded-full bg-sheet-2 p-1 text-sm font-semibold">
+                  {(['short', 'long'] as const).map((value) => (
+                    <button
+                      key={value}
+                      type="button"
+                      role="radio"
+                      aria-checked={length === value}
+                      onClick={() => setLength(value)}
+                      className={`rounded-full px-3 ${length === value ? 'bg-sheet text-ink shadow-sm' : 'text-muted'}`}
+                    >
+                      {value === 'short' ? t('write.lengthShort') : t('write.lengthLong')}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-            <p className="text-xs leading-relaxed text-muted">
-              {aiHint(ai, t)} {t('write.aiPromise')}
-            </p>
-          </>
-        )}
-        <Link to={`/tag/${data.date}/schreiben`} className={`${aiOn ? SOFT : PRIMARY} w-full`}>
-          <PenLine size={18} aria-hidden /> {written ? t('write.continue') : t('write.self')}
-        </Link>
-      </div>
-    </section>
+              <button type="button" className={`${SOFT} w-full`} onClick={() => setAsking(true)}>
+                <MessageCircleQuestion size={18} aria-hidden /> {t('followups.button')}
+              </button>
+              <p className="text-xs leading-relaxed text-muted">
+                {aiHint(ai, t)} {t('write.aiPromise')}
+              </p>
+            </>
+          )}
+          <Link to={`/tag/${data.date}/schreiben`} className={`${aiOn ? SOFT : PRIMARY} w-full`}>
+            <PenLine size={18} aria-hidden /> {written ? t('write.continue') : t('write.self')}
+          </Link>
+          {!written && !data.day?.locked && (
+            <button type="button" onClick={() => setShort(true)} className="w-full pt-1 text-center text-sm font-semibold text-accent hover:underline">
+              {t('short.link')}
+            </button>
+          )}
+        </div>
+      </section>
+      {asking && (
+        <FollowupDialog
+          date={data.date}
+          onClose={() => setAsking(false)}
+          onDone={() => {
+            setAsking(false)
+            formulate()
+          }}
+        />
+      )}
+      {short && <ShortEntry today={today} now={now} onClose={() => setShort(false)} />}
+    </>
   )
 }
 

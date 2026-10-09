@@ -287,6 +287,11 @@
     "change": "Ändern",
     "withdraw": "Zurückziehen",
     "withdrawn": "Zurückgezogen. Sie ist bei niemandem mehr zu sehen.",
+    "hiddenPeople_one": "{{count}} weitere Person",
+    "hiddenPeople_other": "{{count}} weitere Personen",
+    "withdrawTitle": "Zeitkapsel zurückziehen?",
+    "withdrawText": "Sie verschwindet bei allen Empfängern und lässt sich nicht wiederherstellen.",
+    "withdrawConfirm": "Zurückziehen",
     "closedUntil": "Verschlossen bis {{date}}.",
     "openedToday": "Heute geöffnet",
     "read": "Brief lesen",
@@ -356,6 +361,13 @@
     "signOut": "Abmelden"
   },
   "settings": {
+    "family": {
+      "title": "Familienfrage",
+      "text": "Eine Frage am Tag für die ganze Familie, für jedes Alter.",
+      "join": "Bei der Familienfrage mitmachen",
+      "hint": "Jeden Tag eine Frage für alle, die mitmachen. Die Antworten der anderen siehst du, sobald du selbst geantwortet hast.",
+      "leave": "Machst du nicht mehr mit, sieht niemand mehr deine Antworten. Was davon in deinen Notizen steht, bleibt."
+    },
     "title": "Einstellungen",
     "saved": "Gespeichert.",
     "ownPassword": "Dein eigenes Passwort",
@@ -1443,6 +1455,46 @@
     "confirm_one": "Foto löschen",
     "confirm_other": "{{count}} Fotos löschen"
   },
+  "family": {
+    "title": "Familienfrage",
+    "people": "Wer mitmacht",
+    "answeredBefore_one": "{{names}} hat schon geantwortet. Du siehst die Antworten, sobald du selbst antwortest.",
+    "answeredBefore_other": "{{names}} haben schon geantwortet. Du siehst die Antworten, sobald du selbst antwortest.",
+    "nobodyYet": "Noch hat niemand geantwortet. Du siehst die Antworten der anderen, sobald du selbst antwortest.",
+    "placeholder": "Deine Antwort",
+    "label": "Deine Antwort auf die Familienfrage",
+    "answer": "Antworten",
+    "waiting_one": "{{names}} hat noch nicht geantwortet.",
+    "waiting_other": "{{names}} haben noch nicht geantwortet.",
+    "inNotes": "Deine Antwort steht auch in deinen Notizen von heute.",
+    "change": "Ändern",
+    "withdraw": "Zurücknehmen",
+    "unreadable": "Nicht lesbar.",
+    "hint": "Bei euch gibt es die Familienfrage: jeden Tag eine Frage für alle, die mitmachen.",
+    "hintJoin": "Mitmachen",
+    "hintDismiss": "Nicht mehr zeigen"
+  },
+  "followups": {
+    "button": "Erst fragen lassen",
+    "title": "Erst ein paar Fragen",
+    "reading": "Liest deine Notizen …",
+    "intro": "Zu deinen Notizen ist noch etwas offen. Antworte, so viel du magst. Leeres wird einfach übergangen. Deine Antworten kommen zu den Notizen.",
+    "about": "zur Notiz von {{time}} Uhr",
+    "placeholder": "Ein paar Worte reichen.",
+    "skip": "Ohne Antworten weiter",
+    "go": "Ausformulieren",
+    "nothingOpen": "Zu deinen Notizen ist nichts offen."
+  },
+  "short": {
+    "link": "Heute nur kurz: Stimmung und ein Satz",
+    "title": "Nur kurz heute",
+    "intro": "Für Tage, an denen nicht mehr geht. Stimmung und ein Satz, und der Tag zählt für deine Serie. Deine Notizen bleiben, du kannst später mehr daraus machen.",
+    "introNoValue": "Für Tage, an denen nicht mehr geht. Ein Satz, und der Tag zählt für deine Serie. Deine Notizen bleiben, du kannst später mehr daraus machen.",
+    "how": "Wie war der Tag?",
+    "sentence": "Ein Satz dazu",
+    "placeholder": "Kastanien mit Mia, sonst nur müde.",
+    "cover": "Titelbild ist schon ausgesucht."
+  },
   "errors": {
     "day_locked": "Dieser Tag ist für immer verschlossen und lässt sich nicht mehr ändern.",
     "not_written": "Nur ein Tag mit Seite lässt sich verschließen.",
@@ -1674,6 +1726,7 @@
     "bad_autowrite": "Diesen Wert bietet nexdiary nicht an.",
     "immich_search_empty": "Gib einen Suchbegriff ein.",
     "immich_until_invalid": "Das ist kein Tag und kein Monat.",
+    "capsule_photos_waiting": "Es warten schon {{max}} Fotos auf eine Zeitkapsel, die noch nicht verschlossen ist. Verschließe sie oder warte einen Tag, dann sind die alten weg.",
     "capsule_date_past": "Eine Zeitkapsel öffnet sich an einem Tag, der für alle Empfänger noch kommt.",
     "capsule_date_far": "Eine Zeitkapsel öffnet sich spätestens in {{max}} Jahren.",
     "capsule_nobody": "Wähle aus, für wen die Zeitkapsel ist.",
@@ -1687,7 +1740,15 @@
     "capsule_changed": "Diese Zeitkapsel wurde inzwischen geändert. Öffne sie noch einmal.",
     "capsule_closed": "Diese Zeitkapsel ist noch verschlossen.",
     "capsule_unreadable": "Diese Zeitkapsel lässt sich nicht lesen. Du kannst sie nur zurückziehen.",
-    "too_many_capsules": "Du hast so viele Zeitkapseln verschickt, wie es geht (höchstens {{max}})."
+    "too_many_capsules": "Du hast so viele Zeitkapseln verschickt, wie es geht (höchstens {{max}}).",
+    "family_not_joined": "Du machst bei der Familienfrage nicht mit.",
+    "family_day_over": "Der Tag dieser Frage ist vorbei. Lade die Seite neu.",
+    "answer_empty": "Schreib ein paar Worte als Antwort.",
+    "answer_too_long": "Die Antwort ist zu lang (höchstens {{max}} Zeichen).",
+    "short_empty": "Schreib einen Satz dazu.",
+    "short_too_long": "Der Satz ist zu lang (höchstens {{max}} Zeichen).",
+    "short_only_today": "Nur kurz geht nur für heute.",
+    "day_written": "Für diesen Tag steht schon eine Seite."
   },
   "entry": {
     "back": "← Tagebuch",
