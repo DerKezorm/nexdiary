@@ -519,7 +519,7 @@ class ShareSeen(Base):
 
 class Capsule(Base):
     """One time capsule. In the clear only what sorting, opening and the rules need: who sent it, the day it opens, the
-    day it was written, whether it is sealed for its sender, and the size of its photo."""
+    day it was written, whether it is sealed for its sender; its photos lie in ``capsule_photos``."""
 
     __tablename__ = "capsules"
     __table_args__ = (
@@ -545,12 +545,6 @@ class Capsule(Base):
     sealed: Mapped[bool] = mapped_column(Boolean, default=False)
     title_enc: Mapped[bytes] = mapped_column(LargeBinary)
     text_enc: Mapped[bytes] = mapped_column(LargeBinary)
-    #: The photo in the media folder (``uid`` and ``uid.p``), sealed with the capsule's key.
-    photo_uid: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    photo_width: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    photo_height: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    #: Bytes of both photo files on disk; counted in the sender's storage.
-    photo_size: Mapped[int] = mapped_column(Integer, default=0)
     #: Counts every change: a change is written only onto the revision it was read from.
     revision: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
@@ -558,6 +552,26 @@ class Capsule(Base):
     #: The first moment the server saw it open for one of its recipients: from then on it cannot be changed or taken
     #: back. Set in the same statement order as a change, so the two never pass each other.
     first_opened_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    #: The text is plain words, written before letters were Markdown (schema 15 and older): read, it is given out
+    #: escaped, so that a "*" or a "# " in it stays a character. The first change writes Markdown and clears it.
+    plain: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
+
+
+class CapsulePhoto(Base):
+    """One photo of a capsule, in the media folder (``uid`` and ``uid.p``), sealed with the capsule's key and bound to
+    the capsule, the photo, the day it opens and its seal. As many as the sender's storage holds; in the order they
+    were added."""
+
+    __tablename__ = "capsule_photos"
+    __table_args__ = (UniqueConstraint("capsule_id", "position", name="uq_capsule_photos_capsule_position"),)
+
+    uid: Mapped[str] = mapped_column(String(32), primary_key=True)
+    capsule_id: Mapped[int] = mapped_column(ForeignKey("capsules.id", ondelete="CASCADE"))
+    position: Mapped[int] = mapped_column(Integer)
+    width: Mapped[int] = mapped_column(Integer)
+    height: Mapped[int] = mapped_column(Integer)
+    #: Bytes of both files on disk; counted in the sender's storage.
+    size: Mapped[int] = mapped_column(Integer)
 
 
 class CapsuleKey(Base):
@@ -636,6 +650,7 @@ __all__ = [
     "Base",
     "Capsule",
     "CapsuleKey",
+    "CapsulePhoto",
     "CapsuleUpload",
     "Day",
     "Draft",

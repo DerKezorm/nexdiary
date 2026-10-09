@@ -726,14 +726,16 @@ export function sharedPhotoUrl(owner: number, date: string, id: string, preview 
 }
 
 /** A time capsule for me: who sent it (null: an account deleted since), its title and its days; whether it is open
- * for me and not read yet, and whether it holds a photo (only once it is open). */
-export type CapsuleForMe = { id: string; from: Person | null; self: boolean; title: string; opens_on: string; written_on: string; open: boolean; new: boolean; photo?: boolean }
+ * for me and not read yet; once it is open, how many photos it holds and the first of them. */
+export type CapsuleForMe = { id: string; from: Person | null; self: boolean; title: string; opens_on: string; written_on: string; open: boolean; new: boolean; photos?: number; photo?: string | null }
 /** A time capsule I sent: to whom (`hidden`: how many more, blocked, that I cannot see now), whether it is sealed for me
  * too (only to myself), whether it opened for anybody. */
 export type CapsuleFromMe = { id: string; title: string; opens_on: string; written_on: string; to: Person[]; hidden: number; sealed: boolean; opened: boolean; revision: number }
 export type CapsuleLists = { today: string; for_me: CapsuleForMe[]; from_me: CapsuleFromMe[]; new: number }
-/** One capsule as far as I may see it now: `text` and `photo` only once I may read it; `to`, `revision` and `opened`
- * only for its sender. */
+/** A photo of a capsule, in its place among the others. */
+export type CapsulePhoto = { id: string; width: number; height: number }
+/** One capsule as far as I may see it now: `text` (Markdown) and `photos` only once I may read it; `to`, `revision`
+ * and `opened` only for its sender. */
 export type CapsuleView = {
   id: string
   from: Person | null
@@ -745,14 +747,15 @@ export type CapsuleView = {
   for_me: boolean
   open: boolean
   text?: string
-  photo?: boolean
+  photos?: CapsulePhoto[]
   to?: Person[]
   hidden?: number
   revision?: number
   opened?: boolean
 }
-/** What a capsule says. `photo`: an id of a photo chosen for it, null for none; left out on a change, the photo stays. */
-export type CapsuleDraft = { to: number[]; opens_on: string; title: string; text: string; photo?: string | null }
+/** What a capsule says. `photos`: in their order, each a photo of the capsule or one chosen for it; left out on a
+ * change, the photos stay as they are. */
+export type CapsuleDraft = { to: number[]; opens_on: string; title: string; text: string; photos?: string[] }
 
 const capsule = (id: string) => `/api/capsules/${encodeURIComponent(id)}`
 
@@ -769,7 +772,7 @@ export const capsulesApi = {
   dropPhoto: (id: string) => api<void>(`/api/capsules/photos/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 }
 
-/** The photo of a capsule, for whoever may read it now. */
-export function capsulePhotoUrl(id: string, preview = false): string {
-  return `${capsule(id)}/photo${preview ? '/preview' : ''}`
+/** A photo of a capsule, for whoever may read it now. */
+export function capsulePhotoUrl(id: string, photo: string, preview = false): string {
+  return `${capsule(id)}/photos/${encodeURIComponent(photo)}${preview ? '/preview' : ''}`
 }

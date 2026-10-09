@@ -26,8 +26,9 @@ USED = (
     "(SELECT coalesce(sum(length(data_enc)), 0) FROM value_defs WHERE user_id = :user) + "
     "(SELECT coalesce(sum(length(content_enc)), 0) FROM writing_prompts WHERE user_id = :user) + "
     "(SELECT coalesce(sum(length(content_enc)), 0) FROM writing_templates WHERE user_id = :user) + "
-    "(SELECT coalesce(sum(length(title_enc) + length(text_enc) + photo_size), 0) FROM capsules "
-    "WHERE sender_id = :user) + "
+    "(SELECT coalesce(sum(length(title_enc) + length(text_enc)), 0) FROM capsules WHERE sender_id = :user) + "
+    "(SELECT coalesce(sum(capsule_photos.size), 0) FROM capsule_photos JOIN capsules "
+    "ON capsules.id = capsule_photos.capsule_id WHERE capsules.sender_id = :user) + "
     "(SELECT coalesce(sum(size + preview_size), 0) FROM capsule_uploads WHERE user_id = :user))"
 )
 

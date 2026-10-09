@@ -3,23 +3,34 @@ diary.
 
 The rules, all of them kept here on the server and none in the browser:
 
-* **Before the day** a recipient sees who sent it, its title and the day it opens; never its text or its photo, on no
-  way (the lists, the capsule itself, the photo). The day begins at 00:00 in the recipient's own time zone, as "today"
-  does everywhere in nexdiary; with recipients in several zones it opens for each at their own midnight.
+* **Before the day** a recipient sees who sent it, its title and the day it opens; never its text or its photos, on
+  no way (the lists, the capsule itself, the photos), not even how many there are. The day begins at 00:00 in the
+  recipient's own time zone, as "today" does everywhere in nexdiary; with recipients in several zones it opens for
+  each at their own midnight.
 * **Only to oneself** (the sender is the one recipient): sealed once closed. Until the day the sender can neither read
   nor change it, only take it back.
-* **To others** (the sender among them or not): the sender can read, change (recipients, day, title, text, photo) and
+* **To others** (the sender among them or not): the sender can read, change (recipients, day, title, text, photos) and
   take it back until it has opened for any one of its recipients. The first moment the server sees it open for
   somebody is marked on the capsule (``first_opened_at``), and every change and every taking back is written only
   where that mark is still empty: a change and an opening that meet never pass each other.
 * **Who else** asks for a capsule gets 404, exactly as for one that does not exist; the operator has no way in.
   Blocked accounts cannot be chosen, and the capsules of a blocked sender are not shown to anybody.
 
-Sealing: the title, the text and the photo are sealed with a key of the capsule's own (AES-256-GCM, bound to the
-capsule's id and the part). That key is sealed once for every person who holds the capsule, with that person's data
-key (``capsule_keys``): each recipient, and the sender. A capsule to Mia for her 18th birthday so outlives the account
-that wrote it (the sender's id is emptied, the capsule says "from a deleted account"); deleting a recipient's account
-deletes only their copy of the key. In the clear stay only the people, the days and the times.
+Sealing: the title, the text and the photos are sealed with a key of the capsule's own (AES-256-GCM, bound to the
+capsule's id and the part; a photo to its own id too). That key is sealed once for every person who holds the
+capsule, with that person's data key (``capsule_keys``): each recipient, and the sender. A capsule to Mia for her
+18th birthday so outlives the account that wrote it (the sender's id is emptied, the capsule says "from a deleted
+account"); deleting a recipient's account deletes only their copy of the key. In the clear stay only the people, the
+days and the times, and for each photo its place, its size and its shape.
+
+The letter is Markdown, written in the same editor as a page, and kept as a page is kept (``diary.clean_text``), but
+without any picture: a picture in a page points to a photo of the diary, which the recipients may not see. Letters from
+before (schema 15) are plain words and are given out escaped (``markdown_of_plain``).
+
+Photos: as many as the sender's storage holds, no number of their own. Chosen one by one before the capsule is closed
+(``capsule_uploads``, sealed with the person's key), taken over when it is closed or changed (sealed anew with the
+capsule's key, ``capsule_photos``). A new day or a new seal seals every photo anew: the new files are written one by one
+beside the old ones, and one transaction then swaps them all; until it commits the old ones are what anybody reads.
 
 Pushes: when a capsule comes, its recipients (never the sender) hear who sent it and when it opens; on its day, each
 recipient hears at 08:00 of their own zone (or at the first round of the planner after that) that it has opened.
@@ -45,7 +56,7 @@ from sqlalchemy.orm import Session
 
 from .. import clock
 from ..errors import error
-from ..models import Account, Capsule, CapsuleKey, CapsuleUpload, UtcDateTime
+from ..models import Account, Capsule, CapsuleKey, CapsulePhoto, CapsuleUpload, UtcDateTime
 from . import diary, notices, photos, push, quota, vault
 
 logger = logging.getLogger("nexdiary.capsules")
@@ -58,9 +69,11 @@ RECIPIENTS_MAX = 50
 CAPSULES_MAX = 500
 #: The furthest a capsule may open.
 YEARS_MAX = 50
-#: Photos chosen for capsules not closed yet, per person at a time; and how long such a photo waits.
-UPLOADS_MAX = 20
+#: How long a photo chosen for a capsule that is not closed yet waits. There is no number of such photos: they count in
+#: the person's storage, and the brake on uploads holds a flood.
 UPLOAD_KEEP = timedelta(hours=24)
+#: The most photos one request names: a bound of the request, far beyond a letter (the storage is what limits them).
+PHOTOS_PER_REQUEST = 10_000
 #: How long after closing a letter only to oneself the same request may be sent again (a double click, a lost
 #: answer) and be answered with the capsule: later, the answer would tell its sender whether a guess of its words
 #: is right.
@@ -239,9 +252,60 @@ def _chosen(db: Session, sender: Account, ids: list[int], keep: set[int] | None 
     return [found[person] for person in wanted]
 
 
+#: A backslash and the character it escapes (taken first, so that an escaped ``!`` or ``[`` is never read as the start
+#: of a picture), or a picture written inline: ``![words](address)``, both parts bounded and on one line.
+_INLINE_PICTURE = re.compile(r"\\.|!\[(?:\\.|[^\]\\\n]){0,1000}\]\((?:\\.|[^)\\\n]){0,2000}\)", re.DOTALL)
+#: A backslash and what it escapes, or the opening of a picture of any other form (``![words][name]``, ``![words]``).
+_PICTURE_OPENING = re.compile(r"\\.|!\[", re.DOTALL)
+_PICTURE_TAG = r"<\s*(?:img|image|picture|source|video|svg)\b"
+#: A backslash and what it escapes, or a picture written as HTML (its opening tag).
+_HTML_PICTURE = re.compile(r"\\.|" + _PICTURE_TAG + r"[^>\n]{0,2000}>?", re.IGNORECASE | re.DOTALL)
+#: A backslash and what it escapes, or the ``<`` of a picture tag that is left.
+_HTML_PICTURE_OPENING = re.compile(r"\\.|<(?=" + _PICTURE_TAG[1:] + ")", re.IGNORECASE | re.DOTALL)
+#: A reference to a photo of the diary.
+_PHOTO_REFERENCE = re.compile(r"photo:[0-9a-fA-F]{32}")
+_BLANK_LINES = re.compile(r"\n{3,}")
+
+
+def _keep_escapes(replacement: str) -> Any:
+    return lambda match: match.group(0) if match.group(0).startswith("\\") else replacement
+
+
+def without_pictures(markdown: str) -> str:
+    """The letter without any picture. Pictures in HTML and pictures written inline (``![words](address)``) go whole;
+    a reference to a photo of the diary (``photo:<id>``) becomes a space; what could still be read as a picture after
+    that (a picture of another form, or one that taking something out put together) is escaped, so that it is plain
+    characters (``!\\[``, ``\\<img``). The last two steps only add a character, so they put nothing new together. Each
+    step a single pass, linear in the length of the text."""
+    out = _HTML_PICTURE.sub(_keep_escapes(""), markdown)
+    out = _INLINE_PICTURE.sub(_keep_escapes(""), out)
+    out = _PHOTO_REFERENCE.sub(" ", out)
+    out = _HTML_PICTURE_OPENING.sub(_keep_escapes("\\<"), out)
+    out = _PICTURE_OPENING.sub(_keep_escapes("!\\["), out)
+    return _BLANK_LINES.sub("\n\n", out).strip()
+
+
+#: Every ASCII punctuation character: with a backslash before it, it is itself in Markdown.
+_PUNCTUATION = re.compile(r"[!-/:-@\[-`{-~]")
+_PARAGRAPHS = re.compile(r"\n[ \t]*\n\s*")
+
+
+def markdown_of_plain(body: str) -> str:
+    """A letter of plain words (schema 15 and older) as Markdown that shows exactly those words as they were shown: a
+    paragraph per blank line, every other line end a line break, every punctuation character escaped (so that a
+    ``*``, a ``# `` or a ``1.`` at the start of a line stay characters), spaces at the ends of a line gone."""
+    paragraphs = [part for part in _PARAGRAPHS.split(body.replace("\r\n", "\n").strip()) if part.strip()]
+    out = []
+    for paragraph in paragraphs:
+        lines = [_PUNCTUATION.sub(lambda match: "\\" + match.group(0), line.strip())
+                 for line in paragraph.split("\n") if line.strip()]
+        out.append("\\\n".join(lines))
+    return "\n\n".join(out)
+
+
 def _clean(title: str, body: str) -> tuple[str, str]:
     title = diary.clean_line(title, TITLE_MAX, "capsule_title_too_long")
-    body = diary.clean_text(body, TEXT_MAX, "capsule_text_too_long")
+    body = without_pictures(diary.clean_text(body, TEXT_MAX, "capsule_text_too_long"))
     if not title or not body:
         raise error("capsule_empty", "A time capsule needs a title and a text.", 422)
     return title, body
@@ -292,7 +356,8 @@ def _refuse_when_open(db: Session, capsule: Any) -> None:
 
 def add_upload(db: Session, account: Account, upload_id: str, drawn: photos.Drawn) -> tuple[dict[str, Any], bool]:
     """Keeps a photo chosen for a capsule, sealed with the person's own key until the capsule takes it. The same upload
-    id again returns the photo that stands. Within the person's storage, and at most ``UPLOADS_MAX`` at a time."""
+    id again returns the photo that stands. Within the person's storage; no number of its own (a letter may hold many
+    photos), the brake on uploads holds a flood and a day later what was never closed goes."""
     existing = db.execute(select(CapsuleUpload).where(CapsuleUpload.user_id == account.id,
                                                       CapsuleUpload.upload_id == upload_id)).scalar_one_or_none()
     if existing is not None:
@@ -307,15 +372,13 @@ def add_upload(db: Session, account: Account, upload_id: str, drawn: photos.Draw
     try:
         inserted = db.execute(
             text(
-                "INSERT INTO capsule_uploads (uid, user_id, upload_id, width, height, size, preview_size, created_at) "  # noqa: S608 - constants
+                "INSERT INTO capsule_uploads (uid, user_id, upload_id, width, height, size, preview_size, created_at) "
                 "SELECT :uid, :user, :upload, :width, :height, :size, :preview, :now "
-                "WHERE (SELECT count(*) FROM capsule_uploads WHERE user_id = :user) < :limit "
-                f"AND (:quota IS NULL OR {quota.USED} + :size + :preview <= :quota) "
+                f"WHERE (:quota IS NULL OR {quota.USED} + :size + :preview <= :quota) "
                 "ON CONFLICT DO NOTHING"
             ).bindparams(bindparam("now", type_=UtcDateTime())),
             {"uid": uid, "user": account.id, "upload": upload_id, "width": drawn.width, "height": drawn.height,
-             "size": len(original), "preview": len(preview), "now": diary.now(), "limit": UPLOADS_MAX,
-             "quota": limit},
+             "size": len(original), "preview": len(preview), "now": diary.now(), "quota": limit},
         )
         db.commit()
     except Exception:
@@ -328,18 +391,15 @@ def add_upload(db: Session, account: Account, upload_id: str, drawn: photos.Draw
                                                        CapsuleUpload.upload_id == upload_id)).scalar_one_or_none()
         if found is not None:
             return _upload_view(found), False
-        if limit is not None and quota.used(db, account.id) + len(original) + len(preview) > limit:
-            raise quota.full(db)
-        raise error("capsule_photos_waiting", "Too many photos are waiting for a time capsule.", 409,
-                    max=UPLOADS_MAX)
+        raise quota.full(db)
     row = db.get(CapsuleUpload, uid)
     assert row is not None
     return _upload_view(row), True
 
 
 def drop_upload(db: Session, account: Account, upload_uid: str) -> None:
-    """A photo chosen for a capsule that is not going to be closed with it (the dialog was left, another photo was
-    chosen): gone at once, row and files. Only the person's own; any other answers 404."""
+    """A photo chosen for a capsule that is not going to be closed with it (the dialog was left, the photo taken out
+    again): gone at once, row and files. Only the person's own; any other answers 404."""
     gone = db.execute(delete(CapsuleUpload).where(CapsuleUpload.uid == upload_uid,
                                                   CapsuleUpload.user_id == account.id))
     db.commit()
@@ -353,19 +413,32 @@ def _upload_view(row: CapsuleUpload) -> dict[str, Any]:
 
 
 @dataclass
-class _Moved:
-    """A photo sealed anew with a capsule's key, its files written, waiting for the transaction that takes it."""
+class _Photo:
+    """One photo of a capsule as it will stand once the change is written: kept as it is (``written`` False), or written
+    anew with the capsule's key (sealed again for another day or seal, or taken from an upload), its files on disk and
+    waiting for the transaction that takes it."""
 
     uid: str
-    upload: str
     width: int
     height: int
     size: int
+    written: bool = False
+    #: The upload it came from, whose row the transaction deletes.
+    upload: str = ""
+    #: The bytes of that upload, which leave the person's storage with it.
+    upload_size: int = 0
+
+
+def wanted_photos(ids: list[str] | None) -> list[str] | None:
+    """The photos a request names, lower case and each once, in the order given; None: the request names none."""
+    if ids is None:
+        return None
+    return list(dict.fromkeys(item.lower() for item in ids))
 
 
 def _take_upload(db: Session, account: Account, upload_uid: str, capsule_uid: str, key: bytes, opens_on: str,
-                 sealed: bool) -> _Moved:
-    """The chosen photo, opened with the person's key and sealed anew with the capsule's, under a new name. The upload
+                 sealed: bool) -> _Photo:
+    """A chosen photo, opened with the person's key and sealed anew with the capsule's, under a new name. The upload
     itself stays until the transaction that takes it deletes its row."""
     row = db.get(CapsuleUpload, upload_uid) if UID.match(upload_uid or "") else None
     if row is None or row.user_id != account.id:
@@ -378,49 +451,97 @@ def _take_upload(db: Session, account: Account, upload_uid: str, capsule_uid: st
     except (OSError, vault.SealError) as exc:
         logger.warning("A photo chosen for a time capsule did not open")
         raise error("capsule_photo_missing", "This photo is no longer there. Choose it again.", 422) from exc
-    return _write_photo(parts, capsule_uid, key, opens_on, sealed, row.uid, row.width, row.height)
+    written = _write_photo(parts, capsule_uid, key, opens_on, sealed, row.width, row.height)
+    written.upload, written.upload_size = row.uid, row.size + row.preview_size
+    return written
 
 
-def _write_photo(parts: list[bytes], capsule_uid: str, key: bytes, opens_on: str, sealed: bool, upload: str,
-                 width: int, height: int) -> _Moved:
+def _write_photo(parts: list[bytes], capsule_uid: str, key: bytes, opens_on: str, sealed: bool, width: int,
+                 height: int) -> _Photo:
     uid = secrets.token_hex(16)
     files = [vault.seal(key, data, _photo_aad(capsule_uid, uid, preview, opens_on, sealed))
              for data, preview in zip(parts, (False, True), strict=True)]
-    photos._write(photos._path(uid, False), files[0])
-    photos._write(photos._path(uid, True), files[1])
-    return _Moved(uid=uid, upload=upload, width=width, height=height, size=len(files[0]) + len(files[1]))
+    try:
+        photos._write(photos._path(uid, False), files[0])
+        photos._write(photos._path(uid, True), files[1])
+    except Exception:
+        photos.remove_files([uid])
+        raise
+    return _Photo(uid=uid, width=width, height=height, size=len(files[0]) + len(files[1]), written=True)
 
 
-def _reseal_photo(capsule: Any, key: bytes, opens_on: str, sealed: bool) -> _Moved:
-    """The capsule's photo sealed anew for another day or seal, under a new name; the old files stay until the change
+def _reseal_photo(capsule: Any, row: Any, key: bytes, opens_on: str, sealed: bool) -> _Photo:
+    """A photo of the capsule sealed anew for another day or seal, under a new name; the old files stay until the change
     is written."""
     try:
-        parts = [vault.open_sealed(key, photos._path(capsule.photo_uid, preview).read_bytes(),
-                                   _photo_aad(capsule.uid, capsule.photo_uid, preview, capsule.opens_on,
-                                              capsule.sealed))
+        parts = [vault.open_sealed(key, photos._path(row.uid, preview).read_bytes(),
+                                   _photo_aad(capsule.uid, row.uid, preview, capsule.opens_on, capsule.sealed))
                  for preview in (False, True)]
     except (OSError, vault.SealError) as exc:
         logger.warning("A photo of a time capsule did not open")
         raise error("capsule_unreadable", "This time capsule cannot be read; it can only be taken back.", 409) from exc
-    return _write_photo(parts, capsule.uid, key, opens_on, sealed, "", capsule.photo_width or 0,
-                        capsule.photo_height or 0)
+    return _write_photo(parts, capsule.uid, key, opens_on, sealed, row.width, row.height)
 
 
-def _drop_upload(db: Session, account_id: int, upload_uid: str) -> None:
-    """Deletes the row of a photo the capsule took, in the transaction that takes it; refused when it is gone."""
-    gone = db.execute(delete(CapsuleUpload).where(CapsuleUpload.uid == upload_uid, CapsuleUpload.user_id == account_id))
-    if gone.rowcount != 1:  # type: ignore[attr-defined]
-        raise error("capsule_photo_missing", "This photo is no longer there. Choose it again.", 422)
+def _photo_rows(db: Session, capsule_id: int) -> list[CapsulePhoto]:
+    return list(db.scalars(select(CapsulePhoto).where(CapsulePhoto.capsule_id == capsule_id)
+                           .order_by(CapsulePhoto.position)))
 
 
-def read_photo(db: Session, viewer: Account, uid: str, preview: bool) -> bytes:
-    """The photo of a capsule, for whoever may read it now; 404 for anybody else and before the day."""
+def _gather(db: Session, sender: Account, capsule_uid: str, capsule: Any, standing: list[CapsulePhoto],
+            wanted: list[str], key: bytes, opens_on: str, sealed: bool) -> list[_Photo]:
+    """The photos the capsule is to hold, in this order: a photo it holds already stays as it is, or is sealed anew when
+    the day or the seal changes; any other id must be a photo the sender chose (an upload). Written one at a time, so
+    that only one photo is in memory at once; when one fails, the files written so far go again."""
+    held = {row.uid: row for row in standing}
+    reseal = capsule is not None and (opens_on != capsule.opens_on or sealed != bool(capsule.sealed))
+    out: list[_Photo] = []
+    try:
+        for item in wanted:
+            row = held.get(item)
+            if row is None:
+                out.append(_take_upload(db, sender, item, capsule_uid, key, opens_on, sealed))
+            elif reseal:
+                out.append(_reseal_photo(capsule, row, key, opens_on, sealed))
+            else:
+                out.append(_Photo(uid=row.uid, width=row.width, height=row.height, size=row.size))
+    except Exception:
+        photos.remove_files([photo.uid for photo in out if photo.written])
+        raise
+    return out
+
+
+def _store_photos(db: Session, account_id: int, capsule_id: int, chosen: list[_Photo]) -> None:
+    """In the open transaction: the capsule's photos are these, in this order; the uploads they came from are gone
+    (each must still be there: an upload taken a moment ago by another request is refused)."""
+    db.execute(delete(CapsulePhoto).where(CapsulePhoto.capsule_id == capsule_id))
+    for position, photo in enumerate(chosen):
+        db.add(CapsulePhoto(uid=photo.uid, capsule_id=capsule_id, position=position, width=photo.width,
+                            height=photo.height, size=photo.size))
+    db.flush()
+    for photo in chosen:
+        if photo.upload:
+            gone = db.execute(delete(CapsuleUpload).where(CapsuleUpload.uid == photo.upload,
+                                                          CapsuleUpload.user_id == account_id))
+            if gone.rowcount != 1:  # type: ignore[attr-defined]
+                raise error("capsule_photo_missing", "This photo is no longer there. Choose it again.", 422)
+
+
+def _photo_view(row: Any) -> dict[str, Any]:
+    return {"id": row.uid, "width": row.width, "height": row.height}
+
+
+def read_photo(db: Session, viewer: Account, uid: str, photo_uid: str, preview: bool) -> bytes:
+    """A photo of a capsule, for whoever may read it now; 404 for anybody else, before the day, and for a photo that is
+    not the capsule's."""
     capsule, key = _readable(db, viewer, uid)
-    if capsule.photo_uid is None:
+    row = db.execute(select(CapsulePhoto).where(CapsulePhoto.uid == photo_uid,
+                                                CapsulePhoto.capsule_id == capsule.id)).scalar_one_or_none()
+    if row is None:
         raise _not_found()
     try:
-        sealed = photos._path(capsule.photo_uid, preview).read_bytes()
-        return vault.open_sealed(key, sealed, _photo_aad(capsule.uid, capsule.photo_uid, preview, capsule.opens_on,
+        sealed = photos._path(row.uid, preview).read_bytes()
+        return vault.open_sealed(key, sealed, _photo_aad(capsule.uid, row.uid, preview, capsule.opens_on,
                                                          capsule.sealed))
     except (OSError, vault.SealError) as exc:
         logger.warning("A photo of a time capsule did not open")
@@ -493,8 +614,8 @@ def _from(db: Session, capsule: Any) -> dict[str, Any] | None:
 
 
 def one(db: Session, viewer: Account, uid: str) -> dict[str, Any]:
-    """One capsule as the viewer may see it: always who sent it, its title and its days; the text and whether it holds
-    a photo only once the viewer may read it; the recipients and the revision only for its sender."""
+    """One capsule as the viewer may see it: always who sent it, its title and its days; the text (Markdown) and its
+    photos only once the viewer may read it; the recipients and the revision only for its sender."""
     capsule, own = _opened_now(db, viewer, uid)
     readable = _may_read(viewer, capsule, own)
     key = _key_of(db, capsule, viewer.id)
@@ -519,8 +640,8 @@ def one(db: Session, viewer: Account, uid: str) -> dict[str, Any]:
         body = _open_part(key, capsule, "text")
         if body is None:
             raise _not_found()
-        out["text"] = body
-        out["photo"] = capsule.photo_uid is not None
+        out["text"] = markdown_of_plain(body) if capsule.plain else body
+        out["photos"] = [_photo_view(row) for row in _photo_rows(db, capsule.id)]
     if mine:
         everyone = _recipients_of(db, capsule.id)
         out["to"] = [person_view(person) for person in everyone if person.blocked_at is None]
@@ -533,7 +654,8 @@ def one(db: Session, viewer: Account, uid: str) -> dict[str, Any]:
 
 def lists(db: Session, viewer: Account) -> dict[str, Any]:
     """The capsules for the viewer (from senders who are not blocked) and the ones the viewer sent, each sorted by the
-    day they open. Never a text or a photo here."""
+    day they open. Never a text or a photo here; for a capsule open for the viewer how many photos it holds and the
+    first of them (the picture of "opened today"), for any other not even that."""
     dek = vault.dek_for(viewer.id)
     today = diary.today_of(viewer).isoformat()
     received = db.execute(
@@ -564,9 +686,8 @@ def lists(db: Session, viewer: Account) -> dict[str, Any]:
             "open": is_open,
             "new": is_open and read_at is None,
         }
-        if is_open:
-            item["photo"] = capsule.photo_uid is not None
         for_me.append(item)
+    _count_photos(db, [item for item in for_me if item["open"]], {capsule.uid: capsule.id for capsule, *_ in received})
     sent = db.execute(
         select(Capsule, CapsuleKey.key_enc).join(CapsuleKey, CapsuleKey.capsule_id == Capsule.id)
         .where(Capsule.sender_id == viewer.id, CapsuleKey.user_id == viewer.id)
@@ -593,6 +714,22 @@ def lists(db: Session, viewer: Account) -> dict[str, Any]:
             "revision": capsule.revision,
         })
     return {"today": today, "for_me": for_me, "from_me": from_me, "new": sum(1 for item in for_me if item["new"])}
+
+
+def _count_photos(db: Session, items: list[dict[str, Any]], ids: dict[str, int]) -> None:
+    """How many photos each of these open capsules holds, and the first one."""
+    if not items:
+        return
+    wanted = [ids[item["id"]] for item in items]
+    found: dict[int, list[str]] = {}
+    for capsule_id, photo_uid in db.execute(
+            select(CapsulePhoto.capsule_id, CapsulePhoto.uid).where(CapsulePhoto.capsule_id.in_(wanted))
+            .order_by(CapsulePhoto.capsule_id, CapsulePhoto.position)).all():
+        found.setdefault(capsule_id, []).append(photo_uid)
+    for item in items:
+        held = found.get(ids[item["id"]], [])
+        item["photos"] = len(held)
+        item["photo"] = held[0] if held else None
 
 
 def _title(dek: bytes, user_id: int, capsule: Any, sealed: bytes) -> str | None:
@@ -664,11 +801,11 @@ def _insert_key(db: Session, capsule_id: int, sender_id: int, person: int, recip
         raise error("person_unknown", "There is no such person.", 422)
 
 
-def request_mac(account_id: int, to: list[int], opens_on: str, title: str, body: str, with_photo: bool) -> str:
+def request_mac(account_id: int, to: list[int], opens_on: str, title: str, body: str, photo_ids: list[str]) -> str:
     """A keyed hash (the sender's data key) of what was asked to be closed: the same request sent again is known
     without opening the capsule, and the database holds nothing of the words."""
     asked = json.dumps({"to": sorted(set(to)), "opens_on": opens_on, "title": title, "text": body,
-                        "photo": bool(with_photo)}, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+                        "photos": photo_ids}, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hmac.new(vault.dek_for(account_id), b"capsule-request|" + asked.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
@@ -687,12 +824,14 @@ def _again(db: Session, account: Account, client_id: str, mac: str) -> dict[str,
 
 
 def create(db: Session, sender: Account, client_id: str, to: list[int], opens_on: str, title: str, body: str,
-           photo: str | None) -> tuple[dict[str, Any], bool]:
-    """Closes a new capsule; the capsule as its sender sees it, and whether it is new."""
+           photo_ids: list[str] | None = None) -> tuple[dict[str, Any], bool]:
+    """Closes a new capsule with the photos chosen for it, in that order; the capsule as its sender sees it, and whether
+    it is new."""
     if not diary.NOTE_ID.match(client_id or ""):
         raise error("invalid_input", "The input is not valid.", 422, fields=["id"])
     title, body = _clean(title, body)
-    mac = request_mac(sender.id, to, opens_on, title, body, photo is not None)
+    wanted = wanted_photos(photo_ids) or []
+    mac = request_mac(sender.id, to, opens_on, title, body, wanted)
     same = _again(db, sender, client_id, mac)
     if same is not None:
         return same, False
@@ -708,43 +847,37 @@ def create(db: Session, sender: Account, client_id: str, to: list[int], opens_on
         sealed_keys[sender.id] = _seal_key(sender.id, uid, key)
     title_enc = vault.seal_text(key, title, _content_aad(uid, "title", opens_on, only_me))
     text_enc = vault.seal_text(key, body, _content_aad(uid, "text", opens_on, only_me))
-    moved = None
-    if photo is not None:
-        try:
-            moved = _take_upload(db, sender, photo, uid, key, opens_on, only_me)
-        except Exception:
-            # Taken by a request with the same id a moment ago (a double click): that capsule is the answer.
-            same = _again(db, sender, client_id, mac)
-            if same is not None:
-                return same, False
-            raise
+    try:
+        chosen = _gather(db, sender, uid, None, [], wanted, key, opens_on, only_me)
+    except Exception:
+        # Taken by a request with the same id a moment ago (a double click): that capsule is the answer.
+        same = _again(db, sender, client_id, mac)
+        if same is not None:
+            return same, False
+        raise
+    written = [photo.uid for photo in chosen if photo.written]
     moment = diary.now()
     limit = quota.limit_bytes(db)
-    sizes = len(title_enc) + len(text_enc) + (moved.size if moved else 0)
+    # The photos move from the uploads into the capsule: what grows is the texts and the difference of the seals.
+    growth = len(title_enc) + len(text_enc) + sum(photo.size - photo.upload_size for photo in chosen)
     try:
         inserted = db.execute(
             text(
                 "INSERT INTO capsules (uid, sender_id, client_id, request_mac, opens_on, written_on, sealed, "  # noqa: S608 - constants
-                "title_enc, text_enc, photo_uid, photo_width, photo_height, photo_size, revision, created_at, "
-                "updated_at) "
-                "SELECT :uid, :sender, :client, :mac, :opens, :written, :sealed, :title, :text, :photo, :width, "
-                ":height, "
-                ":photo_size, 0, :now, :now "
+                "title_enc, text_enc, revision, created_at, updated_at, plain) "
+                "SELECT :uid, :sender, :client, :mac, :opens, :written, :sealed, :title, :text, 0, :now, :now, 0 "
                 "WHERE (SELECT count(*) FROM capsules WHERE sender_id = :sender) < :max "
-                # The photo moves from the upload into the capsule: only the texts are new.
                 f"AND (:quota IS NULL OR {quota.USED.replace(':user', ':sender')} + :growth <= :quota) "
                 "ON CONFLICT DO NOTHING"
             ).bindparams(bindparam("now", type_=UtcDateTime())),
             {"uid": uid, "sender": sender.id, "client": client_id, "mac": mac, "opens": opens_on,
              "written": diary.today_of(sender).isoformat(), "sealed": only_me, "title": title_enc, "text": text_enc,
-             "photo": moved.uid if moved else None, "width": moved.width if moved else None,
-             "height": moved.height if moved else None, "photo_size": moved.size if moved else 0, "now": moment,
-             "max": CAPSULES_MAX, "quota": limit, "growth": sizes - (_upload_size(db, moved.upload) if moved else 0)},
+             "now": moment, "max": CAPSULES_MAX, "quota": limit, "growth": growth},
         )
         if inserted.rowcount != 1:  # type: ignore[attr-defined]
             db.rollback()
-            if moved:
-                photos.remove_files([moved.uid])
+            photos.remove_files(written)
+            written = []
             same = _again(db, sender, client_id, mac)
             if same is not None:
                 return same, False
@@ -758,34 +891,28 @@ def create(db: Session, sender: Account, client_id: str, to: list[int], opens_on
         recipient_ids = {person.id for person in recipients}
         for person, sealed in sealed_keys.items():
             _insert_key(db, capsule_id, sender.id, person, person in recipient_ids, sealed, zones[person])
-        if moved:
-            _drop_upload(db, sender.id, moved.upload)
+        _store_photos(db, sender.id, capsule_id, chosen)
         db.commit()
     except Exception:
         db.rollback()
-        if moved:
-            photos.remove_files([moved.uid])
+        photos.remove_files(written)
         raise
-    if moved:
-        photos.remove_files([moved.upload])
-    logger.info("Time capsule closed recipients=%s", len(recipients))
+    photos.remove_files([photo.upload for photo in chosen if photo.upload])
+    logger.info("Time capsule closed recipients=%s photos=%s", len(recipients), len(chosen))
     announce_later(capsule_id)
     return one(db, sender, uid), True
-
-
-def _upload_size(db: Session, upload_uid: str) -> int:
-    row = db.get(CapsuleUpload, upload_uid)
-    return (row.size + row.preview_size) if row is not None else 0
 
 
 KEEP: Any = object()
 
 
 def change(db: Session, sender: Account, uid: str, revision: int, to: list[int], opens_on: str, title: str,
-           body: str, photo: Any = KEEP) -> dict[str, Any]:
+           body: str, photo_ids: Any = KEEP) -> dict[str, Any]:
     """Changes a capsule to others before it opened anywhere: the recipients, the day, the title, the text and the
-    photo (``KEEP``: as it is; None: none; an upload id: that one). All in one transaction, written only onto the
-    revision it was read from and only while nobody has opened it. People added hear that it came; nobody else."""
+    photos (``KEEP``: as they are; a list: these, in this order, each a photo of the capsule or one chosen for it).
+    All in one transaction, written only onto the revision it was read from and only while nobody has opened it: until
+    it commits, the capsule and every one of its photos are what they were. People added hear that it came; nobody
+    else."""
     capsule = _capsule(db, uid)
     if capsule is None or capsule.sender_id != sender.id:
         raise _not_found()
@@ -806,34 +933,25 @@ def change(db: Session, sender: Account, uid: str, revision: int, to: list[int],
     if key is None:
         raise error("capsule_unreadable", "This time capsule cannot be read; it can only be taken back.", 409)
     holders = set(kept_zones)
-    wanted = {person.id for person in recipients}
-    sealed = wanted == {sender.id}
-    added = {person: _seal_key(person, capsule.uid, key) for person in wanted - holders}
+    wanted_people = {person.id for person in recipients}
+    sealed = wanted_people == {sender.id}
+    added = {person: _seal_key(person, capsule.uid, key) for person in wanted_people - holders}
     title_enc = vault.seal_text(key, title, _content_aad(capsule.uid, "title", opens_on, sealed))
     text_enc = vault.seal_text(key, body, _content_aad(capsule.uid, "text", opens_on, sealed))
-    moved = None
-    resealed = False
-    if photo is not KEEP and photo is not None:
-        moved = _take_upload(db, sender, photo, capsule.uid, key, opens_on, sealed)
-    elif photo is KEEP and capsule.photo_uid and (opens_on != capsule.opens_on or sealed != bool(capsule.sealed)):
-        # The photo is bound to the day and the seal like the words: sealed anew for the new ones.
-        moved = _reseal_photo(capsule, key, opens_on, sealed)
-        resealed = True
-    values: dict[str, Any] = {"opens_on": opens_on, "title_enc": title_enc, "text_enc": text_enc,
-                              "sealed": sealed, "revision": capsule.revision + 1, "updated_at": diary.now()}
-    old_photo = capsule.photo_uid
-    replaced = photo is not KEEP or resealed
-    if replaced:
-        values.update(photo_uid=moved.uid if moved else None, photo_width=moved.width if moved else None,
-                      photo_height=moved.height if moved else None, photo_size=moved.size if moved else 0)
+    before = _photo_rows(db, capsule.id)
+    wanted = [row.uid for row in before] if photo_ids is KEEP else (wanted_photos(photo_ids) or [])
+    # The photos are bound to the day and the seal like the words: sealed anew for new ones, each beside the old.
+    chosen = _gather(db, sender, capsule.uid, capsule, before, wanted, key, opens_on, sealed)
+    written = [photo.uid for photo in chosen if photo.written]
+    values: dict[str, Any] = {"opens_on": opens_on, "title_enc": title_enc, "text_enc": text_enc, "sealed": sealed,
+                              "plain": False, "revision": capsule.revision + 1, "updated_at": diary.now()}
     growth = (len(title_enc) + len(text_enc) - len(capsule.title_enc) - len(capsule.text_enc)
-              + (values.get("photo_size", capsule.photo_size) - capsule.photo_size)
-              - (_upload_size(db, moved.upload) if moved and moved.upload else 0))
+              + sum(photo.size - photo.upload_size for photo in chosen) - sum(row.size for row in before))
     try:
-        written = db.execute(update(Capsule).where(Capsule.id == capsule.id, Capsule.sender_id == sender.id,
+        updated = db.execute(update(Capsule).where(Capsule.id == capsule.id, Capsule.sender_id == sender.id,
                                                    Capsule.revision == revision,
                                                    Capsule.first_opened_at.is_(None)).values(**values))
-        if written.rowcount != 1:  # type: ignore[attr-defined]
+        if updated.rowcount != 1:  # type: ignore[attr-defined]
             db.rollback()
             db.expire_all()
             again = _capsule(db, uid)
@@ -843,45 +961,47 @@ def change(db: Session, sender: Account, uid: str, revision: int, to: list[int],
                 raise error("capsule_open", "This time capsule has opened already.", 409)
             raise error("capsule_changed", "This time capsule was changed meanwhile.", 409, revision=again.revision)
         db.execute(delete(CapsuleKey).where(CapsuleKey.capsule_id == capsule.id,
-                                            CapsuleKey.user_id.not_in(wanted | {sender.id})))
+                                            CapsuleKey.user_id.not_in(wanted_people | {sender.id})))
         db.execute(update(CapsuleKey).where(CapsuleKey.capsule_id == capsule.id)
-                   .values(recipient=CapsuleKey.user_id.in_(wanted)))
+                   .values(recipient=CapsuleKey.user_id.in_(wanted_people)))
         for person, sealed_key in added.items():
             _insert_key(db, capsule.id, sender.id, person, True, sealed_key, zones[person])
-        if moved and moved.upload:
-            _drop_upload(db, sender.id, moved.upload)
+        # The photos as the capsule holds them now, read under the lock of this transaction: what was held a moment
+        # ago by a change of another tab cannot be, since that change raised the revision this one is written on.
+        _store_photos(db, sender.id, capsule.id, chosen)
         quota.check_after_write(db, sender.id, growth)
         db.commit()
     except Exception:
         db.rollback()
-        if moved:
-            photos.remove_files([moved.uid])
+        photos.remove_files(written)
         raise
-    if moved and moved.upload:
-        photos.remove_files([moved.upload])
-    if replaced and old_photo:
-        photos.remove_files([old_photo])
+    photos.remove_files([photo.upload for photo in chosen if photo.upload])
+    kept = {photo.uid for photo in chosen}
+    photos.remove_files([row.uid for row in before if row.uid not in kept])
     if added:
         announce_later(capsule.id)
     return one(db, sender, uid)
 
 
 def withdraw(db: Session, sender: Account, uid: str) -> None:
-    """Takes a capsule back before it opened anywhere: it is gone for everybody, with its photo."""
+    """Takes a capsule back before it opened anywhere: it is gone for everybody, with all its photos."""
     capsule = _capsule(db, uid)
     if capsule is None or capsule.sender_id != sender.id:
         raise _not_found()
     _refuse_when_open(db, capsule)
-    # The photo as the deleting statement finds it: a change that swapped it a moment ago leaves no file behind.
-    gone = db.execute(delete(Capsule).where(Capsule.id == capsule.id, Capsule.sender_id == sender.id,
-                                            Capsule.first_opened_at.is_(None)).returning(Capsule.photo_uid)).first()
-    db.commit()
+    still = (Capsule.id == capsule.id, Capsule.sender_id == sender.id, Capsule.first_opened_at.is_(None))
+    # The photos as the deleting transaction finds them: a change that swapped them a moment ago leaves no file behind.
+    files = list(db.scalars(delete(CapsulePhoto).where(CapsulePhoto.capsule_id.in_(select(Capsule.id).where(*still)))
+                            .returning(CapsulePhoto.uid).execution_options(synchronize_session=False)))
+    gone = db.execute(delete(Capsule).where(*still).returning(Capsule.id)
+                      .execution_options(synchronize_session=False)).first()
     if gone is None:
+        db.rollback()
         if _capsule(db, uid) is None:
             raise _not_found()
         raise error("capsule_open", "This time capsule has opened already.", 409)
-    if gone.photo_uid:
-        photos.remove_files([gone.photo_uid])
+    db.commit()
+    photos.remove_files(files)
     logger.info("Time capsule taken back")
 
 
@@ -895,15 +1015,15 @@ def files_of(db: Session, account_id: int) -> list[str]:
 
 def tidy_after_deletion(db: Session) -> list[str]:
     """After an account was deleted: the capsules nobody is left to receive go too (the sender's own to themselves,
-    those whose last recipient went). Gives the photo files to delete."""
-    nobody = ~exists(select(CapsuleKey.capsule_id).where(CapsuleKey.capsule_id == Capsule.id,
-                                                         CapsuleKey.recipient.is_(True)))
-    rows = db.execute(select(Capsule.id, Capsule.photo_uid).where(nobody)).all()
-    if not rows:
-        return []
-    db.execute(delete(Capsule).where(Capsule.id.in_([row.id for row in rows])))
+    those whose last recipient went), with all their photos. Gives the photo files to delete."""
+    nobody = select(Capsule.id).where(~exists(select(CapsuleKey.capsule_id).where(
+        CapsuleKey.capsule_id == Capsule.id, CapsuleKey.recipient.is_(True)))).correlate(None)
+    # Photos first: the write lock is taken there, so the capsules deleted next are the very ones these belonged to.
+    files = list(db.scalars(delete(CapsulePhoto).where(CapsulePhoto.capsule_id.in_(nobody))
+                            .returning(CapsulePhoto.uid).execution_options(synchronize_session=False)))
+    db.execute(delete(Capsule).where(Capsule.id.in_(nobody)).execution_options(synchronize_session=False))
     db.commit()
-    return [row.photo_uid for row in rows if row.photo_uid]
+    return files
 
 
 # --- Pushes ---------------------------------------------------------------------------------------------------------

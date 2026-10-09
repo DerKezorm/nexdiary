@@ -133,7 +133,7 @@ def capsule_everything(client: TestClient, word: str) -> None:
     assert chosen.status_code == 201
     made = client.post("/api/capsules", json={"id": str(uuid.uuid4()), "to": [rike.id, me], "opens_on": "2060-12-24",
                                               "title": f"Kapsel {word}", "text": f"Brief {word}",
-                                              "photo": chosen.json()["id"]})
+                                              "photos": [chosen.json()["id"]]})
     assert made.status_code == 201, made.text
     assert word in client.get(f"/api/capsules/{made.json()['id']}").text
     changed = client.put(f"/api/capsules/{made.json()['id']}", json={
@@ -267,8 +267,9 @@ def test_a_backup_cannot_be_read_without_the_master_key_and_comes_back_on_the_sa
     sent = client.get("/api/capsules").json()["from_me"]
     assert sorted(item["title"] for item in sent) == [f"Kapsel {word}", f"Selbst {word}"]
     to_rike = next(item for item in sent if item["title"] == f"Kapsel {word}")
-    assert client.get(f"/api/capsules/{to_rike['id']}").json()["text"] == f"Geändert {word}"
-    assert client.get(f"/api/capsules/{to_rike['id']}/photo").status_code == 200
+    letter = client.get(f"/api/capsules/{to_rike['id']}").json()
+    assert letter["text"] == f"Geändert {word}" and len(letter["photos"]) == 1
+    assert client.get(f"/api/capsules/{to_rike['id']}/photos/{letter['photos'][0]['id']}").status_code == 200
     # The answer to the family question came back too.
     assert client.get("/api/family").json()["mine"]["text"] == f"Geändert {word}"
 

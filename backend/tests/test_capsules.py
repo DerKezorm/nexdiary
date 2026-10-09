@@ -8,6 +8,7 @@ test, never read from the wall."""
 from __future__ import annotations
 
 import io
+import re
 import secrets
 import threading
 import uuid
@@ -19,11 +20,11 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from app import clock
 from app.db import SessionLocal
-from app.models import Account, Capsule, CapsuleKey, CapsuleUpload
+from app.models import Account, Capsule, CapsuleKey, CapsulePhoto, CapsuleUpload
 from app.services import capsules
 
 from .conftest import MEDIA, PASSWORD, make_account, new_client, sign_in
@@ -92,11 +93,29 @@ def photo(client: TestClient, word: str = "") -> str:
 
 def close(client: TestClient, to: list[int], opens: str = OPENS, title: str = "Für Heiligabend",
           text: str = "Wir backen Plätzchen.\n\nUnd dann?", with_photo: str | None = None,
-          client_id: str | None = None, status: int = 201) -> dict[str, Any]:
+          client_id: str | None = None, status: int = 201, photos: list[str] | None = None) -> dict[str, Any]:
+    chosen = photos if photos is not None else [with_photo] if with_photo else []
     answer = client.post("/api/capsules", json={"id": client_id or str(uuid.uuid4()), "to": to, "opens_on": opens,
-                                                "title": title, "text": text, "photo": with_photo})
+                                                "title": title, "text": text, "photos": chosen})
     assert answer.status_code == status, answer.text
     return answer.json()
+
+
+def photo_ids(uid: str) -> list[str]:
+    """The photos of a capsule as the database holds them, in their order (also the ones nobody may see yet)."""
+    with SessionLocal() as db:
+        capsule_id = db.scalar(select(Capsule.id).where(Capsule.uid == uid))
+        return list(db.scalars(select(CapsulePhoto.uid).where(CapsulePhoto.capsule_id == capsule_id)
+                               .order_by(CapsulePhoto.position)))
+
+
+def picture_paths(uid: str) -> list[str]:
+    """Every photo route of a capsule: each photo and its smaller copy."""
+    return [f"/api/capsules/{uid}/photos/{photo}{suffix}" for photo in photo_ids(uid) for suffix in ("", "/preview")]
+
+
+def first_picture(uid: str) -> str:
+    return f"/api/capsules/{uid}/photos/{photo_ids(uid)[0]}"
 
 
 def count(model: Any) -> int:
@@ -129,25 +148,25 @@ def test_before_its_day_a_recipient_sees_who_the_title_and_the_day_on_every_way(
     assert item["title"] == "Für Heiligabend" and item["opens_on"] == OPENS and item["from"]["name"] == "jule"
     assert item["open"] is False and "photo" not in item and word not in listed.text
     single = family.tom.get(f"/api/capsules/{uid}")
-    assert single.status_code == 200 and "text" not in single.json() and "photo" not in single.json()
+    assert single.status_code == 200 and "text" not in single.json() and "photos" not in single.json()
     assert word not in single.text and "to" not in single.json(), "a recipient does not see who else it is for"
-    for path in (f"/api/capsules/{uid}/photo", f"/api/capsules/{uid}/photo/preview"):
+    for path in picture_paths(uid):
         assert family.tom.get(path).status_code == 404, path
     assert family.tom.post(f"/api/capsules/{uid}/read").status_code == 409
     assert family.tom.get("/api/capsules/count").json() == {"new": 0}
     # The day before, one second before midnight in Berlin: still closed.
     family.at(berlin_midnight(OPENS) - timedelta(seconds=1))
     assert "text" not in family.tom.get(f"/api/capsules/{uid}").json()
-    assert family.tom.get(f"/api/capsules/{uid}/photo").status_code == 404
+    assert family.tom.get(first_picture(uid)).status_code == 404
     # Midnight: open, with its text and its photo, and new until read.
     family.at(berlin_midnight(OPENS))
     assert family.tom.get("/api/capsules/count").json() == {"new": 1}
     opened = family.tom.get(f"/api/capsules/{uid}").json()
-    assert opened["text"] == f"Geheim {word}" and opened["photo"] is True and opened["open"] is True
-    picture = family.tom.get(f"/api/capsules/{uid}/photo")
+    assert opened["text"] == f"Geheim {word}" and len(opened["photos"]) == 1 and opened["open"] is True
+    picture = family.tom.get(first_picture(uid))
     assert picture.status_code == 200 and picture.headers["content-type"] == "image/webp"
     assert "no-store" in picture.headers["cache-control"]
-    assert family.tom.get(f"/api/capsules/{uid}/photo/preview").status_code == 200
+    assert family.tom.get(first_picture(uid) + "/preview").status_code == 200
     assert family.tom.post(f"/api/capsules/{uid}/read").status_code == 204
     assert family.tom.get("/api/capsules/count").json() == {"new": 0}
     assert family.tom.get("/api/capsules").json()["for_me"][0]["new"] is False
@@ -163,8 +182,8 @@ def test_a_letter_only_to_oneself_is_sealed_for_its_sender_too(family: Family) -
     assert [item["title"] for item in lists["for_me"]] == ["An mich, in einem Jahr"]
     assert lists["from_me"][0]["sealed"] is True and lists["from_me"][0]["opened"] is False
     single = family.jule.get(f"/api/capsules/{uid}").json()
-    assert "text" not in single and "photo" not in single
-    assert family.jule.get(f"/api/capsules/{uid}/photo").status_code == 404
+    assert "text" not in single and "photos" not in single
+    assert family.jule.get(first_picture(uid)).status_code == 404
     change = family.jule.put(f"/api/capsules/{uid}", json={"revision": 0, "to": [family.ids["jule"]],
                                                            "opens_on": OPENS, "title": "Neu", "text": "Neu"})
     assert change.status_code == 409 and change.json()["detail"]["code"] == "capsule_sealed"
@@ -175,7 +194,7 @@ def test_a_letter_only_to_oneself_is_sealed_for_its_sender_too(family: Family) -
     # On its day it opens for its writer, as for anybody it is for.
     family.at(berlin_midnight(OPENS))
     assert family.jule.get(f"/api/capsules/{uid}").json()["text"] == "Wo stehe ich?"
-    assert family.jule.get(f"/api/capsules/{uid}/photo").status_code == 200
+    assert family.jule.get(first_picture(uid)).status_code == 200
 
 
 def test_a_sealed_letter_can_be_taken_back_and_is_gone_with_its_photo(family: Family) -> None:
@@ -232,7 +251,8 @@ def test_strangers_and_the_operator_find_nothing_as_if_it_did_not_exist(family: 
     for stranger in (family.ben, family.operator, family.mia):
         for target in (uid, missing):
             assert stranger.get(f"/api/capsules/{target}").status_code == 404
-            assert stranger.get(f"/api/capsules/{target}/photo").status_code == 404
+            for path in picture_paths(uid) + [f"/api/capsules/{uid}/photos/{missing}"]:
+                assert stranger.get(path.replace(uid, target)).status_code == 404, path
             assert stranger.post(f"/api/capsules/{target}/read").status_code == 404
             assert stranger.put(f"/api/capsules/{target}", json=body).status_code == 404
             assert stranger.delete(f"/api/capsules/{target}").status_code == 404
@@ -373,7 +393,9 @@ def test_limits_of_title_text_people_and_capsules(family: Family, monkeypatch: p
     assert answer(to=[999_999]).json()["detail"]["code"] == "person_unknown"
     assert answer(to=list(range(1, 52))).status_code == 422
     assert answer(to=["2"]).status_code == 422
-    assert answer(photo="0" * 32).json()["detail"]["code"] == "capsule_photo_missing"
+    assert answer(photos=["0" * 32]).json()["detail"]["code"] == "capsule_photo_missing"
+    assert answer(photos="0" * 32).status_code == 422
+    assert answer(photo=None).status_code == 422, "the one photo of before is no field any more"
     assert answer(to=[me, family.ids["tom"]]).json()["to"][1]["name"] == "tom"
     monkeypatch.setattr(capsules, "CAPSULES_MAX", count(Capsule) + 1)
     assert answer().status_code == 201
@@ -418,7 +440,7 @@ def test_a_double_click_at_the_same_moment_closes_one_capsule(family: Family) ->
         with new_client(make_account_client(family, "jule")) as browser:
             start.wait()
             answer = browser.post("/api/capsules", json={"id": client_id, "to": [family.ids["tom"]], "opens_on": OPENS,
-                                                         "title": "Einmal", "text": "Nur einmal", "photo": upload})
+                                                         "title": "Einmal", "text": "Nur einmal", "photos": [upload]})
             answers.append(answer.status_code)
 
     threads = [threading.Thread(target=tap) for _ in range(4)]
@@ -566,7 +588,7 @@ def test_the_capsule_outlives_its_sender(family: Family) -> None:
     family.at(berlin_midnight(OPENS))
     opened = family.mia.get(f"/api/capsules/{for_mia}")
     assert opened.status_code == 200 and opened.json()["text"] == "Liebe Mia"
-    assert family.mia.get(f"/api/capsules/{for_mia}/photo").status_code == 200
+    assert family.mia.get(first_picture(for_mia)).status_code == 200
 
 
 def test_a_recipient_who_goes_takes_only_their_own_copy(family: Family) -> None:
@@ -731,27 +753,30 @@ def test_a_chosen_photo_never_closed_goes_after_a_day(family: Family) -> None:
 def test_another_person_cannot_use_my_chosen_photo(family: Family) -> None:
     mine = photo(family.jule)
     refused = family.tom.post("/api/capsules", json={"id": str(uuid.uuid4()), "to": [family.ids["tom"]],
-                                                     "opens_on": OPENS, "title": "x", "text": "y", "photo": mine})
+                                                     "opens_on": OPENS, "title": "x", "text": "y", "photos": [mine]})
     assert refused.status_code == 422 and refused.json()["detail"]["code"] == "capsule_photo_missing"
 
 
 def test_a_change_swaps_and_removes_the_photo(family: Family) -> None:
     made = close(family.jule, [family.ids["tom"]], with_photo=photo(family.jule))
+    first = photo_ids(made["id"])
     files = media_files()
     swapped = family.jule.put(f"/api/capsules/{made['id']}", json={
         "revision": made["revision"], "to": [family.ids["tom"]], "opens_on": OPENS, "title": "x", "text": "y",
-        "photo": photo(family.jule)})
-    assert swapped.status_code == 200 and swapped.json()["photo"] is True
+        "photos": [photo(family.jule)]})
+    assert swapped.status_code == 200 and len(swapped.json()["photos"]) == 1
     assert len(media_files()) == len(files) and media_files() != files
     kept = family.jule.put(f"/api/capsules/{made['id']}", json={
         "revision": swapped.json()["revision"], "to": [family.ids["tom"]], "opens_on": OPENS, "title": "x",
         "text": "z"})
-    assert kept.json()["photo"] is True
+    assert kept.json()["photos"] == swapped.json()["photos"]
     removed = family.jule.put(f"/api/capsules/{made['id']}", json={
         "revision": kept.json()["revision"], "to": [family.ids["tom"]], "opens_on": OPENS, "title": "x", "text": "z",
-        "photo": None})
-    assert removed.json()["photo"] is False and len(media_files()) == len(files) - 2
-    assert family.jule.get(f"/api/capsules/{made['id']}/photo").status_code == 404
+        "photos": []})
+    assert removed.json()["photos"] == [] and len(media_files()) == len(files) - 2
+    assert photo_ids(made["id"]) == []
+    for gone in first + [item["id"] for item in swapped.json()["photos"]]:
+        assert family.jule.get(f"/api/capsules/{made['id']}/photos/{gone}").status_code == 404
 
 
 def test_capsules_count_in_the_sender_s_storage(family: Family) -> None:
@@ -772,7 +797,7 @@ def test_capsules_count_in_the_sender_s_storage(family: Family) -> None:
 def test_the_photo_keeps_nothing_but_its_pixels(family: Family) -> None:
     word = "Qx" + secrets.token_hex(5) + "Zy"
     uid = close(family.jule, [family.ids["tom"]], with_photo=photo(family.jule, word))["id"]
-    picture = family.jule.get(f"/api/capsules/{uid}/photo").content
+    picture = family.jule.get(first_picture(uid)).content
     assert word.encode() not in picture
     for path in MEDIA.iterdir():
         assert word.encode() not in path.read_bytes()
@@ -795,7 +820,7 @@ def test_a_recipient_who_moves_their_clock_east_opens_nothing_earlier(family: Fa
     # Kiritimati has the 24th from 10:00 UTC on the 23rd; Berlin only from 23:00 UTC.
     family.at(datetime(2026, 12, 23, 12, 0, tzinfo=UTC))
     assert "text" not in family.tom.get(f"/api/capsules/{first}").json()
-    assert family.tom.get(f"/api/capsules/{first}/photo").status_code == 404
+    assert all(family.tom.get(path).status_code == 404 for path in picture_paths(first))
     assert family.tom.get("/api/capsules/count").json() == {"new": 0}
     assert family.tom.get("/api/capsules").json()["for_me"][0]["open"] is False
     assert family.tom.post(f"/api/capsules/{first}/read").status_code == 409
@@ -840,7 +865,7 @@ def test_taking_back_while_a_change_swaps_the_photo_leaves_no_file(family: Famil
         real(db, capsule)
         monkeypatch.setattr(capsules, "_refuse_when_open", real)
         with SessionLocal() as other:
-            capsules.change(other, jule, made["id"], made["revision"], [family.ids["tom"]], OPENS, "x", "y", swap)
+            capsules.change(other, jule, made["id"], made["revision"], [family.ids["tom"]], OPENS, "x", "y", [swap])
 
     monkeypatch.setattr(capsules, "_refuse_when_open", change_in_between)
     assert family.jule.delete(f"/api/capsules/{made['id']}").status_code == 204
@@ -860,20 +885,13 @@ def test_the_sender_learns_how_many_recipients_are_hidden(family: Family) -> Non
     assert family.jule.get(f"/api/capsules/{made['id']}").json()["hidden"] == 1
 
 
-def test_a_chosen_photo_left_behind_goes_at_once_and_the_waiting_ones_have_a_limit(
-    family: Family, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_chosen_photo_left_behind_goes_at_once(family: Family) -> None:
     before = media_files()
     chosen = photo(family.jule)
     assert family.tom.delete(f"/api/capsules/photos/{chosen}").status_code == 404, "only the own"
     assert family.jule.delete(f"/api/capsules/photos/{chosen}").status_code == 204
     assert family.jule.delete(f"/api/capsules/photos/{chosen}").status_code == 404
     assert count(CapsuleUpload) == 0 and media_files() == before
-    monkeypatch.setattr(capsules, "UPLOADS_MAX", 1)
-    photo(family.jule)
-    full = family.jule.post("/api/capsules/photos", params={"upload_id": str(uuid.uuid4())}, content=jpeg())
-    assert full.status_code == 409 and full.json()["detail"] == {
-        "code": "capsule_photos_waiting", "message": "Too many photos are waiting for a time capsule.", "max": 1}
 
 
 def test_the_day_and_the_seal_are_bound_into_the_sealed_words_and_photo(family: Family) -> None:
@@ -890,7 +908,7 @@ def test_the_day_and_the_seal_are_bound_into_the_sealed_words_and_photo(family: 
     family.at(berlin_midnight("2026-10-10"))
     assert family.tom.get("/api/capsules").json()["for_me"] == []
     assert family.tom.get(f"/api/capsules/{made['id']}").status_code == 404
-    assert family.tom.get(f"/api/capsules/{made['id']}/photo").status_code == 404
+    assert all(family.tom.get(path).status_code == 404 for path in picture_paths(made["id"]))
 
 
 def test_a_change_of_the_day_seals_the_kept_photo_anew(family: Family) -> None:
@@ -898,11 +916,11 @@ def test_a_change_of_the_day_seals_the_kept_photo_anew(family: Family) -> None:
     files = media_files()
     moved = family.jule.put(f"/api/capsules/{made['id']}", json={
         "revision": made["revision"], "to": [family.ids["tom"]], "opens_on": "2026-12-31", "title": "x", "text": "y"})
-    assert moved.status_code == 200 and moved.json()["photo"] is True
+    assert moved.status_code == 200 and len(moved.json()["photos"]) == 1
     assert len(media_files()) == len(files) and media_files() != files, "the same photo, sealed anew"
-    assert family.jule.get(f"/api/capsules/{made['id']}/photo").status_code == 200
+    assert family.jule.get(first_picture(made["id"])).status_code == 200
     family.at(berlin_midnight("2026-12-31"))
-    assert family.tom.get(f"/api/capsules/{made['id']}/photo").status_code == 200
+    assert family.tom.get(first_picture(made["id"])).status_code == 200
 
 
 def test_a_change_to_only_oneself_seals_the_letter(family: Family) -> None:
@@ -912,7 +930,7 @@ def test_a_change_to_only_oneself_seals_the_letter(family: Family) -> None:
         "text": "Jetzt versiegelt"})
     assert changed.status_code == 200
     body = changed.json()
-    assert body["sealed"] is True and "text" not in body and "photo" not in body
+    assert body["sealed"] is True and "text" not in body and "photos" not in body
     again = family.jule.put(f"/api/capsules/{made['id']}", json={
         "revision": body["revision"], "to": [family.ids["jule"]], "opens_on": OPENS, "title": "x", "text": "y"})
     assert again.json()["detail"]["code"] == "capsule_sealed"
@@ -993,3 +1011,294 @@ def test_a_change_of_the_day_measures_a_recipient_by_the_zone_kept_not_the_one_s
         "revision": moved.json()["revision"], "to": [family.ids["tom"]], "opens_on": "2026-12-23",
         "title": "Für Heiligabend", "text": "Erst später"})
     assert refused.status_code == 422 and refused.json()["detail"]["code"] == "capsule_date_past"
+
+
+# --- Third round: many photos, the letter written in the editor -----------------------------------------------------
+
+#: Colours far apart, to tell the photos apart once they are drawn anew.
+COLOURS = [(220, 30, 30), (30, 200, 30), (30, 30, 220), (230, 230, 30), (30, 220, 220)]
+
+
+def colour_photo(client: TestClient, colour: tuple[int, int, int]) -> str:
+    answer = client.post("/api/capsules/photos", params={"upload_id": str(uuid.uuid4())}, content=jpeg(colour=colour))
+    assert answer.status_code == 201, answer.text
+    return str(answer.json()["id"])
+
+
+def colour_of(data: bytes) -> tuple[int, int, int]:
+    with Image.open(io.BytesIO(data)) as image:
+        red, green, blue = image.convert("RGB").getpixel((image.width // 2, image.height // 2))  # type: ignore[misc]
+    return red, green, blue
+
+
+def near(found: tuple[int, int, int], wanted: tuple[int, int, int]) -> bool:
+    return all(abs(a - b) < 40 for a, b in zip(found, wanted, strict=True))
+
+
+def test_many_photos_keep_their_order_and_show_only_from_the_day_on_every_way(family: Family) -> None:
+    chosen = [colour_photo(family.jule, colour) for colour in COLOURS]
+    made = close(family.jule, [family.ids["tom"]], photos=chosen)
+    uid = made["id"]
+    held = photo_ids(uid)
+    assert len(held) == 5 and not set(held) & set(chosen), "sealed anew under names of their own"
+    # The sender of a letter to others sees them, in the order they were added.
+    assert [item["id"] for item in made["photos"]] == held
+    for item, colour in zip(made["photos"], COLOURS, strict=True):
+        assert near(colour_of(family.jule.get(f"/api/capsules/{uid}/photos/{item['id']}").content), colour)
+    # Tom, before the day: not the photos, not their number, on no way.
+    listed = family.tom.get("/api/capsules")
+    assert "photo" not in listed.json()["for_me"][0] and "photos" not in listed.json()["for_me"][0]
+    assert not any(photo in listed.text for photo in held)
+    single = family.tom.get(f"/api/capsules/{uid}")
+    assert "photos" not in single.json() and not any(photo in single.text for photo in held)
+    for path in picture_paths(uid):
+        assert family.tom.get(path).status_code == 404, path
+    family.at(berlin_midnight(OPENS))
+    item = family.tom.get("/api/capsules").json()["for_me"][0]
+    assert (item["photos"], item["photo"]) == (5, held[0])
+    opened = family.tom.get(f"/api/capsules/{uid}").json()
+    assert [photo["id"] for photo in opened["photos"]] == held
+    for photo, colour in zip(held, COLOURS, strict=True):
+        answer = family.tom.get(f"/api/capsules/{uid}/photos/{photo}")
+        assert answer.status_code == 200 and "no-store" in answer.headers["cache-control"]
+        assert near(colour_of(answer.content), colour)
+        assert family.tom.get(f"/api/capsules/{uid}/photos/{photo}/preview").status_code == 200
+    # Strangers find nothing, also on its day; a photo of another capsule is not found through this one.
+    for stranger in (family.ben, family.mia, family.operator):
+        assert all(stranger.get(path).status_code == 404 for path in picture_paths(uid))
+    family.at(NOON)
+    other = close(family.jule, [family.ids["tom"]], opens="2026-12-25")
+    family.at(berlin_midnight("2026-12-25"))
+    assert family.tom.get(f"/api/capsules/{other['id']}").json()["photos"] == []
+    assert family.tom.get(f"/api/capsules/{other['id']}/photos/{held[0]}").status_code == 404
+
+
+def test_a_sealed_letter_hides_its_photos_from_its_writer_until_the_day(family: Family) -> None:
+    uid = close(family.jule, [family.ids["jule"]], photos=[colour_photo(family.jule, COLOURS[0]),
+                                                            colour_photo(family.jule, COLOURS[1])])["id"]
+    assert "photos" not in family.jule.get(f"/api/capsules/{uid}").json()
+    item = family.jule.get("/api/capsules").json()["for_me"][0]
+    assert "photos" not in item and "photo" not in item
+    assert all(family.jule.get(path).status_code == 404 for path in picture_paths(uid))
+    family.at(berlin_midnight(OPENS))
+    assert len(family.jule.get(f"/api/capsules/{uid}").json()["photos"]) == 2
+    assert all(family.jule.get(path).status_code == 200 for path in picture_paths(uid))
+
+
+def test_a_change_of_the_day_seals_every_photo_anew(family: Family) -> None:
+    made = close(family.jule, [family.ids["tom"]], photos=[colour_photo(family.jule, colour) for colour in COLOURS[:4]])
+    old = photo_ids(made["id"])
+    files = media_files()
+    moved = family.jule.put(f"/api/capsules/{made['id']}", json={
+        "revision": made["revision"], "to": [family.ids["tom"]], "opens_on": "2026-12-31", "title": "x", "text": "y"})
+    assert moved.status_code == 200, moved.text
+    new = photo_ids(made["id"])
+    assert len(new) == 4 and not set(new) & set(old)
+    assert media_files() == (files - {name for uid in old for name in (uid, uid + ".p")}) | {
+        name for uid in new for name in (uid, uid + ".p")}
+    family.at(berlin_midnight("2026-12-31"))
+    for photo, colour in zip(new, COLOURS, strict=False):
+        assert near(colour_of(family.tom.get(f"/api/capsules/{made['id']}/photos/{photo}").content), colour)
+
+
+def test_a_change_that_fails_halfway_leaves_the_capsule_and_its_photos_as_they_were(
+    family: Family, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    made = close(family.jule, [family.ids["tom"]], photos=[colour_photo(family.jule, colour) for colour in COLOURS[:4]])
+    old, files = photo_ids(made["id"]), media_files()
+    real = capsules._reseal_photo
+    done: list[int] = []
+
+    def breaks_at_the_third(*args: Any) -> Any:
+        if len(done) == 2:
+            raise OSError("the disk is full")
+        done.append(1)
+        return real(*args)
+
+    monkeypatch.setattr(capsules, "_reseal_photo", breaks_at_the_third)
+    body = {"revision": made["revision"], "to": [family.ids["tom"]], "opens_on": "2026-12-31", "title": "x",
+            "text": "y"}
+    with SessionLocal() as db, pytest.raises(OSError):
+        capsules.change(db, family.accounts["jule"], made["id"], made["revision"], body["to"], "2026-12-31", "x", "y")
+    assert len(done) == 2
+    assert photo_ids(made["id"]) == old and media_files() == files, "the two written already went again"
+    # And when the transaction itself fails at its end, after every photo was written: nothing of it stays.
+    monkeypatch.setattr(capsules, "_reseal_photo", real)
+
+    def full(db: Any, account_id: int, growth: int) -> None:
+        db.rollback()
+        raise capsules.error("storage_full", "Your storage is full.", 409)
+
+    monkeypatch.setattr(capsules.quota, "check_after_write", full)
+    refused = family.jule.put(f"/api/capsules/{made['id']}", json=body)
+    assert refused.status_code == 409 and refused.json()["detail"]["code"] == "storage_full"
+    assert photo_ids(made["id"]) == old and media_files() == files
+    shown = family.jule.get(f"/api/capsules/{made['id']}").json()
+    assert shown["opens_on"] == OPENS and shown["revision"] == made["revision"]
+    assert all(family.jule.get(path).status_code == 200 for path in picture_paths(made["id"]))
+
+
+def test_a_change_adds_and_takes_out_photos_in_the_order_given(family: Family) -> None:
+    first, second = colour_photo(family.jule, COLOURS[0]), colour_photo(family.jule, COLOURS[1])
+    made = close(family.jule, [family.ids["tom"]], photos=[first, second])
+    held = photo_ids(made["id"])
+    added = colour_photo(family.jule, COLOURS[2])
+    changed = family.jule.put(f"/api/capsules/{made['id']}", json={
+        "revision": made["revision"], "to": [family.ids["tom"]], "opens_on": OPENS, "title": "x", "text": "y",
+        "photos": [held[1], added, held[1]]})
+    assert changed.status_code == 200, changed.text
+    now = photo_ids(made["id"])
+    assert len(now) == 2 and now[0] == held[1], "kept as it was (same day, same seal), named twice kept once"
+    assert near(colour_of(family.jule.get(f"/api/capsules/{made['id']}/photos/{now[1]}").content), COLOURS[2])
+    assert not {held[0], held[0] + ".p"} & media_files(), "the photo taken out is gone"
+    assert count(CapsuleUpload) == 0
+    # A photo of another capsule, or a stranger's chosen photo, cannot be named.
+    other = close(family.jule, [family.ids["mia"]], photos=[colour_photo(family.jule, COLOURS[3])])
+    for foreign in (photo_ids(other["id"])[0], colour_photo(family.tom, COLOURS[4])):
+        refused = family.jule.put(f"/api/capsules/{made['id']}", json={
+            "revision": changed.json()["revision"], "to": [family.ids["tom"]], "opens_on": OPENS, "title": "x",
+            "text": "y", "photos": [foreign]})
+        assert refused.status_code == 422 and refused.json()["detail"]["code"] == "capsule_photo_missing"
+    assert photo_ids(made["id"]) == now
+
+
+def test_photos_have_no_number_of_their_own_only_the_storage(family: Family) -> None:
+    chosen = [colour_photo(family.jule, COLOURS[index % 5]) for index in range(25)]
+    used = family.jule.get("/api/photos/storage").json()["used"]
+    made = close(family.jule, [family.ids["tom"]], photos=chosen)
+    assert len(made["photos"]) == 25 and count(CapsuleUpload) == 0
+    after = family.jule.get("/api/photos/storage").json()["used"]
+    assert abs(after - used) < 2_000, "the photos moved from waiting into the capsule, counted once"
+    with SessionLocal() as db:
+        from app.services import settings_service
+
+        settings_service.save(db, {"storage_per_person_gb": (after + 100) / 1024**3})
+    full = family.jule.post("/api/capsules/photos", params={"upload_id": str(uuid.uuid4())}, content=jpeg())
+    assert full.status_code == 409 and full.json()["detail"]["code"] == "storage_full"
+    assert family.tom.get("/api/photos/storage").json()["used"] == 0
+
+
+def test_taking_back_and_deleting_the_account_take_every_photo(family: Family) -> None:
+    before = media_files()
+    uid = close(family.jule, [family.ids["tom"]], photos=[colour_photo(family.jule, colour) for colour in COLOURS])["id"]
+    assert len(media_files() - before) == 10
+    assert family.jule.delete(f"/api/capsules/{uid}").status_code == 204
+    assert media_files() == before and count(CapsulePhoto) == 0
+    close(family.jule, [family.ids["jule"]], photos=[colour_photo(family.jule, colour) for colour in COLOURS[:3]])
+    for_mia = close(family.jule, [family.ids["mia"]], photos=[colour_photo(family.jule, COLOURS[3])])["id"]
+    left = photo_ids(for_mia)[0]
+    delete_account(family, "jule")
+    assert count(CapsulePhoto) == 1 and media_files() - before == {left, left + ".p"}
+
+
+#: An unescaped start of a picture: ``![``, ``<img`` and the like, a backslash before it taken into account.
+UNESCAPED_PICTURE = re.compile(r"\\.|(!\[|<\s*(?:img|image|picture|source|video|svg)\b)", re.IGNORECASE | re.DOTALL)
+
+
+def pictures_in(markdown: str) -> list[str]:
+    return [match.group(1) for match in UNESCAPED_PICTURE.finditer(markdown) if match.group(1)]
+
+
+def test_the_letter_keeps_no_picture_and_no_reference_to_a_photo_of_the_diary(family: Family) -> None:
+    secret = secrets.token_hex(16)
+    text = (f"**Liebe** Mia,\n\n![Am See](photo:{secret}#crop=0,0,500,500)\n\n![Bild](https://example.com/a.png) "
+            f"und <img src=x onerror=alert(1)> und ![Verweis][eins] und [Link](photo:{secret}) und photo:{secret}\n\n"
+            "Ein \\![escaped](bleibt) und !![doppelt](x)[zweites](y) und <im![x](y)g src=1> und <IMG\nsrc=2>\n\n"
+            "> Zitat\n\n- Punkt")
+    made = close(family.jule, [family.ids["tom"]], text=text)
+    kept = made["text"]
+    assert pictures_in(kept) == [], kept
+    assert secret not in kept and "example.com/a.png" not in kept
+    assert kept.startswith("**Liebe** Mia,") and kept.endswith("> Zitat\n\n- Punkt")
+    assert "\\![escaped](bleibt)" in kept, "an escaped one is words and stays"
+    assert pictures_in("![a](b) \\![c](d) \\\\![e](f) <img> \\<img>") == ["![", "![", "<img"]
+    # Nothing but a picture is no letter.
+    only = family.jule.post("/api/capsules", json={"id": str(uuid.uuid4()), "to": [family.ids["tom"]],
+                                                   "opens_on": OPENS, "title": "x", "text": f"![](photo:{secret})"})
+    assert only.status_code == 422 and only.json()["detail"]["code"] == "capsule_empty"
+    # A change is cleaned the same way.
+    changed = family.jule.put(f"/api/capsules/{made['id']}", json={
+        "revision": made["revision"], "to": [family.ids["tom"]], "opens_on": OPENS, "title": "x",
+        "text": f"Neu ![x](photo:{secret})"})
+    assert changed.json()["text"] == "Neu"
+
+
+def test_cleaning_a_letter_made_to_be_slow_is_quick() -> None:
+    import time
+
+    for hostile in ("![" * 25_000, "![a](" * 10_000, "\\" * 50_000, "<img " * 10_000, "photo:" * 8_000,
+                    "!![" + "a" * 999 + "](" * 9_000):
+        times = []
+        for _ in range(3):
+            start = time.perf_counter()
+            out = capsules.without_pictures(hostile)
+            times.append(time.perf_counter() - start)
+        assert pictures_in(out) == []
+        assert min(times) < 2.0, (hostile[:20], times)
+
+
+def test_a_letter_is_markdown_and_one_from_before_stays_its_words(family: Family) -> None:
+    made = close(family.jule, [family.ids["tom"]], text="**fett** und *kursiv*\n\n## Zwischen\n\n- eins")
+    assert made["text"] == "**fett** und *kursiv*\n\n## Zwischen\n\n- eins"
+    old = close(family.jule, [family.ids["tom"]], text="*kein* Fett\n# keine Überschrift")
+    with SessionLocal() as db:
+        db.execute(update(Capsule).where(Capsule.uid == old["id"]).values(plain=True))
+        db.commit()
+    shown = family.jule.get(f"/api/capsules/{old['id']}").json()
+    assert shown["text"] == "\\*kein\\* Fett\\\n\\# keine Überschrift"
+    changed = family.jule.put(f"/api/capsules/{old['id']}", json={
+        "revision": shown["revision"], "to": [family.ids["tom"]], "opens_on": OPENS, "title": "x",
+        "text": shown["text"]})
+    assert changed.json()["text"] == shown["text"]
+    with SessionLocal() as db:
+        assert db.scalar(select(Capsule.plain).where(Capsule.uid == old["id"])) is False
+
+
+def test_a_photo_of_another_capsule_is_not_even_opened(family: Family, caplog: pytest.LogCaptureFixture) -> None:
+    """Asked through a capsule Tom may read, a photo of another capsule is not found: the capsule is checked before any
+    file is touched (the seal, bound to its own capsule, would refuse it too)."""
+    from pathlib import Path
+
+    first = close(family.jule, [family.ids["tom"]], photos=[colour_photo(family.jule, COLOURS[0])])
+    second = close(family.jule, [family.ids["tom"]], photos=[colour_photo(family.jule, COLOURS[1])])
+    family.at(berlin_midnight(OPENS))
+    opened: list[str] = []
+    original = Path.read_bytes
+
+    def watched(path: Path) -> bytes:
+        if path.parent == MEDIA:
+            opened.append(path.name)
+        return original(path)
+
+    stranger = photo_ids(second["id"])[0]
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(Path, "read_bytes", watched)
+        for suffix in ("", "/preview"):
+            assert family.tom.get(f"/api/capsules/{first['id']}/photos/{stranger}{suffix}").status_code == 404
+    assert opened == []
+    assert "did not open" not in caplog.text
+    assert family.tom.get(f"/api/capsules/{second['id']}/photos/{stranger}").status_code == 200
+
+
+def test_a_chosen_photo_of_somebody_else_is_not_even_opened(family: Family, caplog: pytest.LogCaptureFixture) -> None:
+    """Named by Jule, a photo Tom chose is refused before its files are read (the seal with Tom's key would refuse it
+    too)."""
+    from pathlib import Path
+
+    toms = colour_photo(family.tom, COLOURS[0])
+    opened: list[str] = []
+    original = Path.read_bytes
+
+    def watched(path: Path) -> bytes:
+        if path.parent == MEDIA:
+            opened.append(path.name)
+        return original(path)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(Path, "read_bytes", watched)
+        refused = family.jule.post("/api/capsules", json={"id": str(uuid.uuid4()), "to": [family.ids["tom"]],
+                                                          "opens_on": OPENS, "title": "x", "text": "y",
+                                                          "photos": [toms]})
+    assert refused.status_code == 422 and refused.json()["detail"]["code"] == "capsule_photo_missing"
+    assert opened == [] and "did not open" not in caplog.text
+    assert count(CapsuleUpload) == 1
