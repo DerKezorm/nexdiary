@@ -1,4 +1,38 @@
 {
+  "0.5.0": {
+    "lead": "Briefe, die sich erst an einem bestimmten Tag öffnen, und ein paar neue Gründe, regelmäßig zu schreiben.",
+    "sections": [
+      {
+        "title": "Zeitkapseln",
+        "where": "Zeitkapseln im Menü",
+        "body": "Schreib einen Brief an dich selbst in einem Jahr oder an jemanden aus der Familie, auch an mehrere zugleich. Bis zum Tag sehen die Empfänger nur, von wem er ist und wann er sich öffnet. Ein Brief an dich selbst bleibt auch für dich versiegelt, einen Brief an andere kannst du bis zum Tag ändern oder zurückziehen. Am Morgen des Tages kommt eine Nachricht aufs Handy."
+      },
+      {
+        "title": "Rückblick auf Woche und Monat",
+        "where": "Heute, Statistik",
+        "body": "Die Woche als Streifen aus Titelbildern, der Monat als Collage, dazu dein Wert als Kurve, der beste Tag und worum es ging. Auf Knopfdruck fasst die KI den Zeitraum in ein paar Sätzen zusammen."
+      },
+      {
+        "title": "Bücherregal und Jahr als Buch",
+        "where": "Tagebuch",
+        "body": "Jedes Jahr ist ein Band, der sich Seite für Seite füllt. Mit „Als Buch“ wird ein Jahr zu einem PDF zum Drucken, mit Titelseite, Inhalt, einem Kapitel je Monat und einer Seite je Tag."
+      },
+      {
+        "title": "Familienfrage",
+        "where": "Mein Konto, Schreiben",
+        "body": "Jeden Tag eine Frage für alle, die mitmachen. Die Antworten der anderen siehst du, sobald du selbst geantwortet hast. Ab Werk aus, jede Person schaltet sie selbst ein."
+      },
+      {
+        "title": "Heute nur kurz",
+        "where": "Heute",
+        "body": "An müden Tagen reichen dein erster Wert und ein Satz, und der Tag zählt für deine Serie. Mehr daraus machen kannst du später."
+      }
+    ],
+    "smallTitle": "Außerdem",
+    "small": [
+      "Mit „Erst fragen lassen“ stellt die KI vor dem Ausformulieren bis zu zwei Fragen zu dem, was in deinen Notizen offen bleibt. Deine Antworten kommen zu den Notizen."
+    ]
+  },
   "0.4.0": {
     "lead": "Notizen, die du nach dem Schreiben noch nachträgst, kommen jetzt auch auf die Seite.",
     "sections": [

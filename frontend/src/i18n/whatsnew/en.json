@@ -1,4 +1,38 @@
 {
+  "0.5.0": {
+    "lead": "Letters that open only on a chosen day, and a few new reasons to keep writing.",
+    "sections": [
+      {
+        "title": "Time capsules",
+        "where": "Time capsules in the menu",
+        "body": "Write a letter to yourself in a year or to someone in the family, or to several at once. Until the day, the people it is for only see who it is from and when it opens. A letter to yourself stays sealed for you too; a letter to others can be changed or taken back until the day. On the morning it opens, a notification arrives on the phone."
+      },
+      {
+        "title": "Looking back on a week or a month",
+        "where": "Today, Statistics",
+        "body": "The week as a strip of covers, the month as a collage, with your rating as a line, the best day and what it was about. At the press of a button the AI sums the time up in a few sentences."
+      },
+      {
+        "title": "A bookshelf, and a year as a book",
+        "where": "Journal",
+        "body": "Every year is a volume that fills up page by page. “As a book” turns a year into a PDF for printing, with a title page, contents, a chapter for each month and a page for each day."
+      },
+      {
+        "title": "Family question",
+        "where": "My account, Writing",
+        "body": "One question a day for everyone who joins. You see the others' answers once you have answered yourself. Off at first; each person switches it on for themselves."
+      },
+      {
+        "title": "Just briefly today",
+        "where": "Today",
+        "body": "On tired days your first rating and one sentence are enough, and the day counts for your streak. You can make more of it later."
+      }
+    ],
+    "smallTitle": "Also",
+    "small": [
+      "With “Ask me first”, the AI asks up to two questions about what your notes leave open before it writes. Your answers become notes."
+    ]
+  },
   "0.4.0": {
     "lead": "Notes you add after writing a page now reach the page too.",
     "sections": [
