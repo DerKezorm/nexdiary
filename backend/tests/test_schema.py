@@ -50,8 +50,28 @@ def fresh_schema_sql() -> str:
     return "".join(" ".join(row[0].split()) + ";\n" for row in rows)
 
 
+def drop_v16(connection: sqlite3.Connection) -> None:
+    """Takes away what version 16 added (the photos of a capsule in a table of their own, the mark of a letter in plain
+    words): the first photo of each capsule goes back into the columns of version 15."""
+    for statement in (
+        "ALTER TABLE capsules DROP COLUMN plain",
+        "ALTER TABLE capsules ADD COLUMN photo_uid VARCHAR(32)",
+        "ALTER TABLE capsules ADD COLUMN photo_width INTEGER",
+        "ALTER TABLE capsules ADD COLUMN photo_height INTEGER",
+        "ALTER TABLE capsules ADD COLUMN photo_size INTEGER NOT NULL DEFAULT 0",
+        (
+            "UPDATE capsules SET (photo_uid, photo_width, photo_height, photo_size) = (SELECT uid, width, height, size "
+            "FROM capsule_photos WHERE capsule_photos.capsule_id = capsules.id AND position = 0) "
+            "WHERE id IN (SELECT capsule_id FROM capsule_photos WHERE position = 0)"
+        ),
+        "DROP TABLE capsule_photos",
+    ):
+        connection.execute(statement)
+
+
 def drop_v15(connection: sqlite3.Connection) -> None:
-    """Takes away what version 15 added (the answers to the family question)."""
+    """Takes away what version 15 and everything after it added (the answers to the family question)."""
+    drop_v16(connection)
     connection.execute("DROP TABLE family_answers")
 
 

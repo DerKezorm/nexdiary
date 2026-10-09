@@ -5,3 +5,6 @@
 *.webp binary
 *.ico binary
 *.woff2 binary
+# The data folder of an older nexdiary the migration tests start from: sealed bytes, never touched by line endings.
+backend/tests/fixtures/*/*.sqlite binary
+backend/tests/fixtures/*/media/** binary

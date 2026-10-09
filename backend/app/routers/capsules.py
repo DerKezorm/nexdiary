@@ -2,8 +2,8 @@
 
 * ``/api/capsules``: the capsules for the signed-in person and the ones they sent; close a new one.
 * ``/api/capsules/count``: how many opened for them and are not read yet.
-* ``/api/capsules/photos``: a photo chosen for a capsule before it is closed.
-* ``/api/capsules/{id}``: one capsule, change it, take it back; mark it read; its photo.
+* ``/api/capsules/photos``: a photo chosen for a capsule before it is closed (as many as the storage holds).
+* ``/api/capsules/{id}``: one capsule, change it, take it back; mark it read; its photos.
 
 Every rule of who sees what and when lives in ``services/capsules.py``. A capsule that is neither from nor for the
 signed-in person answers 404, exactly like one that does not exist; the operator has no way in.
@@ -38,8 +38,9 @@ class CapsuleIn(Strict):
     opens_on: str = Field(max_length=10)
     title: str = Field(max_length=capsules.TITLE_MAX * 4)
     text: str = Field(max_length=capsules.TEXT_MAX * 4)
-    #: A photo chosen for it (``POST /api/capsules/photos``), or none.
-    photo: str | None = Field(default=None, max_length=32)
+    #: The photos chosen for it (``POST /api/capsules/photos``), in their order.
+    photos: list[Annotated[str, Field(max_length=32)]] = Field(default_factory=list,
+                                                                max_length=capsules.PHOTOS_PER_REQUEST)
 
 
 class CapsuleChangeIn(Strict):
@@ -49,8 +50,10 @@ class CapsuleChangeIn(Strict):
     opens_on: str = Field(max_length=10)
     title: str = Field(max_length=capsules.TITLE_MAX * 4)
     text: str = Field(max_length=capsules.TEXT_MAX * 4)
-    #: Sent: the photo changes (null: none; an id from ``POST /api/capsules/photos``). Not sent: it stays.
-    photo: str | None = Field(default=None, max_length=32)
+    #: Sent: the photos it holds from now on, in their order, each one of its own or one chosen for it (``POST
+    #: /api/capsules/photos``); an empty list: none. Not sent: they stay as they are.
+    photos: list[Annotated[str, Field(max_length=32)]] | None = Field(default=None,
+                                                                       max_length=capsules.PHOTOS_PER_REQUEST)
 
 
 @router.get("/capsules", summary="The time capsules for me and the ones I sent")
@@ -67,7 +70,7 @@ def count(account: Account, db: DbSession) -> dict[str, int]:
 def create(payload: CapsuleIn, response: Response, account: Account, db: DbSession) -> dict[str, Any]:
     brakes.take("capsule", account.id)
     capsule, new = capsules.create(db, account, payload.id.lower(), payload.to, payload.opens_on, payload.title,
-                                   payload.text, payload.photo.lower() if payload.photo else None)
+                                   payload.text, payload.photos)
     response.status_code = 201 if new else 200
     return capsule
 
@@ -109,11 +112,11 @@ def one(capsule_id: str, account: Account, db: DbSession) -> dict[str, Any]:
 @router.put("/capsules/{capsule_id}", summary="Change a time capsule I sent to others, before it opened")
 def change(capsule_id: str, payload: CapsuleChangeIn, account: Account, db: DbSession) -> dict[str, Any]:
     brakes.take("capsule", account.id)
-    photo: Any = capsules.KEEP
-    if "photo" in payload.model_fields_set:
-        photo = payload.photo.lower() if payload.photo else None
+    chosen: Any = capsules.KEEP
+    if "photos" in payload.model_fields_set:
+        chosen = payload.photos or []
     return capsules.change(db, account, capsules.check_uid(capsule_id), payload.revision, payload.to,
-                           payload.opens_on, payload.title, payload.text, photo)
+                           payload.opens_on, payload.title, payload.text, chosen)
 
 
 @router.delete("/capsules/{capsule_id}", status_code=204, summary="Take a time capsule back, before it opened")
@@ -127,18 +130,18 @@ def read(capsule_id: str, account: Account, db: DbSession) -> None:
     capsules.mark_read(db, account, capsules.check_uid(capsule_id))
 
 
-def _picture(account: Any, db: Any, capsule_id: str, preview: bool) -> Response:
-    data = capsules.read_photo(db, account, capsules.check_uid(capsule_id), preview)
+def _picture(account: Any, db: Any, capsule_id: str, photo_id: str, preview: bool) -> Response:
+    data = capsules.read_photo(db, account, capsules.check_uid(capsule_id), capsules.check_uid(photo_id), preview)
     # Not kept by the browser: a capsule taken back must leave nothing in the cache of the one it was for.
     return Response(data, media_type="image/webp", headers={"Cache-Control": "private, no-store",
                                                             "Content-Disposition": "inline"})
 
 
-@router.get("/capsules/{capsule_id}/photo", summary="The photo of a time capsule")
-def photo(capsule_id: str, account: Account, db: DbSession) -> Response:
-    return _picture(account, db, capsule_id, preview=False)
+@router.get("/capsules/{capsule_id}/photos/{photo_id}", summary="A photo of a time capsule")
+def photo(capsule_id: str, photo_id: str, account: Account, db: DbSession) -> Response:
+    return _picture(account, db, capsule_id, photo_id, preview=False)
 
 
-@router.get("/capsules/{capsule_id}/photo/preview", summary="The smaller copy of that photo")
-def preview(capsule_id: str, account: Account, db: DbSession) -> Response:
-    return _picture(account, db, capsule_id, preview=True)
+@router.get("/capsules/{capsule_id}/photos/{photo_id}/preview", summary="The smaller copy of that photo")
+def preview(capsule_id: str, photo_id: str, account: Account, db: DbSession) -> Response:
+    return _picture(account, db, capsule_id, photo_id, preview=True)

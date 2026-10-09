@@ -37,7 +37,7 @@ _settings.data_dir.mkdir(parents=True, exist_ok=True)
 BUSY_SECONDS = 15
 
 #: The version of the schema the models describe.
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 
 
 def _v2_diary(connection: Connection) -> None:
@@ -320,11 +320,39 @@ def _v15_family_question(connection: Connection) -> None:
     )
 
 
+def _v16_capsule_photos(connection: Connection) -> None:
+    """Version 16: a time capsule holds any number of photos, in a table of their own; the one photo a capsule had moves
+    there as its first, its files and their seal as they are (bound to the capsule, the photo, the day and the seal,
+    not to its place). The letters written so far are plain words: they are marked so, and given out escaped, never
+    read as Markdown. Written out as it stood then, not taken from the models."""
+    for statement in (
+        (
+            "CREATE TABLE capsule_photos ( uid VARCHAR(32) NOT NULL, capsule_id INTEGER NOT NULL, "
+            "position INTEGER NOT NULL, width INTEGER NOT NULL, height INTEGER NOT NULL, size INTEGER NOT NULL, "
+            "PRIMARY KEY (uid), CONSTRAINT uq_capsule_photos_capsule_position UNIQUE (capsule_id, position), "
+            "FOREIGN KEY(capsule_id) REFERENCES capsules (id) ON DELETE CASCADE )"
+        ),
+        (
+            "INSERT INTO capsule_photos (uid, capsule_id, position, width, height, size) "
+            "SELECT photo_uid, id, 0, coalesce(photo_width, 0), coalesce(photo_height, 0), photo_size FROM capsules "
+            "WHERE photo_uid IS NOT NULL"
+        ),
+        "ALTER TABLE capsules DROP COLUMN photo_uid",
+        "ALTER TABLE capsules DROP COLUMN photo_width",
+        "ALTER TABLE capsules DROP COLUMN photo_height",
+        "ALTER TABLE capsules DROP COLUMN photo_size",
+        "ALTER TABLE capsules ADD COLUMN plain BOOLEAN DEFAULT 0 NOT NULL",
+        "UPDATE capsules SET plain = 1",
+    ):
+        connection.exec_driver_sql(statement)
+
+
 #: ``MIGRATIONS[n]`` brings a database from version ``n - 1`` to ``n``. Version 1 is the first schema; it has no step.
 MIGRATIONS: dict[int, Callable[[Connection], None]] = {
     2: _v2_diary, 3: _v3_photos_and_drafts, 4: _v4_sharing, 5: _v5_writing_prompts, 6: _v6_immich, 7: _v7_push,
     8: _v8_security, 9: _v9_recovery, 10: _v10_nights_and_locks, 11: _v11_automatic_writing,
     12: _v12_text_photos, 13: _v13_writing_templates, 14: _v14_time_capsules, 15: _v15_family_question,
+    16: _v16_capsule_photos,
 }
 
 # No pool with an upper bound: with the default pool the sixteenth concurrent request would block the event

@@ -1,16 +1,20 @@
 /**
  * Time capsules, as the mock's `CapsulesPage.tsx`: letters that open on a date, to oneself or to others on the server,
- * not tied to a day of the diary. Until its day a recipient sees who wrote and when it opens, nothing more; a letter
+ * not tied to a day of the diary. A letter is written in the editor of the diary and read as a page is read, with as
+ * many photos as the person's storage holds. Until its day a recipient sees who wrote and when it opens, nothing more; a letter
  * only to oneself is sealed for its writer too. Every rule lives on the server: this page shows what it was given.
  */
-import { Hourglass, ImagePlus, Lock, MailOpen, Pencil, Plus, Send, Trash2 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Camera, Hourglass, ImagePlus, Loader2, Lock, MailOpen, Pencil, Plus, Send, Trash2, X } from 'lucide-react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { ApiError, capsulePhotoUrl, capsulesApi, sharingApi, type CapsuleDraft, type CapsuleForMe, type CapsuleFromMe, type CapsuleLists, type CapsuleView, type Me, type Person } from '../api/client'
 import { Avatar } from '../components/Avatar'
 import { Dialog } from '../components/Dialog'
+import { useLightbox, type ViewerPhoto } from '../components/Lightbox'
+import { Markdown } from '../components/Markdown'
+import type { DiaryEditorHandle } from '../editor/DiaryEditor'
 import { addDays, longDate } from '../lib/dates'
 import { errorText } from '../lib/errors'
 import { newId } from '../lib/ids'
@@ -19,6 +23,9 @@ import { PHOTO_ACCEPT } from '../lib/upload'
 import { useAuth } from '../state/auth'
 import { useCapsules } from '../state/capsules'
 import { TabRow } from './settings/ui'
+
+/** The editor of the diary, loaded only when a letter is written, as for the writing page. */
+const DiaryEditor = lazy(() => import('../editor/DiaryEditor'))
 
 type Tab = 'fuer-mich' | 'von-mir'
 type T = ReturnType<typeof useTranslation>['t']
@@ -296,7 +303,7 @@ function OpenedToday({ item, today, fromName, onRead }: { item: CapsuleForMe; to
   return (
     <section className="card relative overflow-hidden" aria-label={t('capsules.openedToday')}>
       <div className="grid md:grid-cols-[1fr_1.1fr]">
-        {item.photo && <img src={capsulePhotoUrl(item.id)} alt={t('capsules.photoAlt')} className="aspect-[16/9] h-full w-full object-cover md:aspect-auto" />}
+        {item.photo && <img src={capsulePhotoUrl(item.id, item.photo)} alt={t('capsules.photoAlt')} className="aspect-[16/9] h-full w-full object-cover md:aspect-auto" />}
         <div className="p-6 sm:p-8">
           <p className="text-xs font-bold tracking-wide text-accent uppercase">{t('capsules.openedToday')}</p>
           <h2 className="mt-1 font-display text-2xl font-semibold tracking-tight break-words sm:text-3xl">{item.title}</h2>
@@ -349,9 +356,11 @@ function Sealed({ item, today, fromName }: { item: CapsuleForMe; today: string; 
   )
 }
 
-/** The letter itself, read on its day. Opening it marks it read: the mark at "Zeitkapseln" goes. */
+/** The letter itself, read on its day, as a page of the diary is read; its photos as a gallery below it, a tap opens the
+ * big view. Opening it marks it read: the mark at "Zeitkapseln" goes. */
 function Letter({ item, fromName, me, onClose, onRead }: { item: CapsuleForMe; fromName: string; me: Me; onClose: () => void; onRead: () => void }) {
   const { t, i18n } = useTranslation()
+  const { open } = useLightbox()
   const [letter, setLetter] = useState<CapsuleView | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
   const wasNew = useRef(item.new)
@@ -371,7 +380,8 @@ function Letter({ item, fromName, me, onClose, onRead }: { item: CapsuleForMe; f
       alive = false
     }
   }, [item.id])
-  const paragraphs = (letter?.text ?? '').split(/\n\s*\n/).filter((part) => part.trim())
+  const photos = useMemo(() => letter?.photos ?? [], [letter])
+  const viewed = useMemo<ViewerPhoto[]>(() => photos.map((photo) => ({ id: photo.id, src: capsulePhotoUrl(item.id, photo.id), alt: t('capsules.photoAlt') })), [photos, item.id, t])
   return (
     <Dialog title={item.title} onClose={onClose} wide>
       <div className="-mt-2 mb-5 flex items-center gap-2.5 text-sm text-ink-2">
@@ -379,36 +389,62 @@ function Letter({ item, fromName, me, onClose, onRead }: { item: CapsuleForMe; f
         <span className="min-w-0">{t('capsules.letterMeta', { name: fromName, written: longDate(item.written_on, i18n.language, true), opened: longDate(item.opens_on, i18n.language, true) })}</span>
       </div>
       {problem && <p className="text-sm text-bad">{problem === 'not_found' ? t('capsules.gone') : errorText(problem)}</p>}
-      {letter?.photo && <img src={capsulePhotoUrl(item.id)} alt={t('capsules.photoAlt')} className="mb-5 aspect-[16/8] w-full rounded-xl object-cover" />}
-      {letter && (
-        <div className="prose-diary font-serif text-[1.08rem] leading-relaxed" data-letter>
-          {paragraphs.map((part, index) => (
-            <p key={index} className="whitespace-pre-line">
-              {part}
-            </p>
-          ))}
+      {letter?.text !== undefined && (
+        <div data-letter>
+          <Markdown text={letter.text} className="prose-diary font-serif text-[1.08rem] leading-relaxed" photo={NO_PICTURE} />
         </div>
+      )}
+      {photos.length > 0 && (
+        <section aria-label={t('capsules.photosLabel', { count: photos.length })} className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-3" data-gallery>
+          {photos.map((photo, index) => (
+            <button
+              key={photo.id}
+              type="button"
+              onClick={(event) => open(viewed, index, event.currentTarget)}
+              aria-label={t('capsules.openPhoto', { n: index + 1, total: photos.length })}
+              className="overflow-hidden rounded-xl bg-sheet-2 transition hover:brightness-95 focus-visible:outline-2 focus-visible:outline-accent"
+            >
+              <img src={capsulePhotoUrl(item.id, photo.id, true)} alt="" draggable={false} className="aspect-square w-full object-cover" />
+            </button>
+          ))}
+        </section>
       )}
     </Dialog>
   )
 }
 
-type PhotoChoice = { kind: 'keep' } | { kind: 'none' } | { kind: 'new'; id: string; url: string }
+/** A letter carries no picture in its text (the server takes any out): should one be there, it shows as gone. */
+const NO_PICTURE = () => 'data:,'
 
-/** "Neue Zeitkapsel" and "Zeitkapsel ändern": for whom (several, oneself among them), when, the letter, a photo. */
+/** A photo in the dialog: one the capsule holds, one chosen and kept by the server, or one on its way there. */
+type Tile = { key: string; kind: 'kept'; id: string } | { key: string; kind: 'new'; id: string; url: string } | { key: string; kind: 'uploading'; url: string }
+
+/** How long the dialog waits when the server says too many photos came in a minute (or could not be reached), before
+ * it goes on by itself. Changeable for the tests. */
+// eslint-disable-next-line react-refresh/only-export-components
+export const uploadPause = { ms: 15_000 }
+
+/** "Neue Zeitkapsel" and "Zeitkapsel ändern": for whom (several, oneself among them), when, the letter in the editor of
+ * the diary (without pictures in the text), and photos, as many as wanted. The photos go up one after the other as soon
+ * as they are chosen; the capsule is closed once they are all there. Leaving the dialog lets go of every photo chosen
+ * here that was not sealed with it. */
 function Compose({ start, today, me, onClose, onSaved }: { start: CapsuleView | null; today: string; me: Me; onClose: () => void; onSaved: (saved: CapsuleView) => void }) {
   const { t, i18n } = useTranslation()
   const [people, setPeople] = useState<Person[] | null>(null)
   const [to, setTo] = useState<number[]>(start?.to?.map((person) => person.id) ?? [me.id])
   const [opens, setOpens] = useState(start?.opens_on ?? addDays(today, 365))
   const [title, setTitle] = useState(start?.title ?? '')
-  const [body, setBody] = useState(start?.text ?? '')
-  const [photo, setPhoto] = useState<PhotoChoice>(start?.photo ? { kind: 'keep' } : { kind: 'none' })
-  const [uploading, setUploading] = useState(false)
+  const [firstText] = useState(start?.text ?? '')
+  const [empty, setEmpty] = useState(!firstText.trim())
+  const [tiles, setTiles] = useState<Tile[]>(() => (start?.photos ?? []).map((photo) => ({ key: photo.id, kind: 'kept', id: photo.id })))
+  const [pausing, setPausing] = useState(false)
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
   const [clientId] = useState(newId)
-  const file = useRef<HTMLInputElement>(null)
+  const [toolbar, setToolbar] = useState<HTMLDivElement | null>(null)
+  const editor = useRef<DiaryEditorHandle>(null)
+  const files = useRef<HTMLInputElement>(null)
+  const camera = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     let alive = true
@@ -420,7 +456,87 @@ function Compose({ start, today, me, onClose, onSaved }: { start: CapsuleView | 
       alive = false
     }
   }, [])
-  useEffect(() => () => (photo.kind === 'new' ? URL.revokeObjectURL(photo.url) : undefined), [photo])
+
+  // The photos chosen here, as the effects below see them: what goes up, what was taken out on the way, what is sealed.
+  const shown = useRef(tiles)
+  shown.current = tiles
+  const queue = useRef<{ key: string; file: File; upload: string }[]>([])
+  const running = useRef(false)
+  const here = useRef(true)
+  const sealed = useRef(false)
+  /** Lets go of a photo the server keeps for this dialog: gone at once, not after a day. */
+  const letGo = (id: string) => void capsulesApi.dropPhoto(id).then(() => undefined, () => undefined)
+
+  useEffect(() => {
+    here.current = true
+    return () => {
+      here.current = false
+      for (const tile of shown.current) {
+        if (tile.kind !== 'kept') URL.revokeObjectURL(tile.url)
+        if (tile.kind === 'new' && !sealed.current) letGo(tile.id)
+      }
+    }
+  }, [])
+
+  const goUp = async () => {
+    if (running.current) return
+    running.current = true
+    try {
+      while (queue.current.length > 0) {
+        // The dialog is gone: nothing more goes up.
+        if (!here.current) {
+          queue.current = []
+          return
+        }
+        const next = queue.current[0]
+        try {
+          const kept = await capsulesApi.upload(next.file, next.upload)
+          queue.current.shift()
+          // Taken out while it went up, or the dialog is gone: the server lets go of it at once.
+          if (!here.current || !shown.current.some((tile) => tile.key === next.key)) {
+            letGo(kept.id)
+            continue
+          }
+          setTiles((current) => current.map((tile) => (tile.key === next.key && tile.kind === 'uploading' ? { key: tile.key, kind: 'new', id: kept.id, url: tile.url } : tile)))
+        } catch (error) {
+          if (!here.current) return
+          const code = error instanceof ApiError ? error.code : 'internal_error'
+          if (error instanceof ApiError && (error.status === 429 || code === 'network')) {
+            // Too many in a minute (a whole film of photos at once), or the line was gone: on by itself after a while.
+            setPausing(true)
+            await new Promise((done) => window.setTimeout(done, uploadPause.ms))
+            setPausing(false)
+            continue
+          }
+          queue.current.shift()
+          const failed = shown.current.find((tile) => tile.key === next.key)
+          if (failed && failed.kind === 'uploading') URL.revokeObjectURL(failed.url)
+          setTiles((current) => current.filter((tile) => tile.key !== next.key))
+          setProblem(code)
+        }
+      }
+    } finally {
+      running.current = false
+    }
+  }
+
+  const add = (chosen: FileList | null) => {
+    const list = [...(chosen ?? [])]
+    if (list.length === 0) return
+    setProblem(null)
+    const added = list.map((file) => ({ key: newId(), file, upload: newId(), url: URL.createObjectURL(file) }))
+    queue.current.push(...added.map(({ key, file, upload }) => ({ key, file, upload })))
+    setTiles((current) => [...current, ...added.map(({ key, url }): Tile => ({ key, kind: 'uploading', url }))])
+    void goUp()
+  }
+
+  const remove = (tile: Tile) => {
+    setTiles((current) => current.filter((other) => other.key !== tile.key))
+    if (tile.kind !== 'kept') URL.revokeObjectURL(tile.url)
+    if (tile.kind === 'new') letGo(tile.id)
+    // One still waiting to go up is not sent at all; the one on its way is let go of when it arrives.
+    if (tile.kind === 'uploading') queue.current = queue.current.filter((item, index) => item.key !== tile.key || (index === 0 && running.current))
+  }
 
   const everyone = useMemo<Person[]>(() => [{ id: me.id, name: me.name, display_name: me.display_name, avatar: me.avatar }, ...(people ?? [])], [me, people])
   const chosen = everyone.filter((person) => to.includes(person.id))
@@ -432,7 +548,8 @@ function Compose({ start, today, me, onClose, onSaved }: { start: CapsuleView | 
   const otherNames = listOf(i18n.language, [...others.map(nameOf), ...(hidden > 0 ? [t('capsules.hiddenPeople', { count: hidden })] : [])])
   const latest = yearsLater(today, 50)
   const inFuture = daysBetween(today, opens) > 0 && opens <= latest
-  const ok = to.length > 0 && title.trim() !== '' && body.trim() !== '' && inFuture && !uploading && !busy
+  const uploading = tiles.some((tile) => tile.kind === 'uploading')
+  const ok = to.length > 0 && title.trim() !== '' && !empty && inFuture && !uploading && !busy
   const toggle = (id: number) => setTo(to.includes(id) ? to.filter((other) => other !== id) : [...to, id])
   const year = Number(today.slice(0, 4))
   const silvester = today.slice(5) === '12-31' ? `${year + 1}-12-31` : `${year}-12-31`
@@ -442,53 +559,28 @@ function Compose({ start, today, me, onClose, onSaved }: { start: CapsuleView | 
     { label: t('capsules.newYearsEve'), date: silvester },
   ]
 
-  /** A photo chosen here and not sealed with the capsule goes at once, not after a day. */
-  const sealedWith = useRef<string | null>(null)
-  const chosenPhoto = photo.kind === 'new' ? photo.id : null
-  useEffect(
-    () => () => {
-      if (chosenPhoto && sealedWith.current !== chosenPhoto) capsulesApi.dropPhoto(chosenPhoto).then(() => undefined, () => undefined)
-    },
-    [chosenPhoto],
-  )
-
-  const pick = async (picked: File) => {
-    setUploading(true)
-    setProblem(null)
-    try {
-      const kept = await capsulesApi.upload(picked, newId())
-      setPhoto({ kind: 'new', id: kept.id, url: URL.createObjectURL(picked) })
-    } catch (error) {
-      setProblem(error instanceof ApiError ? error.code : 'internal_error')
-    } finally {
-      setUploading(false)
-    }
-  }
-
   const submit = async () => {
     if (!ok) return
+    const text = editor.current?.getMarkdown() ?? firstText
+    if (!text.trim()) return
     setBusy(true)
     setProblem(null)
-    const draft: CapsuleDraft = { to, opens_on: opens, title, text: body }
-    if (photo.kind === 'new') {
-      draft.photo = photo.id
-      sealedWith.current = photo.id
-    }
-    else if (photo.kind === 'none' && (!start || start.photo)) draft.photo = null
+    const draft: CapsuleDraft = { to, opens_on: opens, title, text, photos: tiles.flatMap((tile) => (tile.kind === 'uploading' ? [] : [tile.id])) }
+    sealed.current = true
     try {
       const saved = start ? await capsulesApi.change(start.id, start.revision ?? 0, draft) : await capsulesApi.create(clientId, draft)
       onSaved(saved)
     } catch (error) {
-      sealedWith.current = null
+      sealed.current = false
       setProblem(error instanceof ApiError ? error.code : 'internal_error')
       setBusy(false)
     }
   }
 
-  const shownPhoto = photo.kind === 'new' ? photo.url : photo.kind === 'keep' && start ? capsulePhotoUrl(start.id, true) : null
+  const picture = (tile: Tile) => (tile.kind === 'kept' ? capsulePhotoUrl(start?.id ?? '', tile.id, true) : tile.url)
 
   return (
-    <Dialog title={start ? t('capsules.composeChange') : t('capsules.compose')} onClose={onClose} wide>
+    <Dialog title={start ? t('capsules.composeChange') : t('capsules.compose')} onClose={onClose} wide full>
       <div className="space-y-5">
         <div>
           <p className="mb-2 text-sm font-bold text-ink-2">{t('capsules.forWhom')}</p>
@@ -522,35 +614,70 @@ function Compose({ start, today, me, onClose, onSaved }: { start: CapsuleView | 
           <p className="mt-2 text-sm text-muted">{inFuture ? t('capsules.whenLine', { date: longDate(opens, i18n.language, true), until: untilText(t, today, opens) }) : t('capsules.pickFuture')}</p>
         </div>
         <input value={title} maxLength={200} onChange={(event) => setTitle(event.target.value)} placeholder={t('capsules.titlePlaceholder')} aria-label={t('capsules.titleLabel')} className="w-full border-b border-line bg-transparent pb-2 font-display text-2xl font-semibold text-ink placeholder:text-muted/70 focus:border-accent focus:outline-none" />
-        <textarea
-          value={body}
-          maxLength={50_000}
-          onChange={(event) => setBody(event.target.value)}
-          rows={8}
-          aria-label={t('capsules.textLabel')}
-          placeholder={onlyMe || to.length === 0 ? t('capsules.textPlaceholderSelf') : t('capsules.textPlaceholderOthers', { names: otherNames || t('capsules.yourself') })}
-          className="w-full resize-y rounded-xl border border-line bg-sheet px-4 py-3 font-serif text-[1.05rem] leading-relaxed text-ink placeholder:text-muted focus:border-accent focus:outline-none"
-        />
-        <div className="flex flex-wrap items-center gap-3">
-          {shownPhoto ? (
-            <button type="button" onClick={() => setPhoto({ kind: 'none' })} title={t('capsules.removePhoto')} aria-label={t('capsules.removePhoto')} className="overflow-hidden rounded-lg">
-              <img src={shownPhoto} alt="" className="h-16 w-24 object-cover" />
-            </button>
-          ) : (
-            <button type="button" className={SOFT_SMALL} onClick={() => file.current?.click()} disabled={uploading}>
+        <div data-letter-editor>
+          {/* The bar of formats keeps to the top of the dialog while the letter scrolls. */}
+          <div ref={setToolbar} className="sticky top-0 z-10 -mx-1 flow-root bg-sheet pt-1" />
+          <Suspense fallback={<div className="min-h-64" aria-busy="true" />}>
+            <DiaryEditor
+              ref={editor}
+              value={firstText}
+              onChange={() => undefined}
+              onEmptyChange={setEmpty}
+              placeholder={onlyMe || to.length === 0 ? t('capsules.textPlaceholderSelf') : t('capsules.textPlaceholderOthers', { names: otherNames || t('capsules.yourself') })}
+              label={t('capsules.textLabel')}
+              toolbarHost={toolbar}
+            />
+          </Suspense>
+        </div>
+        <div>
+          {tiles.length > 0 && (
+            <ul className="mb-3 grid grid-cols-3 gap-2 sm:grid-cols-5" aria-label={t('capsules.photosLabel', { count: tiles.length })} data-tiles>
+              {tiles.map((tile) => (
+                <li key={tile.key} className="relative aspect-square overflow-hidden rounded-xl bg-sheet-2" data-tile={tile.kind}>
+                  <img src={picture(tile)} alt="" draggable={false} className={`h-full w-full object-cover ${tile.kind === 'uploading' ? 'opacity-50' : ''}`} />
+                  {tile.kind === 'uploading' && (
+                    <span className="absolute inset-0 flex items-center justify-center" role="status" aria-label={t('capsules.photoUploading')}>
+                      <Loader2 size={22} className="animate-spin text-ink" aria-hidden />
+                    </span>
+                  )}
+                  <button type="button" onClick={() => remove(tile)} aria-label={t('capsules.removePhoto')} title={t('capsules.removePhoto')} className="absolute top-1 right-1 rounded-full bg-black/55 p-1.5 text-white hover:bg-black/70">
+                    <X size={14} aria-hidden />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className={SOFT_SMALL} onClick={() => files.current?.click()}>
               <ImagePlus size={15} aria-hidden /> {t('capsules.addPhoto')}
             </button>
-          )}
+            <button type="button" className={`${GHOST_SMALL} sm:hidden`} onClick={() => camera.current?.click()}>
+              <Camera size={15} aria-hidden /> {t('capsules.takePhoto')}
+            </button>
+            {pausing && <span className="text-sm text-muted" role="status">{t('capsules.photosPause')}</span>}
+          </div>
           <input
-            ref={file}
+            ref={files}
             type="file"
             accept={PHOTO_ACCEPT}
+            multiple
             className="hidden"
             aria-label={t('capsules.addPhoto')}
             onChange={(event) => {
-              const picked = event.target.files?.[0]
+              add(event.target.files)
               event.target.value = ''
-              if (picked) void pick(picked)
+            }}
+          />
+          <input
+            ref={camera}
+            type="file"
+            accept={PHOTO_ACCEPT}
+            capture="environment"
+            className="hidden"
+            aria-label={t('capsules.takePhoto')}
+            onChange={(event) => {
+              add(event.target.files)
+              event.target.value = ''
             }}
           />
         </div>
@@ -558,7 +685,7 @@ function Compose({ start, today, me, onClose, onSaved }: { start: CapsuleView | 
           {onlyMe || othersCount === 0 ? t('capsules.hintSelf') : t('capsules.hintOthers', { count: othersCount, names: otherNames })} {t('capsules.hintPush')}
         </p>
         {problem && <p className="text-sm text-bad">{errorText(problem)}</p>}
-        <div className="flex justify-end gap-2">
+        <div className="flex justify-end gap-2 pb-[env(safe-area-inset-bottom)]">
           <button type="button" className={GHOST} onClick={onClose}>
             {t('common.cancel')}
           </button>
