@@ -116,7 +116,7 @@ afterEach(() => {
 describe('writing the day up with the AI', () => {
   it('says that a local model keeps the notes at home, and asks nothing before the press', async () => {
     await show()
-    expect(button('Ausformulieren')).toBeTruthy()
+    expect(button('Ausformulieren mit KI')).toBeTruthy()
     expect(box.textContent).toContain('Wird mit dem lokalen Modell eures Servers formuliert. Nichts verlässt das Haus.')
     expect(box.textContent).toContain('Die KI ordnet und glättet nur, sie erfindet nichts dazu.')
     expect(calls.some((call) => call.url.startsWith('/api/ai/'))).toBe(false)
@@ -142,7 +142,7 @@ describe('writing the day up with the AI', () => {
   it('leads to the writing page with the length chosen', async () => {
     await show()
     await act(async () => [...box.querySelectorAll<HTMLButtonElement>('[role=radio]')].find((item) => item.textContent === 'kurz')!.click())
-    await act(async () => button('Ausformulieren')!.click())
+    await act(async () => button('Ausformulieren mit KI')!.click())
     expect(box.querySelector('[data-writing]')!.textContent).toBe('{"formulate":"short"}')
     expect(calls.some((call) => call.url.startsWith('/api/ai/'))).toBe(false)
   })
@@ -151,8 +151,8 @@ describe('writing the day up with the AI', () => {
     today = { ...today, day: { text: 'Schon geschrieben.', title: '', tags: [], values: {} } }
     await show()
     expect(box.querySelector('#aufschreiben')!.textContent).toContain('neu ausformulieren lassen')
-    expect(box.querySelector('#aufschreiben a')!.textContent).toContain('Weiterschreiben')
-    await act(async () => button('Ausformulieren')!.click())
+    expect(box.querySelector('#aufschreiben a')!.textContent).toContain('Selber weiterschreiben')
+    await act(async () => button('Ausformulieren mit KI')!.click())
     expect(box.querySelector('[data-writing]')!.textContent).toBe('{"formulate":"long"}')
     expect(calls.some((call) => call.url.startsWith('/api/ai/'))).toBe(false)
   })
@@ -166,14 +166,14 @@ describe('writing the day up with the AI', () => {
       ai = state
       today = { ...today, day }
       await show()
-      expect(button('Ausformulieren')).toBeUndefined()
-      expect(box.textContent).toMatch(/Selbst schreiben|Weiterschreiben/)
+      expect(button('Ausformulieren mit KI')).toBeUndefined()
+      expect(box.textContent).toMatch(/Selber schreiben|Selber weiterschreiben/)
       act(() => root.unmount())
       box.remove()
     }
     today = { ...today, day: null, notes: [] }
     await show()
-    expect(button('Ausformulieren')).toBeUndefined()
+    expect(button('Ausformulieren mit KI')).toBeUndefined()
   })
 })
 

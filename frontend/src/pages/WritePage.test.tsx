@@ -392,7 +392,7 @@ describe('writing a day up', () => {
     expect(title().value).toBe('Schon da')
     expect(box.querySelector('[contenteditable]')!.textContent).toBe('Selbst geschrieben.')
     // The bar offers the same for notes added later, and asks the same.
-    await act(async () => button('Neu ausformulieren').click())
+    await act(async () => button('Neu ausformulieren mit KI').click())
     expect(box.querySelector('[role=dialog]')!.textContent).toContain('Seite neu ausformulieren?')
     await act(async () => inDialog('Neu ausformulieren').click())
     await idle()
@@ -410,7 +410,7 @@ describe('writing a day up', () => {
       aiState = { provider: 'local', to: '', model: 'm', mine: available, available }
       await show()
       await idle()
-      expect(Boolean(button('Neu ausformulieren'))).toBe(offered)
+      expect(Boolean(button('Neu ausformulieren mit KI'))).toBe(offered)
       act(() => root.unmount())
       box.remove()
     }
@@ -495,7 +495,7 @@ describe('writing a day up', () => {
     expect(offer.textContent).toContain('Wird mit dem lokalen Modell eures Servers formuliert. Nichts verlässt das Haus.')
     expect(asked()).toHaveLength(0)
     await act(async () => [...offer.querySelectorAll<HTMLButtonElement>('[role=radio]')].find((item) => item.textContent === 'kurz')!.click())
-    await act(async () => button('Ausformulieren').click())
+    await act(async () => button('Ausformulieren mit KI').click())
     await idle()
     expect(asked().map((call) => call.body)).toEqual([{ date: DATE, length: 'short' }])
     expect(box.querySelector('[data-offer-ai]')).toBeNull()
@@ -528,7 +528,7 @@ describe('writing a day up', () => {
     expect(title().value).toBe('Mein Entwurf')
     expect(asked()).toHaveLength(0)
     // The button above the text asks the same.
-    await act(async () => button('Ausformulieren').click())
+    await act(async () => button('Ausformulieren mit KI').click())
     expect(box.textContent).toContain('Entwurf behalten?')
     await act(async () => button('Neu ausformulieren').click())
     await idle()

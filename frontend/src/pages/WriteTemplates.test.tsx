@@ -337,26 +337,26 @@ describe('the AI under a template', () => {
   it('asks for the template that is chosen, "none" for none, and nothing for a person without templates', async () => {
     dayNotes = NOTES
     await show()
-    await act(async () => button('Ausformulieren').click())
+    await act(async () => button('Ausformulieren mit KI').click())
     await until(() => asked().length === 1, 'the first request')
     await idle()
     expect(asked()[0].body).toMatchObject({ date: DATE, template: REVIEW.id })
     set = { ...set, default: null }
     await reopen()
     await choose(picker()!, WORK.id)
-    await act(async () => button('Ausformulieren').click())
+    await act(async () => button('Ausformulieren mit KI').click())
     await until(() => asked().length === 2, 'the second request')
     await idle()
     expect(asked()[1].body!.template).toBe(WORK.id)
     await reopen()
     await choose(picker()!, '')
-    await act(async () => button('Ausformulieren').click())
+    await act(async () => button('Ausformulieren mit KI').click())
     await until(() => asked().length === 3, 'the third request')
     await idle()
     expect(asked()[2].body!.template).toBe('none')
     set = { templates: [], default: null, revision: -1 }
     await reopen()
-    await act(async () => button('Ausformulieren').click())
+    await act(async () => button('Ausformulieren mit KI').click())
     await until(() => asked().length === 4, 'the fourth request')
     await idle()
     expect('template' in asked()[3].body!).toBe(false)
@@ -365,7 +365,7 @@ describe('the AI under a template', () => {
   it('puts the suggestion under the headings, and an empty section falls away when the page is saved', async () => {
     dayNotes = NOTES
     await show()
-    await act(async () => button('Ausformulieren').click())
+    await act(async () => button('Ausformulieren mit KI').click())
     await eventually(() => expect(blocks()).toEqual(['h2:Heute', 'p:Mit Mia Kastanien gesammelt.', 'h2:Schönes', 'p:', 'h2:Dankbar', 'p:']), 'the suggestion')
     expect(box.querySelector<HTMLTextAreaElement>('textarea[aria-label="Überschrift"]')!.value).toBe('Kastanien')
     await until(() => !saveButtons()[0].disabled, 'Save being possible')
@@ -377,7 +377,7 @@ describe('the AI under a template', () => {
   it('carries the template on when it is asked for "Länger"', async () => {
     dayNotes = NOTES
     await show()
-    await act(async () => button('Ausformulieren').click())
+    await act(async () => button('Ausformulieren mit KI').click())
     await until(() => box.textContent?.includes('Kürzer') || box.textContent?.includes('Länger'), 'the suggestion')
     await idle()
     await act(async () => [...box.querySelectorAll<HTMLButtonElement>('button')].find((item) => /Kürzer|Länger/.test(item.textContent ?? ''))!.click())

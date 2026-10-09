@@ -122,7 +122,7 @@ describe('the writing page of a past day', () => {
       setter.call(field, 'Ein Board für die Woche.')
       field.dispatchEvent(new Event('input', { bubbles: true }))
     })
-    await act(async () => button('Ausformulieren', dialog())!.click())
+    await act(async () => button('Ausformulieren mit KI', dialog())!.click())
     await idle()
     const kept = calls.filter((call) => call.url === '/api/notes' && call.method === 'POST')
     expect(kept.map((call) => [call.body!.date, call.body!.text, call.body!.prompt])).toEqual([[DATE, 'Ein Board für die Woche.', 'Was war die Idee?']])

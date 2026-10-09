@@ -317,7 +317,7 @@ describe('the AI asks first', () => {
     expect(dialog().textContent).toContain('zur Notiz von 18:50 Uhr')
     expect(calls.filter((call) => call.url === '/api/ai/followups').map((call) => call.body)).toEqual([{ date: DATE }])
     type(dialog().querySelectorAll('textarea')[0], 'Ein Board für die Wochenplanung.')
-    await act(async () => button('Ausformulieren', dialog())!.click())
+    await act(async () => button('Ausformulieren mit KI', dialog())!.click())
     await idle()
     const notes = calls.filter((call) => call.url === '/api/notes' && call.method === 'POST')
     expect(notes.map((call) => [call.body!.text, call.body!.prompt, call.body!.date, 'prompt_id' in call.body!])).toEqual([
@@ -341,7 +341,7 @@ describe('the AI asks first', () => {
     await act(async () => button('Erst fragen lassen')!.click())
     await eventually(() => expect(dialog().textContent).toContain('Zu deinen Notizen ist nichts offen.'), 'nothing open')
     expect(button('Ohne Antworten weiter', dialog())).toBeUndefined()
-    await act(async () => button('Ausformulieren', dialog())!.click())
+    await act(async () => button('Ausformulieren mit KI', dialog())!.click())
     expect(box.querySelector('[data-landed]')!.textContent).toBe('{"formulate":"long"}')
   })
 
@@ -350,7 +350,7 @@ describe('the AI asks first', () => {
     await show()
     await act(async () => button('Erst fragen lassen')!.click())
     await eventually(() => expect(dialog().querySelector('[role=alert]')).not.toBeNull(), 'the error')
-    expect(button('Ausformulieren', dialog())).toBeTruthy()
+    expect(button('Ausformulieren mit KI', dialog())).toBeTruthy()
   })
 })
 

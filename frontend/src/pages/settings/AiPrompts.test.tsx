@@ -149,7 +149,7 @@ describe('the AI under Server', () => {
     await show(<AiCard />)
     await click(button(PROVIDER_NAME.messages!))
     expect(field('Adresse')).toBeUndefined()
-    expect(box.textContent).toContain('Was hinausgeht: beim Druck auf „Ausformulieren“ die Notizen dieses einen Tages')
+    expect(box.textContent).toContain('Was hinausgeht: beim Druck auf „Ausformulieren mit KI“ die Notizen dieses einen Tages')
     const key = `k-${Math.random().toString(36).slice(2)}`
     type(field('API-Schlüssel')!, key)
     await click(button('Modelle abrufen'))

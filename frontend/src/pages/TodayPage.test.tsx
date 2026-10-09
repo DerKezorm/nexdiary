@@ -265,7 +265,7 @@ describe('writing the day up', () => {
     expect(card.textContent).toContain('Den Tag aufschreiben')
     expect(card.textContent).toContain('Aus deinen 2 Notizen wird eine Seite.')
     const link = card.querySelector('a')!
-    expect(link.textContent).toContain('Selbst schreiben')
+    expect(link.textContent).toContain('Selber schreiben')
     expect(link.getAttribute('href')).toBe('/tag/2026-10-06/schreiben')
   })
 
@@ -273,7 +273,7 @@ describe('writing the day up', () => {
     ;(TODAY as { day: unknown }).day = { date: '2026-10-06', title: 'Kastanien', text: 'Ein Tag.', tags: [], values: {}, cover: 'illu:baum.abend.herbst', cover_chosen: false, written_by: 'self', words: 2, revision: 0, created_at: '', updated_at: '' }
     await show(layout)
     const link = box.querySelector('#aufschreiben a')!
-    expect(link.textContent).toContain('Weiterschreiben')
+    expect(link.textContent).toContain('Selber weiterschreiben')
     expect(box.querySelector('#aufschreiben')!.textContent).toContain('Heute steht schon eine Seite.')
   })
 

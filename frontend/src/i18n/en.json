@@ -752,9 +752,9 @@
     "ai": {
       "notAllowed": "Your operator has not allowed the AI for your account.",
       "title": "AI when writing",
-      "text": "Turns your notes of the day into a suggestion for the page. Only when you press \"Write it up\".",
+      "text": "Turns your notes of the day into a suggestion for the page. Only when you press \"Write it up with AI\".",
       "mine": "AI for me",
-      "mineHint": "Off: the button \"Write it up\" disappears for you, and your texts never go to a model.",
+      "mineHint": "Off: the button \"Write it up with AI\" disappears for you, and your texts never go to a model.",
       "byOperator": "Set by the operator:"
     },
     "push": {
@@ -1142,9 +1142,9 @@
     "storageGb": "GB per person",
     "ai": {
       "title": "AI to write the day up",
-      "text": "Applies to everyone in the family. The AI runs only when someone presses \"Write it up\", and everyone can switch it off for themselves in their account.",
+      "text": "Applies to everyone in the family. The AI runs only when someone presses \"Write it up with AI\", and everyone can switch it off for themselves in their account.",
       "none": "No AI",
-      "noneNote": "The button \"Write it up\" does not appear.",
+      "noneNote": "The button \"Write it up with AI\" does not appear.",
       "local": "Local model",
       "localNote": "Ollama or another service in the own network. Nothing leaves the house.",
       "messagesNote": "Your own API key. When writing up, the notes go to the provider.",
@@ -1158,7 +1158,7 @@
       "pick": "Choose a model",
       "saveTry": "Save and try it",
       "probed": "Saved. Test: the model answered in {{seconds}} seconds.",
-      "outgoing": "What goes out: when someone presses \"Write it up\", the notes of that one day with their times and, where a note answers a question, with the question. Without the name of the account, without the date, without photos and without ratings. Nothing else. Whoever does not want that switches the AI off in their account.",
+      "outgoing": "What goes out: when someone presses \"Write it up with AI\", the notes of that one day with their times and, where a note answers a question, with the question. Without the name of the account, without the date, without photos and without ratings. Nothing else. Whoever does not want that switches the AI off in their account.",
       "saved": "Saved.",
       "keyOptional": "API key (if needed)",
       "keyLocalHint": "Only when the service asks for one, such as LiteLLM. Ollama needs none.",
@@ -1268,7 +1268,7 @@
     "finishExisting": "Today already has a page. You can go on writing it, the notes stay.",
     "finishExistingAi": "Today already has a page. You can go on writing it, or have it written up anew from all notes. The notes stay.",
     "self": "Write it yourself",
-    "continue": "Go on writing",
+    "continue": "Go on writing yourself",
     "back": "Back to the notes",
     "backShort": "Notes",
     "save": "Save",
@@ -1302,7 +1302,7 @@
     "photoNote": "Photo",
     "conflictHint": "Saving your version replaces there what you changed here. Copy first what you want to keep of the other one.",
     "otherVersion": "The other version",
-    "ai": "Write it up",
+    "ai": "Write it up with AI",
     "length": "Length",
     "lengthShort": "short",
     "lengthLong": "long",
@@ -1323,7 +1323,7 @@
     "aiDraftText": "There is a draft for this day already. You can keep it, or have the AI write it up anew from your notes; the draft is lost then. Your notes stay as they are.",
     "aiDraftKeep": "Keep the draft",
     "aiDraftAnew": "Write it up anew",
-    "aiAnew": "Write it up anew",
+    "aiAnew": "Write it up anew with AI",
     "aiPageTitle": "Write the page up anew?",
     "aiPageText": "This day already has a page. The AI writes it anew from all notes of the day, including the ones you added later. Your current text is replaced once you save. Your notes stay as they are.",
     "aiPageKeep": "Keep the page",
@@ -1499,7 +1499,7 @@
     "about": "about your note from {{time}}",
     "placeholder": "A few words will do.",
     "skip": "Go on without answers",
-    "go": "Write it up",
+    "go": "Write it up with AI",
     "nothingOpen": "Nothing in your notes is open."
   },
   "short": {
