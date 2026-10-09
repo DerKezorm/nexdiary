@@ -30,7 +30,7 @@ DEFAULTS = {"palette": "salbei", "mode": "system", "layout": "page", "quick_star
             "ai": True, "notify_login": True, "goal": 7, "family": False, "family_hint": True, "timezone": "",
             "reminder": {"mode": "daily", "time": "20:30", "days": 2, "skip_if_written": True, "with_prompt": True,
                          "goal_risk": False},
-            "autowrite": {"on": False, "time": "07:00", "length": "long"}}
+            "autowrite": {"on": False, "time": "07:00", "length": "long"}, "family_left": "", "family_waits": False}
 
 
 def test_light_or_dark_is_kept_with_the_account(client: TestClient, account: Account) -> None:

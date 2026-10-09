@@ -34,6 +34,8 @@ let pool: { id: string; text: string; answered: boolean }[] = []
 let dayNotes: Record<string, unknown>[] = []
 /** Who the day is shared with. */
 let sharedWith: Record<string, unknown>[] = []
+/** Holds a draft on its way until the test lets it through. */
+let draftGate: Promise<void> | null = null
 /** What the router holds as the history state, seen from outside the page. */
 let seenState: unknown = 'unset'
 /** What the AI answers next: a suggestion, or an error code. */
@@ -53,6 +55,7 @@ function serve(): void {
       calls.push({ method, url, body, keepalive: Boolean(init?.keepalive) })
       const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
       if (url === `/api/days/${DATE}/draft`) {
+        if (method === 'PUT' && draftGate) await draftGate
         if (method === 'PUT') {
           draft = { ...body, updated_at: '2026-10-06T17:30:00+00:00' }
           return json(draft)
@@ -187,6 +190,7 @@ beforeEach(async () => {
   pool = []
   dayNotes = []
   sharedWith = []
+  draftGate = null
   seenState = 'unset'
   aiState = { provider: 'local', to: '', model: 'llama3.1:8b', mine: true, available: true }
   suggestion = { title: 'Kastanien', text: 'Am Abend habe ich mit Mia Kastanien gesammelt.' }
@@ -660,10 +664,11 @@ describe('a draft older than the saved page', () => {
   it('asks which one to edit, and the saved page throws the draft away', async () => {
     await show(null, stale)
     expect(document.querySelector('[role=dialog]')!.getAttribute('aria-label')).toBe('Seite oder Entwurf?')
-    expect(stale()!.textContent).toBe('Du hast nach diesem Entwurf eine Seite gespeichert. Welche willst du bearbeiten?')
+    expect(stale()!.textContent).toBe('Seit diesem Entwurf wurde der Tag gespeichert. Welche Fassung willst du bearbeiten?')
     // Nothing of either is on the page while the question stands, and no draft goes out.
     expect(box.querySelector('[contenteditable]')).toBeNull()
-    expect(choice('Entwurf von 19:30')).toBeTruthy()
+    // Not from today: with its date.
+    expect(choice('Entwurf vom 6. Oktober, 19:30')).toBeTruthy()
     await act(async () => choice('Gespeicherte Seite').click())
     await until(() => box.querySelector('[contenteditable]'), 'the editor')
     await idle()
@@ -675,7 +680,7 @@ describe('a draft older than the saved page', () => {
 
   it('brings the draft back when chosen, and a save meets the page saved since', async () => {
     await show(null, stale)
-    await act(async () => choice('Entwurf von 19:30').click())
+    await act(async () => choice('Entwurf vom 6. Oktober, 19:30').click())
     await until(() => box.querySelector('[contenteditable]'), 'the editor')
     await idle()
     expect(title().value).toBe('Langer Entwurf')
@@ -687,6 +692,14 @@ describe('a draft older than the saved page', () => {
     expect(puts().map((call) => call.body!.base_revision)).toEqual([1])
     expect(box.textContent).toContain('Dieser Tag wurde inzwischen auf einem anderen Gerät geändert.')
     expect(day!.text).toBe('Müde.')
+  })
+
+  it('names only the time for a draft of today', async () => {
+    const now = new Date()
+    draft = { ...draft!, updated_at: now.toISOString() }
+    await show(null, stale)
+    const time = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' }).format(now)
+    expect(choice(`Entwurf von ${time}`)).toBeTruthy()
   })
 
   it('comes back without asking when it was begun on the page that stands', async () => {
@@ -722,6 +735,32 @@ describe('deleting the page', () => {
     expect(box.textContent).toContain('woanders')
     // Nothing went out as a draft afterwards.
     expect(drafts()).toHaveLength(0)
+  })
+
+  it('waits for a draft on its way before it deletes, and sends none after', async () => {
+    day = page({ title: 'Versehen', text: 'Nur kurz.', revision: 2 })
+    let release: () => void = () => undefined
+    draftGate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    await show()
+    type(title(), 'Doch anders')
+    await until(() => drafts().length === 1, 'the draft on its way')
+    await act(async () => button('Seite löschen').click())
+    const go = () => [...document.querySelectorAll<HTMLButtonElement>('[role=dialog] button')].find((item) => item.textContent?.trim() === 'Löschen')
+    // Ready once it knows who the day is shared with (the draft is still held, so no waiting for all requests).
+    await until(() => go() && !go()!.disabled, 'the question')
+    await act(async () => go()!.click())
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    })
+    expect(calls.some((call) => call.method === 'DELETE')).toBe(false)
+    await act(async () => release())
+    await until(() => calls.some((call) => call.method === 'DELETE'), 'the delete')
+    await idle()
+    const order = calls.filter((call) => call.method === 'DELETE' || (call.method === 'PUT' && call.url.endsWith('/draft'))).map((call) => call.method)
+    expect(order).toEqual(['PUT', 'DELETE'])
+    expect(box.textContent).toContain('woanders')
   })
 
   it('warns that changes not saved go too, and is not there for a page never saved or a locked day', async () => {

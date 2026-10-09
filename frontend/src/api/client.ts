@@ -138,6 +138,8 @@ export type Profile = {
   autowrite?: Autowrite
   /** Taking part in the family question; off from the start. Leaving takes the own answers along. */
   family?: boolean
+  /** Joined again on the day of leaving (server's zone): taking part from the next day on. */
+  family_waits?: boolean
   /** The quiet hint on "Today" that others take part; false once put away. */
   family_hint?: boolean
 }

@@ -189,5 +189,22 @@ describe('the family question under My account', () => {
     await act(async () => toggle.click())
     await idle()
     expect(calls.filter((call) => call.url === '/api/me/preferences').map((call) => call.body)).toEqual([{ family: true }])
+    expect(box.querySelector('[data-family-waits]')).toBeNull()
+  })
+
+  it('says that joining again on the day of leaving counts from tomorrow, as the server says', async () => {
+    const before = me.profile
+    me.profile = { ...before, family: true, family_waits: true } as typeof before
+    try {
+      await render(<FamilyCard />)
+      expect(box.querySelector('[data-family-waits]')!.textContent).toBe('Du machst ab morgen wieder mit.')
+      act(() => root.unmount())
+      box.remove()
+      me.profile = { ...before, family: false, family_waits: true } as typeof before
+      await render(<FamilyCard />)
+      expect(box.querySelector('[data-family-waits]')).toBeNull()
+    } finally {
+      me.profile = before
+    }
   })
 })

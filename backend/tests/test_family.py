@@ -13,6 +13,7 @@ from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
@@ -494,4 +495,65 @@ def test_a_date_is_read_only_while_joined_even_if_answers_were_left_behind(at_no
         db.refresh(row)
         assert count(FamilyAnswer, user_id=jule_id) == 1
         assert family.view_of_date(db, row, DAY, "de") is None
+    jule.close()
+
+
+# --- Leaving and joining again ----------------------------------------------------------------------------------------
+
+
+def test_joining_again_on_the_day_of_leaving_counts_from_the_next_day(at_noon: list[datetime]) -> None:
+    """Leaving takes today's answer along; joining again the same day must not make room for a second one."""
+    tom, jule = joined("tom"), joined("jule")
+    assert answer(tom, "Kürbissuppe").status_code == 200
+    assert answer(jule, "Kastanien").status_code == 200
+    assert jule.put("/api/me/preferences", json={"family": False}).status_code == 200
+    back = jule.put("/api/me/preferences", json={"family": True})
+    assert back.status_code == 200 and back.json()["family_waits"] is True and back.json()["family_left"] == DAY
+    assert jule.get("/api/auth/me").json()["profile"]["family_waits"] is True
+    # Today: no card, no answer, and for the others not among those taking part.
+    looked = jule.get("/api/family")
+    assert (looked.status_code, looked.json()["detail"]["code"]) == (403, "family_not_joined")
+    assert jule.get("/api/today").json()["family"] is None
+    refused = answer(jule, "Ganz was anderes")
+    assert (refused.status_code, refused.json()["detail"]["code"]) == (403, "family_not_joined")
+    card = tom.get("/api/family").json()
+    assert card["answers"] == [] and "jule" not in [person["name"] for person in card["people"]]
+    assert "Ganz was anderes" not in tom.get("/api/family").text
+    assert count(FamilyAnswer, user_id=account_id(jule)) == 0
+    # The value cannot be set from outside.
+    assert jule.put("/api/me/preferences", json={"family_left": ""}).status_code == 422
+    # The next day of the server's zone: taking part as ever.
+    at_noon[0] = NOON + timedelta(days=1)
+    assert jule.get("/api/auth/me").json()["profile"]["family_waits"] is False
+    assert answer(jule, "Pfannkuchen", day="2026-10-10").status_code == 200
+    assert jule.get("/api/family").json()["mine"]["text"] == "Pfannkuchen"
+    tom.close()
+    jule.close()
+
+
+def test_joining_again_on_a_later_day_counts_at_once(at_noon: list[datetime]) -> None:
+    jule = joined("jule")
+    assert jule.put("/api/me/preferences", json={"family": False}).status_code == 200
+    at_noon[0] = NOON + timedelta(days=1)
+    back = jule.put("/api/me/preferences", json={"family": True}).json()
+    assert back["family_waits"] is False
+    assert answer(jule, "Tee", day="2026-10-10").status_code == 200
+    jule.close()
+
+
+def test_an_answer_sent_while_joining_again_on_another_device_is_refused(at_noon: list[datetime],
+                                                                         monkeypatch: pytest.MonkeyPatch) -> None:
+    """The browser read "joined" before leaving and joining again; its answer arrives after: the statement that writes
+    the answer decides, not what was read before it."""
+    jule = joined("jule")
+    assert answer(jule, "Kastanien").status_code == 200
+    jule_id = account_id(jule)
+    stale = make_account_row(jule_id)
+    assert jule.put("/api/me/preferences", json={"family": False}).status_code == 200
+    assert jule.put("/api/me/preferences", json={"family": True}).status_code == 200
+    # The account as the request read it before: joined, no day of leaving.
+    with SessionLocal() as db, pytest.raises(HTTPException) as refused:
+        family.answer(db, stale, DAY, "Nochmal", str(uuid.uuid4()), "de")
+    assert refused.value.status_code == 403
+    assert count(FamilyAnswer, user_id=jule_id) == 0
     jule.close()

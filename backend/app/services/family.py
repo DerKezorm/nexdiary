@@ -17,7 +17,9 @@ The rules, all of them kept here on the server:
   day), by the same rules: only by a person who answered on that date, only the answers of those who joined and are
   not blocked. Whoever did not answer gets nothing, not even a sign that there were answers.
 * **Leaving takes the answers along.** Whoever leaves loses all their answers in the same transaction (``leave``): from
-  then on nobody sees them. The notes the answers became stay with the person.
+  then on nobody sees them. The notes the answers became stay with the person. Joining again counts from the next day
+  of the server's zone (``profile.family_left`` holds the day of leaving): leaving and joining on the same day is no
+  way to give today's answer a second time. Until then the person is as if they had not joined.
 * **Sealed with the key of the one who answered**, at most ``ANSWER_MAX`` characters, one per person and day. The
   answer is a note as well, with the question, like the question of the day: on the person's own day of notes (after
   midnight the day they said the night belongs to). That note is the person's like any other note: they may change or
@@ -139,6 +141,16 @@ def joined(profile: Any) -> bool:
     return isinstance(profile, dict) and profile.get("family") is True
 
 
+def waits(profile: Any) -> bool:
+    """Joined again on the day they left: taking part only from the next day of the server's zone."""
+    return joined(profile) and profile.get("family_left") == today()
+
+
+def taking_part(profile: Any) -> bool:
+    """Joined, and not waiting for the next day after joining again."""
+    return joined(profile) and not waits(profile)
+
+
 def question_of(day: str) -> str:
     """The id of the question of a ``YYYY-MM-DD``: the same for everybody on that date."""
     index = _ORDER[date.fromisoformat(day).toordinal() % len(_ORDER)]
@@ -181,11 +193,11 @@ def members(db: Session, keep: int | None = None) -> list[Any]:
     """Everybody who joined and is not blocked, in the order they came; at most ``PEOPLE_MAX``, with the person
     ``keep`` always among them."""
     rows = db.execute(select(*_PERSON).where(Account.blocked_at.is_(None)).order_by(Account.id)).all()
-    taking_part = [row for row in rows if joined(row.profile)]
-    if len(taking_part) <= PEOPLE_MAX:
-        return taking_part
-    own = [row for row in taking_part if row.id == keep]
-    return [row for row in taking_part if row.id != keep][:PEOPLE_MAX - len(own)] + own
+    present = [row for row in rows if taking_part(row.profile)]
+    if len(present) <= PEOPLE_MAX:
+        return present
+    own = [row for row in present if row.id == keep]
+    return [row for row in present if row.id != keep][:PEOPLE_MAX - len(own)] + own
 
 
 def hint_due(db: Session, account: Account) -> bool:
@@ -208,8 +220,8 @@ def _open(row: Any) -> str | None:
 
 def view(db: Session, account: Account, language: str) -> dict[str, Any]:
     """The family question of today as this person may see it. ``family_not_joined`` (403) for anybody who has not
-    joined: they see nothing, not even who did."""
-    if not joined(account.profile) or account.blocked_at is not None:
+    joined: they see nothing, not even who did. The same for whoever joined again today after leaving today."""
+    if not taking_part(account.profile) or account.blocked_at is not None:
         raise error("family_not_joined", "You have not joined the family question.", 403)
     day = today()
     people = members(db, keep=account.id)
@@ -321,6 +333,9 @@ def answer(db: Session, account: Account, day: str, words: str, note_uid: str, l
                 "SELECT users.id, :day, :question, :sealed, :note, :now, :now FROM users "
                 "WHERE users.id = :user AND users.blocked_at IS NULL "
                 "AND json_extract(users.profile, '$.family') = 1 "
+                # Joined again today after leaving today: from tomorrow on. Decided in this statement, so leaving and
+                # joining again on another device in between changes nothing.
+                "AND coalesce(json_extract(users.profile, '$.family_left'), '') != :day "
                 "ON CONFLICT (user_id, date) DO NOTHING"
             ).bindparams(bindparam("now", type_=UtcDateTime())),
             {"user": account.id, "day": day, "question": question, "sealed": sealed, "note": note_uid,
@@ -368,5 +383,5 @@ def leave(db: Session, account_id: int) -> None:
     db.execute(delete(FamilyAnswer).where(FamilyAnswer.user_id == account_id))
 
 
-__all__ = ["ANSWER_MAX", "QUESTIONS", "answer", "hint_due", "joined", "leave", "members", "question_of", "today",
-           "view", "view_of_date", "words_of"]
+__all__ = ["ANSWER_MAX", "QUESTIONS", "answer", "hint_due", "joined", "leave", "members", "question_of", "taking_part",
+           "today", "view", "view_of_date", "waits", "words_of"]

@@ -195,13 +195,20 @@ export function GoalCard() {
   )
 }
 
-/** Taking part in the family question: off from the start. What leaving means is said before the switch is used. */
+/** Taking part in the family question: off from the start. What leaving means is said before the switch is used; who
+ * joins again on the day they left is told that it counts from tomorrow. */
 export function FamilyCard() {
   const { t } = useTranslation()
   const { profile, choose, problem } = useProfileChoice()
   return (
     <Card icon={Users} title={t('settings.family.title')} text={t('settings.family.text')}>
       <Toggle label={t('settings.family.join')} hint={t('settings.family.hint')} checked={profile?.family ?? false} onChange={(family) => choose({ family })} />
+      {/* Joined again on the day of leaving: from the next day on (the server decides, in its own zone). */}
+      {profile?.family && profile.family_waits && (
+        <p className="mt-3 text-sm font-semibold text-accent" data-family-waits>
+          {t('settings.family.tomorrow')}
+        </p>
+      )}
       <p className="mt-3 text-xs text-muted">{t('settings.family.leave')}</p>
       <Feedback problem={problem} />
     </Card>

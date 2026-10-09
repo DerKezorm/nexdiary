@@ -22,8 +22,9 @@ function namesOf(names: string[], language: string): string {
 }
 
 /** The question before deleting the page of `date`. `shared`: who the day is shared with, when the caller knows it
- * already (else it is asked for here). `unsaved`: the writing page has changes that would go too. */
-export function DeletePageDialog({ date, shared, unsaved = false, onClose, onDeleted }: { date: string; shared?: Recipient[]; unsaved?: boolean; onClose: () => void; onDeleted: () => void }) {
+ * already (else it is asked for here). `unsaved`: the writing page has changes that would go too. `beforeDelete` runs
+ * before the request (the writing page stops its drafts there), `onFailed` when the server refused. */
+export function DeletePageDialog({ date, shared, unsaved = false, beforeDelete, onFailed, onClose, onDeleted }: { date: string; shared?: Recipient[]; unsaved?: boolean; beforeDelete?: () => Promise<void>; onFailed?: () => void; onClose: () => void; onDeleted: () => void }) {
   const { t, i18n } = useTranslation()
   const [people, setPeople] = useState<Recipient[] | null>(shared ?? null)
   const [busy, setBusy] = useState(false)
@@ -46,9 +47,11 @@ export function DeletePageDialog({ date, shared, unsaved = false, onClose, onDel
     setBusy(true)
     setProblem(null)
     try {
+      await beforeDelete?.()
       await diaryApi.deleteDay(date)
       onDeleted()
     } catch (error) {
+      onFailed?.()
       setProblem(error instanceof ApiError ? error.code : 'internal_error')
       setBusy(false)
     }

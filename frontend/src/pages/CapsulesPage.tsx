@@ -441,6 +441,9 @@ function Compose({ start, today, me, onClose, onSaved }: { start: CapsuleView | 
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
   const [clientId] = useState(newId)
+  const [asking, setAsking] = useState(false)
+  const [textTouched, setTextTouched] = useState(false)
+  const touchText = useCallback(() => setTextTouched(true), [])
   const [toolbar, setToolbar] = useState<HTMLDivElement | null>(null)
   const editor = useRef<DiaryEditorHandle>(null)
   const files = useRef<HTMLInputElement>(null)
@@ -579,8 +582,34 @@ function Compose({ start, today, me, onClose, onSaved }: { start: CapsuleView | 
 
   const picture = (tile: Tile) => (tile.kind === 'kept' ? capsulePhotoUrl(start?.id ?? '', tile.id, true) : tile.url)
 
+  // Something written or chosen here (for a capsule being changed: anything changed of title, text and photos) is not
+  // thrown away by Escape, a tap beside the dialog or "Abbrechen" without a question. The photos waiting for the
+  // capsule go only once that is answered.
+  const photosChanged = tiles.map((tile) => tile.key).join(',') !== (start?.photos ?? []).map((photo) => photo.id).join(',')
+  const dirty = start ? title !== start.title || textTouched || photosChanged : title.trim() !== '' || !empty || tiles.length > 0
+  const dirtyNow = useRef(dirty)
+  dirtyNow.current = dirty
+  // Stable, so that the dialog does not take the focus back on every keystroke.
+  const leave = useCallback(() => (dirtyNow.current ? setAsking(true) : onClose()), [onClose])
+  const keepWriting = useCallback(() => setAsking(false), [])
+
   return (
-    <Dialog title={start ? t('capsules.composeChange') : t('capsules.compose')} onClose={onClose} wide full>
+    <Dialog title={start ? t('capsules.composeChange') : t('capsules.compose')} onClose={leave} wide full>
+      {asking && (
+        <Dialog title={t('capsules.discardTitle')} onClose={keepWriting} above>
+          <p className="text-ink-2" data-discard-text>
+            {t('capsules.discardText')}
+          </p>
+          <div className="mt-6 flex justify-end gap-2">
+            <button type="button" className={GHOST} onClick={keepWriting}>
+              {t('capsules.keepWriting')}
+            </button>
+            <button type="button" className={PRIMARY} onClick={onClose}>
+              <Trash2 size={16} aria-hidden /> {t('capsules.discard')}
+            </button>
+          </div>
+        </Dialog>
+      )}
       <div className="space-y-5">
         <div>
           <p className="mb-2 text-sm font-bold text-ink-2">{t('capsules.forWhom')}</p>
@@ -621,7 +650,7 @@ function Compose({ start, today, me, onClose, onSaved }: { start: CapsuleView | 
             <DiaryEditor
               ref={editor}
               value={firstText}
-              onChange={() => undefined}
+              onChange={touchText}
               onEmptyChange={setEmpty}
               placeholder={onlyMe || to.length === 0 ? t('capsules.textPlaceholderSelf') : t('capsules.textPlaceholderOthers', { names: otherNames || t('capsules.yourself') })}
               label={t('capsules.textLabel')}
@@ -686,7 +715,7 @@ function Compose({ start, today, me, onClose, onSaved }: { start: CapsuleView | 
         </p>
         {problem && <p className="text-sm text-bad">{errorText(problem)}</p>}
         <div className="flex justify-end gap-2 pb-[env(safe-area-inset-bottom)]">
-          <button type="button" className={GHOST} onClick={onClose}>
+          <button type="button" className={GHOST} onClick={leave}>
             {t('common.cancel')}
           </button>
           <button type="button" className={PRIMARY} disabled={!ok} onClick={() => void submit()}>

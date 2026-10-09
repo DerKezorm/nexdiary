@@ -19,13 +19,16 @@ came. A backup carries the sealed files and the database, never the master key.
 
 from __future__ import annotations
 
+import functools
 import io
+import itertools
 import logging
 import os
 import re
 import secrets
+import threading
 import time
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -150,6 +153,37 @@ def _write(path: Path, data: bytes) -> None:
         temporary.unlink(missing_ok=True)
 
 
+#: The wall-clock start of every operation of this process that writes media files before the row that names them
+#: (``writes``): a file younger than the oldest of them may still be waiting for its row, and the sweep of the media
+#: folder (``services/media_sweep.py``) leaves it alone.
+_writing: dict[int, float] = {}
+_writing_lock = threading.Lock()
+_writing_count = itertools.count()
+
+
+def writes[F: Callable[..., Any]](function: F) -> F:
+    """Marks an operation that writes media files and then the rows that name them, for as long as it runs."""
+
+    @functools.wraps(function)
+    def wrapped(*args: Any, **kwargs: Any) -> Any:
+        token = next(_writing_count)
+        with _writing_lock:
+            _writing[token] = time.time()
+        try:
+            return function(*args, **kwargs)
+        finally:
+            with _writing_lock:
+                _writing.pop(token, None)
+
+    return wrapped  # type: ignore[return-value]
+
+
+def oldest_writing() -> float | None:
+    """When the oldest operation that is writing media files right now began (wall clock); None when none is."""
+    with _writing_lock:
+        return min(_writing.values(), default=None)
+
+
 def remove_files(uids: Iterable[str]) -> None:
     """The files of these photos, gone. A file that is not there is fine; one that cannot be deleted is said in the
     log (without anything that tells whose it was) and left for the operator."""
@@ -249,6 +283,7 @@ def chosen(db: Session, account_id: int, photo: dict[str, Any]) -> dict[str, Any
     return view(row) if row is not None else {**photo, "for_text": False}
 
 
+@writes
 def add(db: Session, account_id: int, dek: bytes, day: str, upload_id: str | None, drawn: Drawn,
         moment: Any, on_note: bool = False, *, source: str = "upload",
         asset_key: str | None = None, for_text: bool = False) -> tuple[dict[str, Any], bool]:

@@ -183,7 +183,7 @@ def today(request: Request, account: Account, db: DbSession) -> dict[str, Any]:
 
 def _family(db: DbSession, account: Any, request: Request) -> dict[str, Any] | None:
     """The family question for "Today": null for whoever has not joined, and never the reason "Today" fails."""
-    if not family.joined(account.profile):
+    if not family.taking_part(account.profile):
         return None
     try:
         return family.view(db, account, _language(account, request))
@@ -341,10 +341,11 @@ def put_values_of_day(date: str, payload: ValuesOfDayIn, request: Request, accou
 @router.delete("/days/{date}", status_code=204, summary="Delete the page of a day (its notes and photos stay)")
 def delete_day(date: str, account: Account, db: DbSession) -> None:
     """Title, text, tags, ratings and cover go, the shares of the day and its draft with them; the notes and the photos
-    of the day stay, the pictures taken for the text alone go. Never a locked day."""
+    of the day stay, the pictures taken for the text alone go (also one taken a moment ago). Never a locked day."""
     key = diary.check_date(account, date)
     diary.delete_day(db, account.id, key)
-    photos.remove_files(diary.tidy_text_photos(db, account.id, vault.dek_for(account.id), key))
+    # Without the grace for photos just taken: no page or draft is left that one could be on its way into.
+    photos.remove_files(diary.tidy_text_photos(db, account.id, vault.dek_for(account.id), key, grace=False))
 
 
 # --- Values ---------------------------------------------------------------------------------------------------------

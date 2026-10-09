@@ -131,6 +131,8 @@ const click = async (element: HTMLElement | null | undefined) => {
   await idle()
 }
 const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]:not([data-lightbox])')
+/** The question before a letter is thrown away, drawn over everything. */
+const question = () => [...document.querySelectorAll<HTMLElement>('[role="dialog"]')].find((found) => found.getAttribute('aria-label') === 'Zeitkapsel verwerfen?') ?? null
 const hint = () => dialog()?.querySelector('[data-hint]')?.textContent?.trim()
 const editor = () => until(() => dialog()?.querySelector<HTMLElement>('[contenteditable]'), 'the editor starting')
 
@@ -167,7 +169,8 @@ beforeAll(async () => {
   await changeLanguage('de')
   // The editor is loaded lazily, as in the app; loaded once here, so that no test waits for its first load.
   await import('../editor/DiaryEditor')
-})
+  // The first load of the editor's packages takes long in a full run with many files at once.
+}, 120_000)
 
 beforeEach(() => {
   serve()
@@ -425,8 +428,67 @@ describe('the time capsules page', () => {
     await until(() => [...dialog()!.querySelectorAll('[data-tile]')].every((tile) => tile.getAttribute('data-tile') === 'new'), 'both photos up')
     expect(buttonNamed('Verschließen', dialog()!)!.disabled).toBe(false)
     await click(buttonNamed('Abbrechen', dialog()!))
+    // Asked first: until the answer, every photo stays where it is.
+    expect(calls.some((call) => call.method === 'DELETE')).toBe(false)
+    await click(buttonNamed('Verwerfen', question()!))
     await idle()
+    expect(dialog()).toBeNull()
     expect(calls.filter((call) => call.method === 'DELETE').map((call) => call.url).sort()).toEqual([`/api/capsules/photos/${ID(31)}`, `/api/capsules/photos/${ID(41)}`])
+  })
+
+  it('asks before a letter with words or photos is thrown away, and not for an empty one', async () => {
+    await show()
+    await click(buttonNamed('Neue Zeitkapsel'))
+    await editor()
+    // Nothing written: "Abbrechen" closes at once.
+    await click(buttonNamed('Abbrechen', dialog()!))
+    expect(dialog()).toBeNull()
+    expect(question()).toBeNull()
+    await click(buttonNamed('Neue Zeitkapsel'))
+    await editor()
+    await typeTitle('Für später')
+    await typeInEditor('Ein langer Brief')
+    await choose([picture('a.jpg')])
+    // Escape and a tap beside the dialog ask, "Weiterschreiben" goes back to the letter as it was.
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    })
+    expect(question()?.querySelector('[data-discard-text]')?.textContent?.trim()).toBe('Text und Fotos gehen verloren.')
+    expect(buttonNamed('Weiterschreiben', question()!)).toBeTruthy()
+    await click(buttonNamed('Weiterschreiben', question()!))
+    expect(question()).toBeNull()
+    expect((dialog()!.querySelector('input:not([type])') as HTMLInputElement).value).toBe('Für später')
+    expect(dialog()!.querySelector('[contenteditable]')?.textContent).toBe('Ein langer Brief')
+    const scrim = dialog()!.parentElement!
+    await act(async () => scrim.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })))
+    expect(question()).not.toBeNull()
+    // Escape on the question is "Weiterschreiben" too.
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    })
+    expect(question()).toBeNull()
+    expect(dialog()).not.toBeNull()
+    expect(calls.some((call) => call.method === 'DELETE')).toBe(false)
+    await click(buttonNamed('Abbrechen', dialog()!))
+    await click(buttonNamed('Verwerfen', question()!))
+    await idle()
+    expect(dialog()).toBeNull()
+    expect(calls.filter((call) => call.method === 'DELETE').map((call) => call.url)).toEqual([`/api/capsules/photos/${ID(31)}`])
+  })
+
+  it('closes a capsule opened for a change and left unchanged without asking', async () => {
+    await show('/zeitkapseln?tab=von-mir')
+    await click(buttonNamed('Ändern', box.querySelector(`[data-capsule="${ID(4)}"]`)!))
+    await editor()
+    await idle()
+    await click(buttonNamed('Abbrechen', dialog()!))
+    expect(question()).toBeNull()
+    expect(dialog()).toBeNull()
+    await click(buttonNamed('Ändern', box.querySelector(`[data-capsule="${ID(4)}"]`)!))
+    await editor()
+    await click(buttonNamed('Foto entfernen', dialog()!.querySelector('[data-tile="kept"]') as HTMLElement))
+    await click(buttonNamed('Abbrechen', dialog()!))
+    expect(question()).not.toBeNull()
   })
 
   it('changes a capsule to others with its revision: the letter in the editor, the photos kept, one added', async () => {

@@ -80,9 +80,8 @@ function same(a: Page[Field], b: Page[Field]): boolean {
   return JSON.stringify(a) === JSON.stringify(b)
 }
 
-/** The date and the hour in a time zone, as the server counts "today". */
-function nowIn(zone?: string): { date: string; hour: number } {
-  const moment = new Date()
+/** The date and the hour in a time zone, as the server counts "today" (or of another moment). */
+function nowIn(zone?: string, moment = new Date()): { date: string; hour: number } {
   try {
     const parts = new Intl.DateTimeFormat('en-CA', { timeZone: zone || undefined, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23' }).formatToParts(moment)
     const part = (type: string) => parts.find((item) => item.type === type)?.value ?? ''
@@ -162,7 +161,7 @@ export default function WritePage() {
   const [saving, setSaving] = useState(false)
   const [conflict, setConflict] = useState<DayPage | null>(null)
   /** A draft older than the page that stands, waiting for the person to choose between the two. */
-  const [stale, setStale] = useState<{ draft: Draft; found: DayPage; templates: TemplateSet | null; time: string } | null>(null)
+  const [stale, setStale] = useState<{ draft: Draft; found: DayPage; templates: TemplateSet | null } | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [copied, setCopied] = useState(false)
   const [editorEmpty, setEditorEmpty] = useState(true)
@@ -229,6 +228,9 @@ export default function WritePage() {
   const longest = useRef<number | undefined>(undefined)
   const savingNow = useRef(false)
   const done = useRef(false)
+  /** While the page is being deleted: no draft goes out, and the one on its way is waited for first. */
+  const halted = useRef(false)
+  const inFlight = useRef<Promise<void>>(Promise.resolve())
 
   /** The photos of the day itself (not those that came with a note): the first of them is the cover to begin with,
    * else the illustration that fits. */
@@ -312,6 +314,14 @@ export default function WritePage() {
     beginning.current = begin
   })
 
+  /** "Entwurf von 14:00" today, "Entwurf vom 8. Oktober, 14:00" on another day, in the person's zone. */
+  const staleLabel = (updated: string) => {
+    const time = timeOf(updated, zone)
+    const written = new Date(updated)
+    if (nowIn(zone, written).date === nowIn(zone).date) return t('write.staleDraft', { time })
+    return t('write.staleDraftOn', { time, date: new Intl.DateTimeFormat(i18n.language, { day: 'numeric', month: 'long', timeZone: zone || undefined }).format(written) })
+  }
+
   /** The answer to "Seite oder Entwurf?": the saved page throws the draft away; the draft comes back as ever, and a
    * save meets the page saved since (the conflict shows the other version). */
   const chooseStale = (keep: 'page' | 'draft') => {
@@ -343,7 +353,7 @@ export default function WritePage() {
         // A draft begun on another revision of a page that stands now (the page was saved after it: "Nur kurz", a
         // second tab, the morning's suggestion taken): it does not come back unasked. The person chooses.
         if (draft && draft.base_revision !== (found?.revision ?? -1) && found && (found.title.trim() || found.text.trim())) {
-          setStale({ draft, found, templates: ownTemplates, time: timeOf(draft.updated_at, zone) })
+          setStale({ draft, found, templates: ownTemplates })
           return
         }
         beginning.current(found, draft, ownTemplates)
@@ -381,14 +391,19 @@ export default function WritePage() {
     window.clearTimeout(longest.current)
     pause.current = undefined
     longest.current = undefined
-    if (!pending.current || done.current) return
+    if (!pending.current || done.current || halted.current) return
     const { page: now, base: from, origin: came } = latest.current
     const draft: DraftIn = { title: now.title, text: now.text, tags: now.tags, cover: now.cover, ...(now.cover && now.cover_crop ? { cover_crop: now.cover_crop } : {}), base_revision: from, ...(came.by === 'ai' ? { written_by: 'ai' as const, ai_length: came.length } : {}) }
     const body = JSON.stringify(draft)
     pending.current = false
     if (body === sentDraft.current) return
     try {
-      await diaryApi.saveDraft(date, draft, keepalive && body.length < KEEPALIVE_MAX)
+      const sending = diaryApi.saveDraft(date, draft, keepalive && body.length < KEEPALIVE_MAX)
+      inFlight.current = sending.then(
+        () => undefined,
+        () => undefined,
+      )
+      await sending
       sentDraft.current = body
       setKept(true)
     } catch {
@@ -1121,7 +1136,7 @@ export default function WritePage() {
           </p>
           <div className="mt-4 flex flex-wrap justify-end gap-2">
             <button type="button" onClick={() => chooseStale('draft')} className="inline-flex h-10 items-center rounded-full border border-line px-4 text-sm font-semibold text-ink-2 hover:bg-sheet-2">
-              {t('write.staleDraft', { time: stale.time })}
+              {staleLabel(stale.draft.updated_at)}
             </button>
             <button type="button" onClick={() => chooseStale('page')} className="inline-flex h-10 items-center rounded-full bg-accent px-4 text-sm font-semibold text-accent-ink hover:brightness-105">
               {t('write.stalePage')}
@@ -1134,7 +1149,23 @@ export default function WritePage() {
         <DeletePageDialog
           date={date}
           unsaved={unsaved}
-          onClose={() => setDeleting(false)}
+          beforeDelete={async () => {
+            // A draft must not reach the server after the page is gone (it would come back over the empty day).
+            halted.current = true
+            window.clearTimeout(pause.current)
+            window.clearTimeout(longest.current)
+            pause.current = undefined
+            longest.current = undefined
+            await inFlight.current
+          }}
+          onFailed={() => {
+            halted.current = false
+          }}
+          onClose={() => {
+            halted.current = false
+            setDeleting(false)
+            if (pending.current) pause.current = window.setTimeout(() => void flushing.current(), DRAFT_PAUSE_MS)
+          }}
           onDeleted={() => {
             // Nothing is left to send: the draft went with the page.
             done.current = true

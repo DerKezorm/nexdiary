@@ -252,23 +252,30 @@ def _chosen(db: Session, sender: Account, ids: list[int], keep: set[int] | None 
     return [found[person] for person in wanted]
 
 
-#: A backslash and the character it escapes (taken first, so that an escaped ``!`` or ``[`` is never read as the start
-#: of a picture), or a picture written inline: ``![words](address)``, both parts bounded and on one line.
-_INLINE_PICTURE = re.compile(r"\\.|!\[(?:\\.|[^\]\\\n]){0,1000}\]\((?:\\.|[^)\\\n]){0,2000}\)", re.DOTALL)
-#: A backslash and what it escapes, or the opening of a picture of any other form (``![words][name]``, ``![words]``).
-_PICTURE_OPENING = re.compile(r"\\.|!\[", re.DOTALL)
-_PICTURE_TAG = r"<\s*(?:img|image|picture|source|video|svg)\b"
-#: A backslash and what it escapes, or a picture written as HTML (its opening tag).
-_HTML_PICTURE = re.compile(r"\\.|" + _PICTURE_TAG + r"[^>\n]{0,2000}>?", re.IGNORECASE | re.DOTALL)
-#: A backslash and what it escapes, or the ``<`` of a picture tag that is left.
-_HTML_PICTURE_OPENING = re.compile(r"\\.|<(?=" + _PICTURE_TAG[1:] + ")", re.IGNORECASE | re.DOTALL)
+#: Every pattern below takes a backslash and the character it escapes first, as a run (group 1, kept as it is): an
+#: escaped ``!``, ``[`` or ``<`` is never read as the start of a picture.
+_ESCAPES = r"((?:\\.)+)"
+#: A picture written inline, ``![words](address)`` on one line. Its words hold no bracket and its address no
+#: parenthesis (a picture with them is left to the escaping at the end), and nothing gives back what it took
+#: (possessive): a search from one ``![`` stops at the next ``[`` or ``(``, so no part of the text is read twice and the
+#: pass stays linear whatever is written.
+_INLINE_PICTURE = re.compile(_ESCAPES + r"|!\[(?:\\.|[^\[\]\\\n])*+\]\((?:\\.|[^()\\\n])*+\)", re.DOTALL)
+#: The opening of a picture of any other form (``![words][name]``, ``![words]``).
+_PICTURE_OPENING = re.compile(_ESCAPES + r"|!\[", re.DOTALL)
+_PICTURE_TAG = r"<\s*+(?:img|image|picture|source|video|svg)\b"
+#: A picture written as HTML (its opening tag).
+_HTML_PICTURE = re.compile(_ESCAPES + "|" + _PICTURE_TAG + r"[^>\n]{0,2000}+>?", re.IGNORECASE | re.DOTALL)
+#: The ``<`` of a picture tag that is left.
+_HTML_PICTURE_OPENING = re.compile(_ESCAPES + "|<(?=" + _PICTURE_TAG[1:] + ")", re.IGNORECASE | re.DOTALL)
+#: Whether a text still holds something those two would escape (most hold nothing, and the pass is spared).
+_MAYBE_PICTURE = re.compile(r"!\[|" + _PICTURE_TAG, re.IGNORECASE)
 #: A reference to a photo of the diary.
 _PHOTO_REFERENCE = re.compile(r"photo:[0-9a-fA-F]{32}")
 _BLANK_LINES = re.compile(r"\n{3,}")
 
 
-def _keep_escapes(replacement: str) -> Any:
-    return lambda match: match.group(0) if match.group(0).startswith("\\") else replacement
+def _escaped(replacement: str) -> Any:
+    return lambda match: match.group(1) or replacement
 
 
 def without_pictures(markdown: str) -> str:
@@ -276,12 +283,13 @@ def without_pictures(markdown: str) -> str:
     a reference to a photo of the diary (``photo:<id>``) becomes a space; what could still be read as a picture after
     that (a picture of another form, or one that taking something out put together) is escaped, so that it is plain
     characters (``!\\[``, ``\\<img``). The last two steps only add a character, so they put nothing new together. Each
-    step a single pass, linear in the length of the text."""
-    out = _HTML_PICTURE.sub(_keep_escapes(""), markdown)
-    out = _INLINE_PICTURE.sub(_keep_escapes(""), out)
+    step a single pass, linear in the length of the text: 50,000 characters of any form take milliseconds."""
+    out = _HTML_PICTURE.sub(r"\1", markdown)
+    out = _INLINE_PICTURE.sub(r"\1", out)
     out = _PHOTO_REFERENCE.sub(" ", out)
-    out = _HTML_PICTURE_OPENING.sub(_keep_escapes("\\<"), out)
-    out = _PICTURE_OPENING.sub(_keep_escapes("!\\["), out)
+    if _MAYBE_PICTURE.search(out):
+        out = _HTML_PICTURE_OPENING.sub(_escaped("\\<"), out)
+        out = _PICTURE_OPENING.sub(_escaped("!\\["), out)
     return _BLANK_LINES.sub("\n\n", out).strip()
 
 
@@ -354,6 +362,7 @@ def _refuse_when_open(db: Session, capsule: Any) -> None:
 # --- Photos ---------------------------------------------------------------------------------------------------------
 
 
+@photos.writes
 def add_upload(db: Session, account: Account, upload_id: str, drawn: photos.Drawn) -> tuple[dict[str, Any], bool]:
     """Keeps a photo chosen for a capsule, sealed with the person's own key until the capsule takes it. The same upload
     id again returns the photo that stands. Within the person's storage; no number of its own (a letter may hold many
@@ -823,6 +832,7 @@ def _again(db: Session, account: Account, client_id: str, mac: str) -> dict[str,
     return one(db, account, found.uid)
 
 
+@photos.writes
 def create(db: Session, sender: Account, client_id: str, to: list[int], opens_on: str, title: str, body: str,
            photo_ids: list[str] | None = None) -> tuple[dict[str, Any], bool]:
     """Closes a new capsule with the photos chosen for it, in that order; the capsule as its sender sees it, and whether
@@ -906,6 +916,7 @@ def create(db: Session, sender: Account, client_id: str, to: list[int], opens_on
 KEEP: Any = object()
 
 
+@photos.writes
 def change(db: Session, sender: Account, uid: str, revision: int, to: list[int], opens_on: str, title: str,
            body: str, photo_ids: Any = KEEP) -> dict[str, Any]:
     """Changes a capsule to others before it opened anywhere: the recipients, the day, the title, the text and the

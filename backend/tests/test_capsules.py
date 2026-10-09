@@ -1224,17 +1224,35 @@ def test_the_letter_keeps_no_picture_and_no_reference_to_a_photo_of_the_diary(fa
 
 
 def test_cleaning_a_letter_made_to_be_slow_is_quick() -> None:
+    """Every form made to be slow, four times as long as a letter may be: linear, it takes milliseconds (measured
+    under 25 ms for 50,000 characters); the limit is generous for a slow machine, a pass that reads the text again from
+    every ``![`` takes seconds."""
     import time
 
-    for hostile in ("![" * 25_000, "![a](" * 10_000, "\\" * 50_000, "<img " * 10_000, "photo:" * 8_000,
-                    "!![" + "a" * 999 + "](" * 9_000):
+    b = "\\"
+    forms = ("![", "![a](", b, "<img ", "photo:", "!![" + "a" * 999 + "](", "![a](b", "![" + b + "]", b + "![",
+             "!" + b + "[", "<" + b + "img", b + "<img ", "![" + b + "](", "< ", "![a]((((", "!", "[")
+    for form in forms:
+        hostile = (form * (200_000 // len(form) + 1))[:200_000]
         times = []
         for _ in range(3):
             start = time.perf_counter()
             out = capsules.without_pictures(hostile)
             times.append(time.perf_counter() - start)
         assert pictures_in(out) == []
-        assert min(times) < 2.0, (hostile[:20], times)
+        assert min(times) < 2.0, (form, times)
+
+
+def test_pictures_in_html_go_exactly_and_an_escaped_one_stays() -> None:
+    b = "\\"
+    assert capsules.without_pictures(f"a <img src=x onerror=y> b <IMG\nsrc=2> c {b}<img d") == (
+        f"a  b \nsrc=2> c {b}<img d")
+    assert capsules.without_pictures("<picture><source srcset=x><img src=y></picture>") == "</picture>"
+    assert capsules.without_pictures("x < svg onload=1>y <video src=v> z") == "x y  z"
+    # Put together by taking a picture out of the middle: escaped, not left as a tag.
+    assert capsules.without_pictures("<im![x](y)g src=1>") == f"{b}<img src=1>"
+    assert capsules.without_pictures("!![a](b)[c](d)") == f"!{b}[c](d)"
+    assert capsules.without_pictures(f"{b}![a](b) ![c](d)") == f"{b}![a](b)"
 
 
 def test_a_letter_is_markdown_and_one_from_before_stays_its_words(family: Family) -> None:

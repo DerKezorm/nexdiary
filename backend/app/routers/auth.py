@@ -570,6 +570,11 @@ def profile_of(stored: Any) -> dict[str, Any]:
     out["reminder"] = reminders.of(stored)
     # Whether and when the day before is written up in the morning on its own (``services/autowrite.py``).
     out["autowrite"] = autowrite.of(stored)
+    # The day (server's zone) the person last left the family question; joined again that day, they take part from the
+    # next one (``family_waits``, worked out anew each time, never taken from what is stored).
+    left = stored.get("family_left")
+    out["family_left"] = left if isinstance(left, str) and diary.DATE_PATTERN.match(left) else ""
+    out["family_waits"] = family.waits(out)
     return out
 
 
@@ -594,6 +599,9 @@ def set_preferences(payload: dict[str, Any], account: Account, db: DbSession) ->
             raise error("bad_preference", "This value is not one nexdiary offers.", 422, field=key)
         current[key] = value
     left = family.joined(row.profile) and not current["family"]
+    if left:
+        current["family_left"] = family.today()
+    current["family_waits"] = family.waits(current)
     row.profile = current
     if left:
         # Whoever leaves the family question takes their answers along, in the same transaction.

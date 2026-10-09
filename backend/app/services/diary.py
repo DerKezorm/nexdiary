@@ -1354,7 +1354,9 @@ def clean_draft(db: Session, account_id: int, day: str, fields: dict[str, Any]) 
 def save_draft(db: Session, account_id: int, dek: bytes, day: str, draft: dict[str, Any],
                base_revision: int) -> dict[str, Any]:
     """Keeps the draft of a day, replacing the one before (one statement: two tabs typing at once leave one), while
-    the person's storage has room for it (``quota``; the draft it replaces does not count)."""
+    the person's storage has room for it (``quota``; the draft it replaces does not count). A draft begun on a page
+    (``base_revision`` 0 or more) is kept only while a page stands: one that arrives after the page was deleted (sent
+    before, on its way) is refused with ``draft_page_gone``, decided in the same statement."""
     ensure_open(db, account_id, day)
     moment = now()
     sealed = vault.seal_json(dek, draft, _draft_aad(account_id, day))
@@ -1366,6 +1368,7 @@ def save_draft(db: Session, account_id: int, dek: bytes, day: str, draft: dict[s
             f"WHERE (:quota IS NULL OR {quota.USED} - coalesce((SELECT length(content_enc) FROM drafts "
             "WHERE user_id = :user AND date = :date), 0) + length(:content) <= :quota) "
             "AND NOT EXISTS (SELECT 1 FROM days WHERE user_id = :user AND date = :date AND locked_at IS NOT NULL) "
+            "AND (:base < 0 OR EXISTS (SELECT 1 FROM days WHERE user_id = :user AND date = :date)) "
             "ON CONFLICT (user_id, date) DO UPDATE SET content_enc = excluded.content_enc, "
             # Saved from the writing view the draft is the person's own: it no longer waits as the morning's.
             "base_revision = excluded.base_revision, updated_at = excluded.updated_at, auto = 0"
@@ -1375,6 +1378,8 @@ def save_draft(db: Session, account_id: int, dek: bytes, day: str, draft: dict[s
     db.commit()
     if written.rowcount != 1:
         ensure_open(db, account_id, day)
+        if base_revision >= 0 and not day_exists(db, account_id, day):
+            raise error("draft_page_gone", "The page this draft was begun on is gone.", 409)
         raise quota.full(db)
     return {**draft, "base_revision": base_revision, "updated_at": moment.isoformat(), "auto": False}
 
@@ -1439,11 +1444,14 @@ def delete_draft(db: Session, account_id: int, dek: bytes, day: str) -> list[str
 TEXT_PHOTO_GRACE = timedelta(seconds=5)
 
 
-def tidy_text_photos(db: Session, account_id: int, dek: bytes, day: str, *, drop_draft: bool = False) -> list[str]:
+def tidy_text_photos(db: Session, account_id: int, dek: bytes, day: str, *, drop_draft: bool = False,
+                     grace: bool = True) -> list[str]:
     """Deletes the photos of a day that were taken for its text (``for_text``) and that nothing holds any more: not the
     text or the cover of the saved page, not a note, not the text or the cover of the draft (thrown away first with
     ``drop_draft``, in the same transaction). Never on a locked day, never a photo younger than ``TEXT_PHOTO_GRACE``,
     and never when the page or the draft cannot be read (what they hold is not known then).
+
+    ``grace=False`` (the page was deleted): the photos just taken go too, nothing is on its way into a page any more.
 
     One statement decides: it deletes only while the page still stands on the revision that was read and the draft is
     still the one that was read, so a save or a draft from another device in between keeps every photo; then it is
@@ -1479,7 +1487,7 @@ def tidy_text_photos(db: Session, account_id: int, dek: bytes, day: str, *, drop
             removed = list(db.scalars(
                 delete(Photo).where(
                     Photo.user_id == account_id, Photo.date == day, Photo.for_text.is_(True),
-                    Photo.created_at <= now() - TEXT_PHOTO_GRACE,
+                    Photo.created_at <= now() - (TEXT_PHOTO_GRACE if grace else timedelta(0)),
                     Photo.uid.not_in(sorted(held)),
                     ~exists().where(Note.user_id == account_id, Note.photo_id == Photo.uid),
                     ~_locked_day(account_id, day),

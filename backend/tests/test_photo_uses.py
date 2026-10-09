@@ -588,3 +588,41 @@ def test_a_locked_page_is_not_deleted(client: TestClient, account: Account) -> N
     refused = client.delete(f"/api/days/{DAY}")
     assert (refused.status_code, refused.json()["detail"]["code"]) == (409, "day_locked")
     assert client.get(f"/api/days/{DAY}").json()["text"] == "Bleibt."
+
+
+def test_a_draft_that_arrives_after_the_page_was_deleted_is_refused(client: TestClient, account: Account,
+                                                                    moment: Clock) -> None:
+    """Sent before the page was deleted, on its way while it went: it would bring the old writing back over the empty
+    day. A draft begun on no page (base -1) is kept as ever."""
+    page = client.put(f"/api/days/{DAY}", json={"title": "T", "text": "x"}).json()
+    assert client.delete(f"/api/days/{DAY}").status_code == 204
+    late = client.put(f"/api/days/{DAY}/draft", json={"text": "spät", "base_revision": page["revision"]})
+    assert (late.status_code, late.json()["detail"]["code"]) == (409, "draft_page_gone")
+    assert client.get(f"/api/days/{DAY}/draft").json() is None
+    fresh = client.put(f"/api/days/{DAY}/draft", json={"text": "neu", "base_revision": -1})
+    assert fresh.status_code == 200
+    assert client.get(f"/api/days/{DAY}/draft").json()["text"] == "neu"
+    # On a page that stands, a draft from an older revision is still kept (the writing page asks then).
+    assert client.put(f"/api/days/{DAY}", json={"title": "Wieder"}).status_code == 200
+    assert client.put(f"/api/days/{DAY}/draft", json={"text": "alt", "base_revision": 7}).status_code == 200
+
+
+def test_deleting_a_page_takes_a_text_picture_taken_a_moment_ago_and_never_photos_of_the_day_or_of_notes(
+        client: TestClient, account: Account, moment: Clock) -> None:
+    of_the_day = shot(client)["id"]
+    on_a_note = shot(client, text=True)["id"]
+    note_with(client, on_a_note)
+    assert client.put(f"/api/days/{DAY}", json={"title": "T", "text": "Erst."}).status_code == 200
+    # Within the grace: just put into the text.
+    young = shot(client, text=True)["id"]
+    in_draft = shot(client, text=True)["id"]
+    assert client.put(f"/api/days/{DAY}", json={"text": f"Erst. {image(young)}"}).status_code == 200
+    assert client.put(f"/api/days/{DAY}/draft", json={"text": f"Mehr {image(in_draft)}", "base_revision": 1}).status_code == 200
+    assert exists(young) and exists(in_draft)
+    assert client.delete(f"/api/days/{DAY}").status_code == 204
+    assert gone(young) and gone(in_draft)
+    assert exists(of_the_day) and exists(on_a_note)
+    # Saving a page keeps the grace as before: a picture just taken stays.
+    fresh = shot(client, text=True)["id"]
+    assert client.put(f"/api/days/{DAY}", json={"text": "Ohne"}).status_code == 200
+    assert exists(fresh)
