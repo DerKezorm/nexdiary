@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import smtplib
+from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
+from email.utils import parsedate_to_datetime
 from typing import Any, ClassVar, Self
 
 import pytest
@@ -127,6 +129,17 @@ def test_a_failing_mail_server_says_so_without_its_answer(
     smtp.fail = False
     assert client.post("/api/settings/mail-test", json={"to": "dora@example.com"}).status_code == 204
     assert client.post("/api/settings/mail-test", json={"to": "not an address"}).status_code == 422
+
+
+def test_mail_carries_a_date_header(client: TestClient, operator: Account, smtp: type[FakeSmtp]) -> None:
+    # Without a Date large providers drop the mail silently; smtplib does not add one.
+    client.put("/api/settings", json=MAIL)
+    before = datetime.now(UTC) - timedelta(seconds=5)
+    assert client.post("/api/settings/mail-test", json={"to": "dora@example.com"}).status_code == 204
+    [message] = smtp.sent
+    headers = message.get_all("Date")
+    assert headers is not None and len(headers) == 1
+    assert before <= parsedate_to_datetime(headers[0]) <= datetime.now(UTC) + timedelta(seconds=5)
 
 
 def test_mail_off_without_a_server() -> None:
