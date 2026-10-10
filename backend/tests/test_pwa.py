@@ -1,6 +1,6 @@
-"""The app on the home screen: the manifest with its shortcut "Notiz" and the share target into the quick note, the
-service worker for Web Push only (no fetch handler: it keeps nothing and swallows nothing), and a Content Security
-Policy that lets it register in the built app, where it counts."""
+"""The app on the home screen: the manifest with its shortcut "Notiz" and the share target into the quick note (texts,
+links and photos), the service worker for Web Push and for that one share (it keeps no pictures and no answers, and lets
+every other request past), and a Content Security Policy that lets it register in the built app, where it counts."""
 
 from __future__ import annotations
 
@@ -30,17 +30,21 @@ def test_the_manifest_has_the_shortcut_and_shares_into_the_quick_note() -> None:
     [shortcut] = manifest["shortcuts"]
     assert (shortcut["name"], shortcut["url"]) == ("Notiz", "/schnell")
     share = manifest["share_target"]
-    assert (share["action"], share["method"]) == ("/schnell", "GET")
-    assert share["params"]["text"] == "text" and "files" not in share["params"]
+    assert (share["action"], share["method"], share["enctype"]) == ("/schnell", "POST", "multipart/form-data")
+    params = share["params"]
+    assert (params["title"], params["text"], params["url"]) == ("title", "text", "url")
+    assert params["files"] == [{"name": "photos", "accept": ["image/*"]}]
 
 
-def test_the_service_worker_serves_push_only() -> None:
+def test_the_service_worker_serves_push_and_the_share_and_nothing_else() -> None:
     worker = (PUBLIC / "sw.js").read_text(encoding="utf-8")
     code = "\n".join(line for line in worker.splitlines() if not line.lstrip().startswith("//"))
     assert "addEventListener('push'" in code and "addEventListener('notificationclick'" in code
-    # Nothing between the page and the server: no fetch handler, no cache, no request of its own.
-    for never in ("'fetch'", '"fetch"', "caches", "fetch(", "importScripts", "respondWith"):
+    # One answer of its own, for the share only; no request of its own, nothing loaded from elsewhere, one cache.
+    assert code.count("respondWith") == 1 and "if (!isShare(event.request)) return" in code
+    for never in ("fetch(", "importScripts"):
         assert never not in code, never
+    assert code.count("caches.") == 1 and "self.caches.open(SHARE_CACHE)" in code
     # A tap opens a path of nexdiary, never another site.
     assert "startsWith('//')" in code
 
@@ -60,6 +64,24 @@ def test_the_built_app_serves_the_worker_and_the_manifest_fresh(tmp_path: Path) 
         assert worker.headers["cache-control"] == "no-cache"
         assert browser.get("/manifest.webmanifest").headers["cache-control"] == "no-cache"
         assert "cache-control" not in browser.get("/logo.svg").headers
+
+
+def test_a_share_that_no_service_worker_took_leads_to_the_quick_note_unread(tmp_path: Path) -> None:
+    """Without a worker the share target's POST reaches the server: it is led to the quick note, which says to share
+    once more. Nothing of the body is read or kept, and no session is needed for that."""
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<!doctype html><title>nexdiary</title>", encoding="utf-8")
+    built = FastAPI()
+    main._mount_frontend(built, dist)
+    with TestClient(built) as browser:
+        files = [("photos", (f"{index}.jpg", b"\xff\xd8" + bytes(2048), "image/jpeg")) for index in range(3)]
+        answer = browser.post("/schnell", data={"text": "mittag im park"}, files=files, follow_redirects=False)
+        assert answer.status_code == 303
+        assert answer.headers["location"] == "/schnell?geteilt=verloren"
+        assert answer.content == b""
+        # The quick note itself is still the app's page.
+        assert browser.get("/schnell").text.startswith("<!doctype html>")
 
 
 def test_phones_get_png_symbols_and_notifications_a_png_icon_and_a_badge() -> None:

@@ -1,4 +1,18 @@
 {
+  "0.6.0": {
+    "lead": "Photos from other apps can now be shared to nexdiary.",
+    "sections": [
+      {
+        "title": "Share photos to nexdiary",
+        "where": "Share menu on the phone, quick note",
+        "body": "Share up to 10 photos from the gallery or another app to nexdiary, with a text if you like. Each photo becomes a note of today, the text goes into the first. The photos take the same way as an upload: drawn anew without place and camera data, stored encrypted. If you are not signed in at the moment, they arrive after you sign in. This works with the installed app on Android with Chrome and on Windows with Edge; the iPhone does not offer sharing to web apps."
+      }
+    ],
+    "smallTitle": "Also",
+    "small": [
+      "Texts and links from other apps land in the field of the quick note, as before."
+    ]
+  },
   "0.5.0": {
     "lead": "Letters that open only on a chosen day, and a few new reasons to keep writing.",
     "sections": [

@@ -112,7 +112,9 @@
     "writeUpHintAi": "In Ruhe, mit Werten, Fotos und auf Wunsch der KI",
     "promptHide": "Frage ausblenden",
     "promptAsk": "Auf die Frage antworten",
-    "answerPlaceholder": "Deine Antwort …"
+    "answerPlaceholder": "Deine Antwort …",
+    "sharedArriving_one": "Das geteilte Foto kommt an …",
+    "sharedArriving_other": "Die {{count}} geteilten Fotos kommen an …"
   },
   "journal": {
     "title": "Dein Tagebuch",
@@ -457,7 +459,7 @@
       "text": "Für unterwegs: nur ein Feld, die Tastatur gleich offen, darüber die Notizen von heute.",
       "quickStart": "Mit der Schnellnotiz starten",
       "quickStartHint": "Öffnest du nexdiary auf dem Handy, landest du direkt im Eingabefeld. „Alles“ oben führt zur ganzen App.",
-      "also": "Außerdem: Lange auf das nexdiary-Symbol auf dem Startbildschirm drücken und „Notiz“ wählen, oder aus einer anderen App einen Text oder ein Foto an nexdiary teilen."
+      "also": "Außerdem: Lange auf das nexdiary-Symbol auf dem Startbildschirm drücken und „Notiz“ wählen. Ist nexdiary installiert, kannst du aus einer anderen App Texte, Links und bis zu 10 Fotos daran teilen, jedes Foto wird eine Notiz. Das geht auf Android mit Chrome und unter Windows mit Edge, auf dem iPhone nicht."
     },
     "layout": {
       "title": "Aufbau von „Heute“",
@@ -1569,6 +1571,9 @@
     "note_empty": "Eine Notiz braucht einen Text.",
     "note_id_invalid": "Diese Notiz hat keine gültige Kennung. Lade die Seite neu.",
     "note_id_taken": "Die Notiz konnte nicht sicher gespeichert werden. Schick sie bitte noch einmal.",
+    "share_too_many": "Höchstens {{max}} Fotos auf einmal. Teile bitte weniger.",
+    "share_lost": "Die geteilten Fotos sind nicht angekommen. Teile sie bitte noch einmal.",
+    "share_no_day": "Ohne Antwort, zu welchem Tag sie gehören, sind die geteilten Fotos nicht abgelegt. Teile sie bitte noch einmal.",
     "note_too_long": "Die Notiz ist zu lang (höchstens {{max}} Zeichen).",
     "oidc_account": "Dieses Konto meldet sich über den Anbieter an.",
     "oidc_denied": "Der Anbieter hat dich nicht hereingelassen.",

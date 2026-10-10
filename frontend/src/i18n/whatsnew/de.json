@@ -1,4 +1,18 @@
 {
+  "0.6.0": {
+    "lead": "Fotos aus anderen Apps lassen sich jetzt an nexdiary teilen.",
+    "sections": [
+      {
+        "title": "Fotos an nexdiary teilen",
+        "where": "Teilen-Menü auf dem Handy, Schnellnotiz",
+        "body": "Teile aus der Galerie oder einer anderen App bis zu 10 Fotos an nexdiary, gern mit einem Text. Jedes Foto wird eine Notiz von heute, der Text steht in der ersten. Die Fotos gehen denselben Weg wie beim Hochladen: neu gezeichnet ohne Ort und Kameradaten, verschlüsselt gespeichert. Bist du gerade nicht angemeldet, kommen sie nach der Anmeldung an. Das geht mit der installierten App auf Android mit Chrome und unter Windows mit Edge; das iPhone bietet Web-Apps das Teilen nicht an."
+      }
+    ],
+    "smallTitle": "Außerdem",
+    "small": [
+      "Texte und Links aus anderen Apps landen wie bisher im Eingabefeld der Schnellnotiz."
+    ]
+  },
   "0.5.0": {
     "lead": "Briefe, die sich erst an einem bestimmten Tag öffnen, und ein paar neue Gründe, regelmäßig zu schreiben.",
     "sections": [

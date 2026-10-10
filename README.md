@@ -1,12 +1,15 @@
 # nexdiary
 
+[![Website: nexdiary.nexapps.dev](https://img.shields.io/badge/website-nexdiary.nexapps.dev-5a7a52?style=for-the-badge)](https://nexdiary.nexapps.dev)
+
 A diary for the family, on your own server. Jot things down during the day without minding the spelling, and in the
 evening turn them into a page: by yourself, or with an AI that only orders and smooths. Every person sees only their
 own diary; single days can be shared with people of the family, and the operator manages the accounts without ever
 seeing what is written in them.
 
 nexdiary is one of the nex apps and looks like them: warm paper by day, candlelight by night, sage green (or four other
-colours of your choice).
+colours of your choice). What it can do, the full guide and answers to common questions are on the project site,
+**[nexdiary.nexapps.dev](https://nexdiary.nexapps.dev)**.
 
 ![Today: the notes of the day as a timeline, the values, the photos, and the button to write the day up](docs/screenshots/today.webp)
 
@@ -81,7 +84,9 @@ More, in light and dark and on the phone, are in [docs/screenshots](docs/screens
 - **Photos.** Upload them, or take them from your own [Immich](https://immich.app) (see below). Place and camera data
   are removed; every photo is drawn anew from its pixels and stored sealed.
 - **On the phone.** All of it works on a phone. The quick note opens on a field and the keyboard; the app installs to the
-  home screen with a shortcut "Note", and takes texts and photos shared from other apps.
+  home screen with a shortcut "Note". Installed on Android with Chrome or on Windows with Edge, it takes texts, links
+  and up to 10 photos shared from other apps, each photo as a note of its own (the iPhone does not offer sharing to web
+  apps).
 - **Reminders** by Web Push, daily at your time or after a pause of a few days, not if you already wrote today.
 - **Safe by default.** A second factor is required from the start, passkeys, a list of signed-in devices, a notice when
   somebody signs in from a new device, a brake against guessing, and everything you write is encrypted in the database.

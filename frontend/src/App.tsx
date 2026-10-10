@@ -1,5 +1,5 @@
-import { lazy, Suspense, type ReactNode } from 'react'
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { lazy, Suspense, useEffect, useRef, type ReactNode } from 'react'
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 
 import { AppShell } from './components/AppShell'
 import { CapsulesPage } from './pages/CapsulesPage'
@@ -15,6 +15,7 @@ import { SettingsPage } from './pages/SettingsPage'
 import { SharedEntryPage, SharedPage } from './pages/SharedPage'
 import { StatsPage } from './pages/StatsPage'
 import { TodayPage } from './pages/TodayPage'
+import { waitingShare } from './lib/sharedInbox'
 import { useAuth } from './state/auth'
 
 /** The editor is the heaviest part of the app: loaded only when somebody writes. */
@@ -25,6 +26,20 @@ const WritePage = lazy(() => import('./pages/WritePage'))
 function SignedIn({ children }: { children: ReactNode }) {
   const { status, me } = useAuth()
   const location = useLocation()
+  const navigate = useNavigate()
+  // Photos shared from another app while nobody was signed in wait in the browser. The way back after the sign-in
+  // carries their address, but a sign-on through a provider comes back without it: once fully in, the app looks itself
+  // and leads to the quick note, which takes them in.
+  const ready = status === 'signedIn' && (!me?.session_stage || me.session_stage === 'full') && !me?.second_factor_setup_required
+  const looked = useRef(false)
+  useEffect(() => {
+    if (!ready || looked.current) return
+    looked.current = true
+    if (location.pathname === '/schnell' && new URLSearchParams(location.search).has('geteilt')) return
+    void waitingShare().then((id) => {
+      if (id) navigate(`/schnell?geteilt=${id}`)
+    })
+  }, [ready, location, navigate])
   if (status === 'loading') return null
   if (status === 'setup') return <Navigate to="/setup" replace />
   if (status === 'signedOut') return <Navigate to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`} replace />

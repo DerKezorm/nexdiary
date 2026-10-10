@@ -5,8 +5,11 @@
  * The camera button takes or picks a photo for the next note; under the notes "Den Tag aufschreiben" leads to "Today".
  * Above the field stands the question of the day: tapped, the next note is the answer and keeps the question; the
  * cross puts it away for this visit.
+ *
+ * What another app shares arrives here. Text alone goes into the field. Photos (kept for a moment by the service worker,
+ * `?geteilt=<id>`) each become a note of today with that photo, the text in the first one.
  */
-import { ArrowUp, Check, LayoutGrid, MessageCircleQuestion, PenLine, X } from 'lucide-react'
+import { ArrowUp, Check, LayoutGrid, Loader2, MessageCircleQuestion, PenLine, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
@@ -22,23 +25,55 @@ import { StreakBadges } from '../components/Streak'
 import { longDate, timeOf } from '../lib/dates'
 import { errorText } from '../lib/errors'
 import { sharedText } from '../lib/shared'
+import { SHARE_MAX, shareSignal, takeShared } from '../lib/sharedInbox'
 import { useAiState } from '../state/ai'
 import { useAuth } from '../state/auth'
 import { useToday } from '../state/today'
+
+/** The shares this page took in already (an effect may run twice; a share is never taken twice). */
+const taken = new Set<string>()
 
 export function QuickPage() {
   const { t, i18n } = useTranslation()
   const { me } = useAuth()
   const today = useToday()
-  // Text shared into nexdiary from another app arrives in the address; it is only put into the field.
+  // Text shared into nexdiary from another app arrives in the address (as an installed app shared before photos came
+  // along); it is only put into the field.
   const [text, setText] = useState(() => sharedText(window.location.search))
   const location = useLocation()
   const navigate = useNavigate()
+  const [shareProblem, setShareProblem] = useState<{ code: string; values: Record<string, unknown> } | null>(null)
+  const [arriving, setArriving] = useState(0)
+  const addShared = today.addShared
   // Read once, then gone from the address: a reload must not bring the shared text back into the field, and it does not
-  // stay in the browser's history either.
+  // stay in the browser's history either. A share of photos (`?geteilt=<id>`) is taken out of the browser's storage
+  // here, each photo a note of today.
   useEffect(() => {
-    if (location.search) navigate(location.pathname, { replace: true })
-  }, [location.search, location.pathname, navigate])
+    if (!location.search) return
+    navigate(location.pathname, { replace: true })
+    const signal = shareSignal(location.search)
+    if (!signal) return
+    if ('problem' in signal) {
+      setShareProblem({ code: signal.problem, values: { max: SHARE_MAX } })
+      return
+    }
+    // Once only per share, whatever runs this twice: it is taken out of the storage as it is read.
+    if (taken.has(signal.id)) return
+    taken.add(signal.id)
+    void (async () => {
+      const item = await takeShared(signal.id)
+      if (!item) return setShareProblem({ code: 'share_lost', values: {} })
+      if (item.photos.length > SHARE_MAX) return setShareProblem({ code: 'share_too_many', values: { max: SHARE_MAX } })
+      if (item.photos.length === 0) return setText((current) => current || item.text)
+      setArriving(item.photos.length)
+      try {
+        const left = await addShared(item.photos, item.text)
+        if (left) setText((current) => current || left)
+      } finally {
+        setArriving(0)
+      }
+    })()
+  }, [location.search, location.pathname, navigate, addShared])
   const [sent, setSent] = useState(false)
   /** The question the next note answers, while the person chose to answer it. */
   const [asking, setAsking] = useState<Question | null>(null)
@@ -69,6 +104,7 @@ export function QuickPage() {
     if (!text.trim() && !pending.photo) return
     if (await today.addNote(text, pending.photo?.id ?? null, asking)) {
       setText('')
+      setShareProblem(null)
       setAsking(null)
       pending.sent()
       setSent(true)
@@ -160,6 +196,16 @@ export function QuickPage() {
               <X size={15} />
             </button>
           </div>
+        )}
+        {arriving > 0 && (
+          <p role="status" className="mb-2 flex items-center gap-2 px-1 text-sm text-muted">
+            <Loader2 size={15} className="animate-spin" aria-hidden /> {t('quick.sharedArriving', { count: arriving })}
+          </p>
+        )}
+        {shareProblem && (
+          <p role="alert" className="mb-2 px-1 text-sm text-bad">
+            {errorText(shareProblem.code, shareProblem.values)}
+          </p>
         )}
         {today.problem && (
           <p role="alert" className="mb-2 px-1 text-sm text-bad">

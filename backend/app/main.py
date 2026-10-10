@@ -12,7 +12,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -240,6 +240,12 @@ def _mount_frontend(target: FastAPI, dist: Path) -> None:
         target.mount("/assets", StaticFiles(directory=dist / "assets"), name="assets")
     root = dist.resolve()
     start_page = index.resolve()
+
+    @target.post("/schnell", include_in_schema=False)
+    def shared_without_worker() -> RedirectResponse:
+        # The share target posts the shared photos here only when no service worker took them (it was not registered
+        # yet, or the browser dropped it). The body is never read: the quick note says to share once more.
+        return RedirectResponse("/schnell?geteilt=verloren", status_code=303)
 
     @target.get("/{path:path}", include_in_schema=False, response_model=None)
     def spa(path: str) -> FileResponse | JSONResponse:

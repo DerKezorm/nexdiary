@@ -112,7 +112,9 @@
     "writeUpHintAi": "At leisure, with values, photos and the AI if you like",
     "promptHide": "Hide the question",
     "promptAsk": "Answer the question",
-    "answerPlaceholder": "Your answer …"
+    "answerPlaceholder": "Your answer …",
+    "sharedArriving_one": "The shared photo is arriving …",
+    "sharedArriving_other": "The {{count}} shared photos are arriving …"
   },
   "journal": {
     "title": "Your journal",
@@ -457,7 +459,7 @@
       "text": "For on the go: just one field, the keyboard already open, today's notes above it.",
       "quickStart": "Start with the quick note",
       "quickStartHint": "When you open nexdiary on your phone, you land right in the text field. \"All\" at the top leads to the whole app.",
-      "also": "Also: press and hold the nexdiary icon on the home screen and choose \"Note\", or share a text or a photo from another app to nexdiary."
+      "also": "Also: press and hold the nexdiary icon on the home screen and choose \"Note\". With nexdiary installed, you can share texts, links and up to 10 photos to it from another app, each photo becomes a note. This works on Android with Chrome and on Windows with Edge, not on the iPhone."
     },
     "layout": {
       "title": "Layout of \"Today\"",
@@ -1569,6 +1571,9 @@
     "note_empty": "A note needs a text.",
     "note_id_invalid": "This note has no valid id. Reload the page.",
     "note_id_taken": "The note could not be kept safely. Please send it once more.",
+    "share_too_many": "At most {{max}} photos at a time. Please share fewer.",
+    "share_lost": "The shared photos did not arrive. Please share them again.",
+    "share_no_day": "Without an answer which day they belong to, the shared photos were not kept. Please share them again.",
     "note_too_long": "The note is too long (at most {{max}} characters).",
     "oidc_account": "This account signs in through the provider.",
     "oidc_denied": "The provider did not let you in.",

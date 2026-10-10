@@ -46,6 +46,9 @@ export function useToday() {
   /** The night as the last answer of `/api/today` said it; null while that answer is not here yet (or failed). A note
    * does not go out on a guess: whether this is a night nobody was asked about is known from that answer only. */
   const nightState = useRef<Night | null>(null)
+  /** The day the page shows, as the last answer of `/api/today` said it (read by notes sent one after another, which
+   * do not wait for the page to render in between). */
+  const shownDay = useRef<string | null>(null)
   /** The load in flight (or the last one), so that a note sent before the first answer can wait for it. */
   const loading = useRef<Promise<void> | null>(null)
 
@@ -54,6 +57,7 @@ export function useToday() {
       try {
         const fresh = await diaryApi.today()
         nightState.current = fresh.night ?? { active: false }
+        shownDay.current = fresh.date
         setData(fresh)
         setProblem(null)
       } catch (error) {
@@ -76,8 +80,6 @@ export function useToday() {
     document.addEventListener('visibilitychange', again)
     return () => document.removeEventListener('visibilitychange', again)
   }, [load])
-
-  const shownDate = data?.date
 
   /** Opens the question "which day?" and gives the answer (null: put away). Asked once for a night: the server keeps
    * the answer until 4 o'clock, for every device. */
@@ -124,9 +126,9 @@ export function useToday() {
    * text sent again (a double tap, a retry after a lost answer) goes out with the same id and stays one note. A text
    * changed after a send whose answer was lost gets a new id: the old id may already hold the old text.
    */
-  const addNote = useCallback(async (text: string, photoId: string | null = null, prompt: Question | null = null): Promise<boolean> => {
-    const clean = cleanNote(text)
-    if ((!clean && !photoId) || sending.current) return false
+  /** Whether a note may go out now: false when the day is not known, or after midnight the question "which day?" was
+   * put away. */
+  const dayChosen = useCallback(async (): Promise<boolean> => {
     // Not known yet whether this is a night nobody was asked about (the page was just opened, the answer of the server
     // is on its way): wait for it instead of guessing. The text stays in the field meanwhile. If it cannot be had, the
     // note does not go out either; the page says why and the text is still there.
@@ -137,7 +139,13 @@ export function useToday() {
     }
     // After midnight and not yet answered: which day do the notes of this night belong to?
     const night = nightState.current
-    if (night.active && night.choice === null && !(await askNight())) return false
+    return !(night.active && night.choice === null && !(await askNight()))
+  }, [load, askNight])
+
+  const addNote = useCallback(async (text: string, photoId: string | null = null, prompt: Question | null = null): Promise<boolean> => {
+    const clean = cleanNote(text)
+    if ((!clean && !photoId) || sending.current) return false
+    if (!(await dayChosen())) return false
     if (sending.current) return false
     sending.current = true
     try {
@@ -161,7 +169,7 @@ export function useToday() {
       draftId.current = newId()
       draftText.current = null
       // An answer to the question of the day: the server asks the next one, which comes with the day loaded again.
-      if (note.date !== shownDate || prompt) void load()
+      if (note.date !== shownDay.current || prompt) void load()
       else setData((current) => (current && !current.notes.some((item) => item.id === note.id) ? { ...current, notes: [...current.notes, note] } : current))
       setProblem(null)
       return true
@@ -172,7 +180,7 @@ export function useToday() {
     } finally {
       sending.current = false
     }
-  }, [shownDate, load, askNight])
+  }, [load, dayChosen])
 
   const changeNote = useCallback(async (id: string, text: string) => {
     try {
@@ -263,6 +271,39 @@ export function useToday() {
     }
   }, [])
 
+  /**
+   * Photos shared from another app: each one a note of its own with its photo, the shared text in the first. Asked
+   * "which day?" first after midnight, so that photo and note land on the same day. A photo the server refuses (not a
+   * picture, too large, the storage full) is said as on any upload, and the others still become notes. Gives back the
+   * text when no note took it, for the field.
+   */
+  const addShared = useCallback(async (photos: Blob[], text: string): Promise<string> => {
+    if (!(await dayChosen())) {
+      setProblem('share_no_day')
+      setProblemValues({})
+      return text
+    }
+    let left = text
+    let refused: unknown = null
+    for (const file of photos) {
+      let photo: Photo
+      try {
+        photo = await uploadPhoto(file, undefined, true)
+      } catch (error) {
+        refused = error
+        continue
+      }
+      setData((current) => (current && current.date === photo.date && !current.photos.some((item) => item.id === photo.id) ? { ...current, photos: [...current.photos, photo] } : current))
+      if (await addNote(left, photo.id)) left = ''
+      else return left
+    }
+    if (refused !== null) {
+      setProblem(codeOf(refused))
+      setProblemValues(valuesOf(refused))
+    }
+    return left
+  }, [dayChosen, addNote])
+
   /** A photo the server holds already (taken from Immich): it joins the photos of the day. */
   const keepPhoto = useCallback((photo: Photo) => {
     setData((current) => (current && current.date === photo.date && !current.photos.some((item) => item.id === photo.id) ? { ...current, photos: [...current.photos, photo] } : current))
@@ -295,7 +336,7 @@ export function useToday() {
     }
   }, [])
 
-  return { data, problem, problemValues, load, addNote, changeNote, moveNote, moved, clearMoved: () => setMoved(null), asking, chooseNight, deleteNote, rate, setTags, addPhoto, keepPhoto, deletePhoto, anotherQuestion }
+  return { data, problem, problemValues, load, addNote, addShared, changeNote, moveNote, moved, clearMoved: () => setMoved(null), asking, chooseNight, deleteNote, rate, setTags, addPhoto, keepPhoto, deletePhoto, anotherQuestion }
 }
 
 export type TodayState = ReturnType<typeof useToday>

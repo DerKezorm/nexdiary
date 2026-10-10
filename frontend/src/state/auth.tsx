@@ -7,6 +7,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { ApiError, authApi, SIGNED_OUT_EVENT, type Me } from '../api/client'
 import i18n, { changeLanguage } from '../i18n'
 import { browserTimeZone } from '../lib/dates'
+import { dropAllShared } from '../lib/sharedInbox'
 import { applyMode, applyPalette, isMode, isPalette, storedMode } from '../lib/theme'
 
 type Status = 'loading' | 'setup' | 'signedOut' | 'signedIn'
@@ -112,6 +113,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     await authApi.logout().catch(() => undefined)
+    // Photos shared into nexdiary that nobody picked up yet do not wait for the next person on this device.
+    await dropAllShared()
     setMeState(null)
     setStatus('signedOut')
   }, [])
