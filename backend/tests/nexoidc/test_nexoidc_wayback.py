@@ -180,6 +180,17 @@ def in_full(adapter: Any, sso: fakes.FakeProvider, **changes: Any) -> dict[str, 
     }
 
 
+def as_made(adapter: Any, sso: fakes.FakeProvider, **changes: Any) -> dict[str, Any]:
+    """The entry ``oidc`` as the migration or ``resync`` made it from the older version's provider, untouched here,
+    as the version before the list finds it: its "the provider checks the second factor" is ``trusted_before``, so
+    rule 1 where the older version asked no code, rule 2 where it asked it (nexdiary, nexpaper: issuer and name stay,
+    client id and secret empty, "new people" off, the subjects stay; since 1.0.13)."""
+    full = in_full(adapter, sso, **changes)
+    if adapter.trusted_before:
+        return full
+    return {**full, "client_id": "", "client_secret": "", "auto_create": False}
+
+
 def set_issuer(adapter: Any, oidc: Any, issuer: str) -> None:
     """The new version changes the issuer of the entry ``oidc``, as the form does after its discovery."""
     with adapter.store() as store:
@@ -252,9 +263,9 @@ def test_22_rule_3_an_issuer_changed_here_closes_the_way_back_for_good_until_the
     older(adapter, sso, subjects={"alex": "person-1"}, label="Again")
     adapter.run_migration()
     entry = the_entry(adapter)
-    assert (entry.label, entry.enabled) == ("Again", True)
+    assert (entry.label, entry.enabled, entry.trusts_second_factor) == ("Again", True, adapter.trusted_before)
     assert linked(adapter) == {"alex": "person-1"}
-    assert found(adapter, like=in_full(adapter, sso)) == in_full(adapter, sso, label="Again")
+    assert found(adapter, like=in_full(adapter, sso)) == as_made(adapter, sso, label="Again")
 
 
 def test_22_rule_3_an_entry_removed_here_stays_closed_also_for_a_new_entry_oidc(
@@ -396,8 +407,9 @@ def test_22_a_start_without_any_provider_stores_the_fingerprint_so_one_set_up_la
     adapter.run_migration()
     entry = the_entry(adapter)
     assert entry is not None and entry.enabled and entry.label == "Company"
+    assert entry.trusts_second_factor is adapter.trusted_before
     assert linked(adapter) == {"alex": "person-1"}
-    assert found(adapter, like=in_full(adapter, sso)) == in_full(adapter, sso)
+    assert found(adapter, like=in_full(adapter, sso)) == as_made(adapter, sso)
     browser, response = oidc_contract.round_trip(adapter, sso, "oidc", legacy=True)
     assert location(response) == adapter.home and adapter.who(browser) == "alex"
 
@@ -511,12 +523,12 @@ def test_22_up_again_nothing_is_taken_over_while_coupled(adapter: Any, sso: fake
     older(adapter, sso, subjects={"alex": "elsewhere"}, issuer="https://other.example.com", client_id="other")
     adapter.run_migration()
     assert sorted((item["slug"], item["issuer"], item["enabled"]) for item in adapter.providers()) == before
-    # The anchor outlives the coupling: uncoupled, the way back shows the own entry in full again.
+    # The anchor outlives the coupling: uncoupled, the way back shows the own entry again, as the migration made it.
     with adapter.store() as store:
         oidc.coupling.uncouple(store, coupled)
     adapter.run_migration()
     assert linked(adapter) == {"alex": "person-1"}
-    assert found(adapter, like=in_full(adapter, sso)) == in_full(adapter, sso)
+    assert found(adapter, like=in_full(adapter, sso)) == as_made(adapter, sso)
 
 
 def test_22_the_helper_for_entries_in_the_store_is_untouched_by_the_way_back(adapter: Any, net: fakes.Network) -> None:
