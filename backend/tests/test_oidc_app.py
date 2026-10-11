@@ -469,3 +469,27 @@ def test_0_6_turning_its_switch_off_makes_the_entry_ask_the_code_again(
     with SessionLocal() as db:
         entry = oidc_store.SqlStore(db).provider_by_slug("oidc")
         assert entry is not None and entry.trusts_second_factor is False and entry.enabled
+
+
+# --- The operator's password before trusting a provider with the second factor (switch, off by default) ---------------
+
+
+def test_trusting_a_provider_with_the_second_factor_asks_the_password_only_where_switched_on(
+    client: TestClient, boss: Account, provider: FakeProvider, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.routers import oidc as oidc_router
+
+    assert oidc_router.TRUSTS_NEEDS_PASSWORD is False, "as the blueprint lays it out"
+    entry = configure(client, provider, trusts_second_factor=False)
+    form = {"label": "Test SSO", "issuer": provider.issuer, "client_id": provider.client_id}
+    monkeypatch.setattr(oidc_router, "TRUSTS_NEEDS_PASSWORD", True)
+    refused = client.put(f"/api/oidc/admin/providers/{entry['id']}", json={**form, "trusts_second_factor": True})
+    assert refused.status_code == 401 and refused.json()["detail"]["code"] == "wrong_password"
+    added = client.post("/api/oidc/admin/providers", json={**form, "slug": "other", "trusts_second_factor": True})
+    assert added.status_code == 401
+    done = client.put(f"/api/oidc/admin/providers/{entry['id']}",
+                      json={**form, "trusts_second_factor": True, "current_password": PASSWORD})
+    assert done.status_code == 200 and done.json()["trusts_second_factor"] is True
+    # Turning it off again, or saving while it stays on, asks nothing.
+    assert client.put(f"/api/oidc/admin/providers/{entry['id']}", json={**form, "trusts_second_factor": True}).status_code == 200
+    assert client.put(f"/api/oidc/admin/providers/{entry['id']}", json={**form, "trusts_second_factor": False}).status_code == 200
