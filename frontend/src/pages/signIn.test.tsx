@@ -10,8 +10,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 
 import type { Me, OidcProvider } from '../api/client'
-import '../i18n'
-import { changeLanguage } from '../i18n'
+import i18n, { changeLanguage } from '../i18n'
 import { idle } from '../test/wait'
 import { ApiTokens } from '../components/ApiTokens'
 import { AccountPage } from './AccountPage'
@@ -246,12 +245,16 @@ function SignInWithServer({ server }: { server: Parameters<typeof SignInPart>[0]
   return <SignInPart server={server} />
 }
 
-async function showCards(providers: OidcProvider[] = [entry()], address: Record<string, unknown> = ADDRESS): Promise<{ saved: unknown[] }> {
+async function showCards(
+  providers: OidcProvider[] = [entry()],
+  address: Record<string, unknown> = ADDRESS,
+  change: Partial<ServerSettings> = {},
+): Promise<{ saved: unknown[] }> {
   answers['GET /api/oidc/admin/providers'] = providers
   answers['GET /api/oidc/authentik/address'] = address
   const saved: unknown[] = []
   const server = {
-    settings,
+    settings: { ...settings, ...change },
     save: vi.fn(async (change: unknown) => saved.push(change)),
     saveNow: vi.fn(),
     reload: vi.fn(async () => undefined),
@@ -344,6 +347,27 @@ describe('Settings, Server, Sign-in', () => {
       url: 'https://auth.example.com', token: 'token-1', confirm_issuer_change: false, public_url: window.location.origin,
     })
   })
+})
+
+describe('the second factor requirement', () => {
+  for (const language of ['de', 'en'] as const) {
+    for (const own of [true, false]) {
+      it(`names the provider switch that exempts a sign-in (${language}, ${own ? 'with' : 'without'} an own factor)`, async () => {
+        await changeLanguage(language, false)
+        auth.me = { ...me, two_factor: own }
+        // Not required yet: the operator without an own factor sees the hint to set it up first.
+        await showCards([entry()], ADDRESS, { two_factor_required: false })
+        const shown = box
+        const hint = i18n.t(own ? 'server.twoFactorRequiredHint' : 'server.ownSecondFactorFirst', {
+          trusts: i18n.t('oidc.admin.trustsSecondFactor'),
+        })
+        expect(shown.textContent).toContain(hint)
+        // The words of the switch itself, between the quotes of the sentence: not a gap.
+        const [open, close] = language === 'de' ? ['„', '“'] : ['“', '”']
+        expect(shown.textContent).toContain(`${open}${i18n.t('oidc.admin.trustsSecondFactor')}${close}`)
+      })
+    }
+  }
 })
 
 describe('the account list', () => {
