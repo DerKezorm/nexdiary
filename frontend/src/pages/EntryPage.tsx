@@ -19,7 +19,7 @@ import { ImmichPicker } from '../components/ImmichPicker'
 import { Markdown } from '../components/Markdown'
 import { useOwnPhotoViewer } from '../components/ownPhotoViewer'
 import { useDeletePhotos } from '../components/PhotoDelete'
-import { PhotoFigure, PhotoTile } from '../components/PhotoViews'
+import { PhotoGallery, PhotoTile } from '../components/PhotoViews'
 import { ShareDialog } from '../components/ShareDialog'
 import { FamilyOfDay } from '../components/TodayExtras'
 import { YearAgo } from '../components/YearAgo'
@@ -223,11 +223,7 @@ export function EntryPage() {
           <h1 className="mt-1 mb-6 font-display text-3xl font-semibold tracking-tight break-words sm:text-[2.6rem] sm:leading-tight">{day.title || t('journal.untitled')}</h1>
           <Markdown text={day.text} />
           {dayPhotos.length > 0 && (
-            <div className="mt-6 space-y-4">
-              {dayPhotos.map((photo) => (
-                <PhotoFigure key={photo.id} src={photoUrl(photo.id)} width={photo.width} height={photo.height} alt={t('photos.alt')} onOpen={(opener) => openPhoto(photo.id, opener)} />
-              ))}
-            </div>
+            <PhotoGallery className="mt-6" photos={dayPhotos.map((photo) => ({ id: photo.id, src: photoUrl(photo.id, true), width: photo.width, height: photo.height }))} alt={t('photos.alt')} onOpen={openPhoto} />
           )}
           <div className="mt-8 flex flex-wrap gap-2">
             {day.tags.map((tag) => (

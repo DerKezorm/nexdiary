@@ -151,6 +151,19 @@ def test_heic_from_a_phone_is_taken_and_turned(client: TestClient, account: Acco
     assert word.encode() not in served.content and b"Pocket Camera" not in served.content
 
 
+def test_an_hdr_photo_from_an_iphone_is_taken_as_its_first_picture(client: TestClient, account: Account,
+                                                                   word: str) -> None:
+    # Safari turns an HDR photo into a JPEG that carries the gain map as a second picture (Pillow calls it MPO).
+    gain = Image.new("RGB", (300, 150), (128, 128, 128))
+    photo = kept(client, picture(word, kind="MPO", save_all=True, append_images=[gain]))
+    assert (photo["width"], photo["height"]) == (300, 600)
+    served = client.get(f"/api/photos/{photo['id']}")
+    assert word.encode() not in served.content and b"Pocket Camera" not in served.content
+    shown = Image.open(io.BytesIO(served.content)).convert("RGB")
+    # Turned upright: the red half is on top, not the grey of the gain map.
+    assert shown.getpixel((150, 100))[0] > 180
+
+
 def test_a_colour_profile_is_turned_into_srgb_and_not_kept(client: TestClient, account: Account) -> None:
     profile = ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")).tobytes()
     image = Image.new("RGB", (50, 50), (200, 100, 50))

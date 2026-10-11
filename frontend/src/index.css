@@ -206,6 +206,37 @@ body {
     pointer-events: none;
     color: var(--muted);
   }
+  /* The photos of a day: previews in rows of one height, each as wide as its shape asks (`--shape`, width by
+     height), growing in step so a row fills the column without changing any shape. The last row keeps the plain
+     height: the spacer after it takes the room that is left; no row grows past a third more than the plain height. */
+  .photo-gallery {
+    --row: 8rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  @media (min-width: 640px) {
+    .photo-gallery {
+      --row: 10rem;
+    }
+  }
+  .photo-gallery::after {
+    content: '';
+    flex-grow: 999999;
+  }
+  .photo-gallery-item {
+    position: relative;
+    display: block;
+    overflow: hidden;
+    flex-grow: var(--shape);
+    flex-basis: calc(var(--row) * var(--shape));
+    /* A row with room to spare grows only a little; the rest stays free at its end (all stop at the same height). */
+    max-width: min(100%, calc(var(--row) * var(--shape) * 1.35));
+    aspect-ratio: var(--shape);
+    border-radius: 0.75rem;
+    background: var(--sheet-2);
+    cursor: zoom-in;
+  }
   /* A picture inside a page: its own block, the full width of the text, with a quiet caption. */
   .diary-photo {
     position: relative;

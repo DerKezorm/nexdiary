@@ -85,22 +85,20 @@ afterEach(async () => {
 })
 
 describe('the day read', () => {
-  it('shows a photo of the day in the shape it has, as wide as the column, from the original', async () => {
+  it('shows the photos of the day as small previews in their own shape, with a magnifier', async () => {
     await show(
       <Routes>
         <Route path="/tag/:date" element={<EntryPage />} />
       </Routes>,
       '/tag/2026-10-04',
     )
-    const figures = [...box.querySelectorAll<HTMLImageElement>('img[data-photo-figure]')]
-    expect(figures.map((image) => image.getAttribute('src'))).toEqual([`/api/photos/${WIDE}`, `/api/photos/${TALL}`])
-    expect(figures.map((image) => image.style.aspectRatio.replace(/\s/g, ''))).toEqual(['4000/1000', '1000/4000'])
-    // Never cut: the whole picture inside the space, however tall; the width is the column's.
-    for (const image of figures) {
-      expect(image.className).toContain('object-contain')
-      expect(image.className).toContain('w-full')
-      expect(image.className).not.toContain('object-cover')
-    }
+    const previews = [...box.querySelectorAll<HTMLImageElement>('[data-photo-gallery] img[data-photo-preview]')]
+    // The small copy, not the original: the big view loads that one.
+    expect(previews.map((image) => image.getAttribute('src'))).toEqual([`/api/photos/${WIDE}/preview`, `/api/photos/${TALL}/preview`])
+    // Their own shape, held between the narrowest and the widest a preview takes (4:1 and 1:4 are past both).
+    const shapes = previews.map((image) => image.parentElement!.style.getPropertyValue('--shape'))
+    expect(shapes).toEqual(['2.5', '0.5'])
+    for (const image of previews) expect(image.parentElement!.querySelector('svg')).not.toBeNull()
   })
 
   it('opens the big view on a tap, on the photos of the day, the cover and the small tile of a note', async () => {
@@ -125,15 +123,15 @@ describe('the day read', () => {
 })
 
 describe('a shared day', () => {
-  it('shows the photos in their shape and opens the originals through the share', async () => {
+  it('shows the photos as previews and opens the originals through the share', async () => {
     await show(
       <Routes>
         <Route path="/geteilt/:from/:date" element={<SharedEntryPage />} />
       </Routes>,
       '/geteilt/7/2026-10-04',
     )
-    const figures = [...box.querySelectorAll<HTMLImageElement>('img[data-photo-figure]')]
-    expect(figures.map((image) => image.getAttribute('src'))).toEqual([`/api/shared/7/2026-10-04/photos/${WIDE}`, `/api/shared/7/2026-10-04/photos/${TALL}`])
+    const previews = [...box.querySelectorAll<HTMLImageElement>('img[data-photo-preview]')]
+    expect(previews.map((image) => image.getAttribute('src'))).toEqual([`/api/shared/7/2026-10-04/photos/${WIDE}/preview`, `/api/shared/7/2026-10-04/photos/${TALL}/preview`])
     await act(async () => box.querySelectorAll<HTMLElement>('button[aria-label="Foto"]')[0].click())
     await until(bigView, 'the big view')
     expect(viewed()).toBe(`/api/shared/7/2026-10-04/photos/${WIDE}`)

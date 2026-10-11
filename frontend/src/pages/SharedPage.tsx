@@ -12,7 +12,7 @@ import { ApiError, sharedPhotoUrl, sharingApi, type SharedByMe, type SharedDay, 
 import { Avatar } from '../components/Avatar'
 import { useLightbox } from '../components/Lightbox'
 import { Markdown } from '../components/Markdown'
-import { PhotoFigure, PhotoTile } from '../components/PhotoViews'
+import { PhotoGallery, PhotoTile } from '../components/PhotoViews'
 import { CoverImage } from '../covers/Cover'
 import { longDate, timeOf } from '../lib/dates'
 import { errorText } from '../lib/errors'
@@ -237,11 +237,7 @@ export function SharedEntryPage() {
           <h1 className="mt-6 mb-6 font-display text-3xl font-semibold tracking-tight break-words sm:text-[2.6rem] sm:leading-tight">{day.title || t('journal.untitled')}</h1>
           <Markdown text={day.text} photo={(id) => src(id, false)} />
           {day.photos.length > 0 && (
-            <div className="mt-6 space-y-4">
-              {day.photos.map((photo) => (
-                <PhotoFigure key={photo.id} src={src(photo.id, false)} width={photo.width} height={photo.height} alt={t('photos.alt')} onOpen={(opener) => openPhoto(photo.id, opener)} />
-              ))}
-            </div>
+            <PhotoGallery className="mt-6" photos={day.photos.map((photo) => ({ id: photo.id, src: src(photo.id, true), width: photo.width, height: photo.height }))} alt={t('photos.alt')} onOpen={openPhoto} />
           )}
           {day.tags.length > 0 && (
             <div className="mt-8 flex flex-wrap gap-2">

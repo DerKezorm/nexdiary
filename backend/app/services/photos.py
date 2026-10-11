@@ -102,7 +102,7 @@ def draw(data: bytes) -> Drawn:
     from PIL import Image, ImageOps
 
     with pictures.opened(data, KINDS) as image:
-        if image.format == "JPEG":
+        if image.format in ("JPEG", "MPO"):
             # A JPEG is decoded at a fraction of its size when that still covers ``EDGE``: far less memory.
             image.draft("RGB", (EDGE, EDGE))
         image.load()

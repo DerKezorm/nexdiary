@@ -1,28 +1,52 @@
 /**
  * How a photo stands on a page. A small tile (notes, the strip on "Today", pickers) may crop, always around the middle;
- * a large photo (the reading page, a shared day) keeps the shape it has: the width of the column, the height of the
- * picture up to a sensible limit, and above that the whole picture inside, never cut. Both open the big view when
- * tapped (`components/Lightbox.tsx`).
+ * the photos of a day (the reading page, a shared day) stand as previews in their own shape, rows of them. Both open
+ * the big view with the whole picture when tapped (`components/Lightbox.tsx`).
  */
+import { ZoomIn } from 'lucide-react'
+import type { CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 
 
-/** The shape of the photo, for the box before the picture has loaded (nothing jumps). */
-function ratio(width?: number, height?: number): string | undefined {
-  return width && height ? `${width} / ${height}` : undefined
+/** The narrowest and the widest shape a preview takes; beyond that it crops around the middle (the big view shows all). */
+const GALLERY_RATIO = { min: 0.5, max: 2.5 } as const
+
+/** The shape of a preview: the photo's own, held between the narrowest and the widest one. Unknown: a square. */
+function galleryRatio(width?: number, height?: number): number {
+  if (!width || !height) return 1
+  return Math.min(GALLERY_RATIO.max, Math.max(GALLERY_RATIO.min, width / height))
 }
 
-/** A photo as wide as its column, as high as it is, up to `max-h`; taller than that the whole picture stays inside. */
-export function PhotoFigure({ src, width, height, alt = '', onOpen, className = '' }: { src: string; width?: number; height?: number; alt?: string; onOpen?: (opener: HTMLElement) => void; className?: string }) {
+export type GalleryPhoto = { id: string; src: string; width?: number; height?: number }
+
+/**
+ * The photos of a day as small previews in rows, each in its own shape (upright, wide, square), the rows filling the
+ * column at one height; the last row keeps the plain height instead of stretching. A magnifier on every preview says
+ * that a tap opens the big view with the whole picture.
+ */
+export function PhotoGallery({ photos, alt = '', onOpen, className = '' }: { photos: GalleryPhoto[]; alt?: string; onOpen: (id: string, opener: HTMLElement) => void; className?: string }) {
   const { t } = useTranslation()
-  const image = (
-    <img src={src} alt={alt} loading="lazy" draggable={false} style={{ aspectRatio: ratio(width, height) }} className="block max-h-[34rem] w-full rounded-xl bg-sheet-2 object-contain" data-photo-figure />
-  )
-  if (!onOpen) return <div className={className}>{image}</div>
   return (
-    <button type="button" onClick={(event) => onOpen(event.currentTarget)} aria-label={alt || t('photoView.open')} className={`block w-full cursor-zoom-in rounded-xl text-left ${className}`}>
-      {image}
-    </button>
+    <div className={`photo-gallery ${className}`} data-photo-gallery>
+      {photos.map((photo) => {
+        const shape = galleryRatio(photo.width, photo.height)
+        return (
+          <button
+            key={photo.id}
+            type="button"
+            onClick={(event) => onOpen(photo.id, event.currentTarget)}
+            aria-label={alt || t('photoView.open')}
+            className="photo-gallery-item group"
+            style={{ '--shape': shape } as CSSProperties}
+          >
+            <img src={photo.src} alt="" loading="lazy" draggable={false} className="h-full w-full object-cover object-center" data-photo-preview />
+            <span className="absolute right-1.5 bottom-1.5 grid size-7 place-items-center rounded-full bg-black/45 text-white backdrop-blur transition group-hover:bg-black/65" aria-hidden>
+              <ZoomIn size={15} />
+            </span>
+          </button>
+        )
+      })}
+    </div>
   )
 }
 
