@@ -79,7 +79,7 @@ function button(text: string): HTMLButtonElement | undefined {
 }
 
 function tiles(): HTMLButtonElement[] {
-  return [...box.querySelectorAll<HTMLButtonElement>('button[aria-pressed]')].filter((item) => item.querySelector('img[src*="/api/immich/"]'))
+  return [...box.querySelectorAll<HTMLButtonElement>('[data-photo-suggestions] button')].filter((item) => item.querySelector('img[src*="/api/immich/"]'))
 }
 
 beforeEach(async () => {
@@ -177,22 +177,23 @@ describe('the photos of today from Immich', () => {
     state = { allowed: true, connected: true, suggest: true }
   })
 
-  it('copies a photo only when it is chosen, and puts it back with another tap', async () => {
+  it('copies a photo only when it is taken, and puts it back among the suggestions when it is removed', async () => {
     await show(<TodayPage now={new Date(2026, 9, 6, 19, 30)} />)
     expect(tiles()).toHaveLength(2)
-    expect(box.textContent).toContain('aus Immich · 0 gewählt')
+    expect(box.textContent).toContain('0 Fotos')
     expect(calls.some((call) => call.method === 'POST' && call.url.startsWith('/api/immich/photos/'))).toBe(false)
     await act(async () => tiles()[0].click())
     await idle()
     expect(calls.filter((call) => call.method === 'POST' && call.url === `/api/immich/photos/${A1}`)).toHaveLength(1)
-    expect(tiles()[0].getAttribute('aria-pressed')).toBe('true')
-    expect(box.textContent).toContain('aus Immich · 1 gewählt')
-    // Shown as its tile, not a second time among the own photos.
-    expect(box.querySelectorAll(`img[src="/api/photos/${PHOTO.id}/preview"]`)).toHaveLength(0)
-    await act(async () => tiles()[0].click())
+    // Taken: it left the suggestions and stands once among the photos of the day.
+    expect(tiles()).toHaveLength(1)
+    expect(box.textContent).toContain('1 Foto')
+    expect(box.querySelectorAll(`[data-photos-today] img[src="/api/photos/${PHOTO.id}/preview"]`)).toHaveLength(1)
+    await act(async () => box.querySelector<HTMLButtonElement>('button[aria-label="Foto wieder entfernen"]')!.click())
     await idle()
     expect(calls.some((call) => call.method === 'DELETE' && call.url === `/api/photos/${PHOTO.id}`)).toBe(true)
-    expect(box.textContent).toContain('aus Immich · 0 gewählt')
+    expect(tiles()).toHaveLength(2)
+    expect(box.textContent).toContain('0 Fotos')
   })
 
   it('says quietly when Immich does not answer, and the rest goes on', async () => {

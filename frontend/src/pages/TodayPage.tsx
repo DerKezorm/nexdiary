@@ -3,16 +3,16 @@
  * or like a chat. Notes are thrown down here, changed and deleted; the values of the day are rated.
  *
  * Photos are taken or picked with the camera button beside the field (they go with the next note) and under "Fotos
- * von heute"; "Den Tag aufschreiben" leads to the writing page, with the AI when the operator set one up and the person
+ * von heute" (a row of the day's photos, and below it the suggestions of Immich); "Den Tag aufschreiben" leads to the writing page, with the AI when the operator set one up and the person
  * did not switch it off ("Ausformulieren": the writing page asks for the suggestion, never on its own). The question of
  * the day stands under the field; its answer becomes a note with the question. With Immich connected, the photos taken
- * there today are suggested in "Fotos von heute" and copied only when chosen.
+ * lately are suggested in their own row of "Fotos von heute" and copied only when taken.
  *
  * Under the question of the day stands the family question for whoever joined (or, once, the quiet hint that others
  * take part); "Erst fragen lassen" lets the AI ask about the notes before it writes the day up, and "Heute nur kurz"
  * makes the page of today out of one sentence and the first value (`components/TodayExtras.tsx`).
  */
-import { ArrowUp, Check, ImagePlus, Images, Loader2, MessageCircleQuestion, PenLine, Shuffle, Sparkles, Trash2, X } from 'lucide-react'
+import { ArrowUp, ImagePlus, Images, Loader2, MessageCircleQuestion, PenLine, Shuffle, Sparkles, Trash2, X } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
@@ -358,9 +358,14 @@ function FinishCard({ today, ai, now }: { today: TodayState; ai: AiState | null;
   )
 }
 
-/** The photos of today, as the mock's photo strip: with Immich connected, the photos taken today there first, each
- * chosen with a tap (copied to the day only then) and put back with another; then the own uploads, each with its time,
- * and a tile to add one. Immich not answering leaves a quiet line; everything else goes on. */
+const PILL = 'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-sheet-2 px-3 text-xs font-semibold text-ink-2 hover:bg-accent-soft hover:text-accent disabled:opacity-60'
+
+/** The photos of today in two rows: "Für heute" holds every photo that belongs to the day (uploaded, taken from Immich,
+ * picked among all of them), each opens in the big view and can be removed; with Immich connected, "Vorschläge aus
+ * Immich" below holds what was uploaded there lately and is not taken yet, muted, and a tap takes it (copied to the day
+ * only then, and it moves up); removing it again puts it back among the suggestions. "Hochladen" (always) and "Alle
+ * Fotos" (with Immich) stand in the header, outside the rows that scroll. Immich not answering leaves a quiet line;
+ * everything else goes on. */
 function PhotosBlock({ today, bare = false }: { today: TodayState; bare?: boolean }) {
   const { t, i18n } = useTranslation()
   const { me } = useAuth()
@@ -377,25 +382,28 @@ function PhotosBlock({ today, bare = false }: { today: TodayState; bare?: boolea
   const kept = new Set(photos.map((photo) => photo.id))
   const suggested = immich.photos ?? []
   const chosen = (entry: ImmichPhoto) => Boolean(entry.photo_id && kept.has(entry.photo_id))
-  // A photo taken from a tile stands as that tile, not a second time.
-  const shownAsTile = new Set(suggested.filter(chosen).map((entry) => entry.photo_id))
-  const own = photos.filter((photo) => !shownAsTile.has(photo.id))
+  // What was taken from a suggestion stands in the first row only; the others wait in the second.
+  const taken = new Set(suggested.filter(chosen).map((entry) => entry.photo_id))
+  const waiting = suggested.filter((entry) => !chosen(entry))
+  const zone = me?.profile?.timezone
   const add = async (picked: File) => {
     setBusy(true)
     await today.addPhoto(picked)
     setBusy(false)
   }
-  const toggle = async (entry: ImmichPhoto) => {
-    if (chosen(entry) && entry.photo_id) {
-      immich.released(entry.photo_id)
-      await today.deletePhoto(entry.photo_id)
-      return
-    }
+  const take = async (entry: ImmichPhoto) => {
     const photo = await immich.take(entry.id)
     if (photo) today.keepPhoto(photo)
   }
-  const extra = immich.photos ? t('photos.fromImmich', { count: suggested.filter(chosen).length }) : t('photos.count', { count: photos.length })
-  const zone = me?.profile?.timezone
+  /** A photo taken from a suggestion goes back to the suggestions without a question; any other is asked about first. */
+  const remove = async (id: string) => {
+    if (taken.has(id)) {
+      await today.deletePhoto(id)
+      return
+    }
+    const result = await confirmDelete([id])
+    if (result && result.deleted.length > 0) void today.load()
+  }
   /** Any photo of the whole collection, copied for today. */
   const pickAny = async (entry: ImmichEntry) => {
     const day = today.data?.date
@@ -403,81 +411,89 @@ function PhotosBlock({ today, bare = false }: { today: TodayState; bare?: boolea
     const photo = await immichApi.take(entry.id, day, false, true)
     today.keepPhoto(photo)
   }
+  const shotAt = (stamp: string) => new Intl.DateTimeFormat(i18n.language, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: zone || undefined }).format(new Date(stamp))
   return (
-    <Block title={t('photos.title')} bare={bare} extra={<span className="text-sm text-muted">{extra}</span>}>
-      {immich.connected && (
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <span className="text-xs font-bold tracking-wide text-muted uppercase">{suggested.length > 0 ? t('photos.newInImmich') : ''}</span>
-          <button type="button" onClick={() => setChoosing(true)} className="inline-flex h-8 items-center gap-1.5 rounded-full bg-sheet-2 px-3 text-xs font-semibold text-ink-2 hover:bg-accent-soft hover:text-accent">
-            <Images size={14} aria-hidden /> {t('photos.allImmich')}
+    <Block title={t('photos.title')} bare={bare} extra={<span className="text-sm text-muted">{t('photos.count', { count: photos.length })}</span>}>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
+        <span className="text-xs font-bold tracking-wide text-muted uppercase">{t('photos.forToday')}</span>
+        <div className="flex flex-wrap items-center gap-2" data-photo-actions>
+          <button type="button" onClick={() => file.current?.click()} disabled={busy} className={PILL}>
+            {busy ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <ImagePlus size={14} aria-hidden />}
+            {busy ? t('photos.uploading') : t('photos.upload')}
           </button>
+          {immich.connected && (
+            <button type="button" onClick={() => setChoosing(true)} className={PILL}>
+              <Images size={14} aria-hidden /> {t('photos.allImmich')}
+            </button>
+          )}
         </div>
-      )}
-      <div className="scroll-x -mx-1 flex gap-2.5 overflow-x-auto px-1 pb-1">
-        {suggested.map((entry) => {
-          const on = chosen(entry)
-          const shot = new Intl.DateTimeFormat(i18n.language, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: zone || undefined }).format(new Date(entry.taken_at))
-          return (
-            <div key={entry.id} className="w-32 shrink-0">
+      </div>
+      <input
+        ref={file}
+        type="file"
+        accept={PHOTO_ACCEPT}
+        className="hidden"
+        aria-label={t('photos.upload')}
+        onChange={(e) => {
+          const picked = e.target.files?.[0]
+          e.target.value = ''
+          if (picked) void add(picked)
+        }}
+      />
+      {photos.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-line px-3 py-4 text-center text-sm text-muted" data-photos-empty>
+          {waiting.length > 0 ? t('photos.emptyWithSuggestions') : t('photos.empty')}
+        </p>
+      ) : (
+        <div className="scroll-x -mx-1 flex gap-2.5 overflow-x-auto px-1 pb-1" data-photos-today>
+          {photos.map((photo) => (
+            <div key={photo.id} className="group relative shrink-0 overflow-hidden rounded-xl">
+              <PhotoTile src={photoUrl(photo.id, true)} alt={t('photos.alt')} onOpen={(opener) => view(photo.id, opener)} className="block h-24 w-32" imageClassName="h-full w-full" />
+              <span className="pointer-events-none absolute bottom-1 left-1.5 rounded bg-black/35 px-1 text-[0.68rem] font-bold text-white">{timeOf(photo.created_at, zone)}</span>
               <button
                 type="button"
-                onClick={() => void toggle(entry)}
-                disabled={immich.taking !== null}
-                className="relative block w-full overflow-hidden rounded-xl"
-                aria-pressed={on}
-                aria-label={`${t('photos.pick')} ${shot}`}
+                onClick={() => void remove(photo.id)}
+                className="absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-black/35 text-white opacity-0 group-hover:opacity-100 focus:opacity-100 [@media(hover:none)]:opacity-100"
+                aria-label={taken.has(photo.id) ? t('photos.remove') : t('photos.delete')}
               >
-                <img src={immichThumbUrl(entry.id)} alt="" className={`h-24 w-32 object-cover transition ${on ? '' : 'opacity-75 saturate-50'}`} draggable={false} />
-                <span className={`absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white ${on ? 'bg-accent text-accent-ink' : 'bg-black/20'}`}>
-                  {immich.taking === entry.id ? <Loader2 size={13} className="animate-spin text-white" aria-hidden /> : on && <Check size={14} strokeWidth={3} aria-hidden />}
-                </span>
+                <X size={13} strokeWidth={3} />
               </button>
-              <span className="mt-1 block truncate text-[0.7rem] text-muted" data-shot>
-                {shot}
-              </span>
             </div>
-          )
-        })}
-        {own.map((photo) => (
-          <div key={photo.id} className="group relative shrink-0 overflow-hidden rounded-xl">
-            <PhotoTile src={photoUrl(photo.id, true)} alt={t('photos.alt')} onOpen={(opener) => view(photo.id, opener)} className="block h-24 w-32" imageClassName="h-full w-full" />
-            <span className="pointer-events-none absolute bottom-1 left-1.5 rounded bg-black/35 px-1 text-[0.68rem] font-bold text-white">{timeOf(photo.created_at, me?.profile?.timezone)}</span>
-            <button
-              type="button"
-              onClick={() =>
-                void confirmDelete([photo.id]).then((result) => {
-                  if (result && result.deleted.length > 0) void today.load()
-                })
-              }
-              className="absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-black/35 text-white opacity-0 group-hover:opacity-100 focus:opacity-100 [@media(hover:none)]:opacity-100"
-              aria-label={t('photos.delete')}
-            >
-              <X size={13} strokeWidth={3} />
-            </button>
+          ))}
+        </div>
+      )}
+      {waiting.length > 0 && (
+        <div className="mt-4 border-t border-line pt-3" data-photo-suggestions>
+          <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3">
+            <span className="text-xs font-bold tracking-wide text-muted uppercase">{t('photos.suggestions')}</span>
+            <span className="text-xs text-muted">{t('photos.suggestionsHint')}</span>
           </div>
-        ))}
-        <button
-          type="button"
-          onClick={() => file.current?.click()}
-          disabled={busy}
-          className="flex h-24 w-32 shrink-0 flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-line text-sm font-semibold text-muted hover:border-accent hover:text-accent disabled:opacity-60"
-        >
-          {busy ? <Loader2 size={20} className="animate-spin" aria-hidden /> : <ImagePlus size={20} aria-hidden />}
-          {busy ? t('photos.uploading') : t('photos.upload')}
-        </button>
-        <input
-          ref={file}
-          type="file"
-          accept={PHOTO_ACCEPT}
-          className="hidden"
-          aria-label={t('photos.upload')}
-          onChange={(e) => {
-            const picked = e.target.files?.[0]
-            e.target.value = ''
-            if (picked) void add(picked)
-          }}
-        />
-      </div>
+          <div className="scroll-x -mx-1 flex gap-2.5 overflow-x-auto px-1 pb-1">
+            {waiting.map((entry) => {
+              const shot = shotAt(entry.taken_at)
+              return (
+                <div key={entry.id} className="w-32 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => void take(entry)}
+                    disabled={immich.taking !== null}
+                    className="relative block w-full overflow-hidden rounded-xl"
+                    aria-label={`${t('photos.pick')} ${shot}`}
+                  >
+                    <img src={immichThumbUrl(entry.id)} alt="" className="h-24 w-32 object-cover opacity-75 saturate-50 transition" draggable={false} />
+                    <span className="absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-black/20">
+                      {immich.taking === entry.id && <Loader2 size={13} className="animate-spin text-white" aria-hidden />}
+                    </span>
+                  </button>
+                  <span className="mt-1 block truncate text-[0.7rem] text-muted" data-shot>
+                    {shot}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
       {immich.away && <p className="mt-2 text-xs text-muted">{t('photos.immichAway')}</p>}
       {choosing && today.data && <ImmichPicker date={today.data.date} onClose={() => setChoosing(false)} onPick={pickAny} />}
       {immich.problem && (

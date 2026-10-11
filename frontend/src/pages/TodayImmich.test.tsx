@@ -31,6 +31,11 @@ const photo = (extra: Partial<Photo> = {}): Photo => ({ id: KEPT, date: '2026-10
 type Call = { method: string; url: string; body: Record<string, unknown> | undefined }
 let calls: Call[] = []
 let connected = true
+/** The photos the server already holds for today. */
+let ownPhotos: Photo[] = []
+/** While set, an upload waits for it. */
+let uploadGate: Promise<void> | null = null
+const UPLOADED = 'e'.repeat(32)
 
 function serve(): void {
   calls = []
@@ -41,7 +46,11 @@ function serve(): void {
       const body = init?.body && typeof init.body === 'string' ? JSON.parse(init.body) : undefined
       calls.push({ method, url, body })
       const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
-      if (url.startsWith('/api/today')) return json({ date: '2026-10-06', notes: [], day: null, values: [], streak: 0, photos: [], question: null })
+      if (url.startsWith('/api/today')) return json({ date: '2026-10-06', notes: [], day: null, values: [], streak: 0, photos: ownPhotos, question: null })
+      if (url.startsWith('/api/photos?') && method === 'POST') {
+        await uploadGate
+        return json(photo({ id: UPLOADED, source: 'upload' }), 201)
+      }
       if (url === '/api/ai') return json({ provider: 'none', to: '', model: '', mine: true, available: false })
       if (url === '/api/immich') return json(connected ? { allowed: true, connected: true, url: 'http://x', key_set: true, suggest: true } : { allowed: false, connected: false })
       if (url.startsWith('/api/immich/recent'))
@@ -85,6 +94,8 @@ beforeAll(() => {
 beforeEach(async () => {
   await changeLanguage('de', false)
   connected = true
+  ownPhotos = []
+  uploadGate = null
   serve()
 })
 
@@ -95,11 +106,11 @@ afterEach(() => {
 })
 
 describe('the photos of today', () => {
-  it('shows what was uploaded lately, under the name "Neu in Immich", each with the day and hour it was shot', async () => {
+  it('shows what was uploaded lately, under the name "Vorschläge aus Immich", each with the day and hour it was shot', async () => {
     await show(<TodayPage now={new Date(2026, 9, 6, 19, 30)} />)
     expect(calls.some((call) => call.url.startsWith('/api/immich/recent?'))).toBe(true)
     expect(calls.some((call) => call.url.startsWith('/api/immich/photos?'))).toBe(false)
-    expect(box.textContent).toContain('Neu in Immich')
+    expect(box.textContent).toContain('Vorschläge aus Immich')
     const shots = [...box.querySelectorAll('[data-shot]')].map((item) => item.textContent)
     expect(shots).toHaveLength(2)
     expect(shots[0]).toContain('28. Sept.')
@@ -107,13 +118,13 @@ describe('the photos of today', () => {
     expect(shots[1]).toContain('6. Okt.')
   })
 
-  it('takes a photo of any day for today with a tap, and puts it back with another', async () => {
+  it('takes a photo of any day for today with a tap, and it moves up to the photos of today', async () => {
     await show(<TodayPage now={new Date(2026, 9, 6, 19, 30)} />)
-    const tile = box.querySelector<HTMLButtonElement>('button[aria-pressed]')!
+    const tile = box.querySelector<HTMLButtonElement>('[data-photo-suggestions] button')!
     await act(async () => tile.click())
     await idle()
     expect(takes().map((call) => [call.url, call.body])).toEqual([[`/api/immich/photos/${NEW1}`, { date: '2026-10-06', anywhen: true }]])
-    expect(tile.getAttribute('aria-pressed')).toBe('true')
+    expect(box.querySelector(`[data-photos-today] img[src="/api/photos/${KEPT}/preview"]`)).toBeTruthy()
   })
 
   it('opens the whole collection with "Alle Fotos" and keeps what is taken there for today', async () => {
@@ -128,11 +139,11 @@ describe('the photos of today', () => {
     expect(box.querySelector(`img[src="/api/photos/${KEPT}/preview"]`)).toBeTruthy()
   })
 
-  it('has no "Alle Fotos" and no "Neu in Immich" without an Immich', async () => {
+  it('has no "Alle Fotos" and no "Vorschläge aus Immich" without an Immich', async () => {
     connected = false
     await show(<TodayPage now={new Date(2026, 9, 6, 19, 30)} />)
     expect(named('Alle Fotos')).toBeUndefined()
-    expect(box.textContent).not.toContain('Neu in Immich')
+    expect(box.textContent).not.toContain('Vorschläge aus Immich')
     expect(calls.some((call) => call.url.startsWith('/api/immich/recent'))).toBe(false)
   })
 })
@@ -186,5 +197,85 @@ describe('the camera button of a note', () => {
     await act(async () => document.querySelector<HTMLButtonElement>('[data-immich-tiles] button:has(img)')!.click())
     await idle()
     expect(takes()[0].body).toEqual({ date: '2026-10-06', note: true, anywhen: true })
+  })
+})
+
+describe('the two rows of the photos of today', () => {
+  const upload = () => named('Hochladen')!
+  /** Whether a part of the page can be swiped sideways: then it would carry its buttons out of sight. */
+  const swipes = (item: Element) => Boolean(item.closest('.overflow-x-auto'))
+
+  it('keeps "Hochladen" in the header, out of the rows that are swiped, with and without Immich', async () => {
+    for (const withImmich of [true, false]) {
+      connected = withImmich
+      ownPhotos = [photo({ id: 'b'.repeat(32), source: 'upload' })]
+      await show(<TodayPage now={new Date(2026, 9, 6, 19, 30)} />)
+      expect(upload()).toBeTruthy()
+      expect(swipes(upload())).toBe(false)
+      expect(upload().closest('[data-photo-actions]')).toBeTruthy()
+      expect(Boolean(named('Alle Fotos'))).toBe(withImmich)
+      if (withImmich) expect(swipes(named('Alle Fotos')!)).toBe(false)
+      act(() => root.unmount())
+      box.remove()
+    }
+  })
+
+  it('shows the photos of the day in full colour in the first row and the suggestions muted in the second', async () => {
+    ownPhotos = [photo({ id: 'b'.repeat(32), source: 'upload' })]
+    await show(<TodayPage now={new Date(2026, 9, 6, 19, 30)} />)
+    const mine = box.querySelector('[data-photos-today]')!
+    const suggestions = box.querySelector('[data-photo-suggestions]')!
+    expect(mine.querySelectorAll('img')).toHaveLength(1)
+    expect(mine.querySelector('img')!.getAttribute('src')).toBe(`/api/photos/${'b'.repeat(32)}/preview`)
+    expect(mine.querySelector('[data-shot]')).toBeNull()
+    expect(suggestions.querySelectorAll('img')).toHaveLength(2)
+    expect(suggestions.querySelector('img')!.className).toContain('opacity-75')
+    expect(mine.contains(suggestions)).toBe(false)
+    expect(box.textContent).toContain('Für heute')
+    expect(box.textContent).toContain('Vorschläge aus Immich')
+    expect(box.textContent).toContain('1 Foto')
+  })
+
+  it('moves a taken suggestion to the first row and brings it back when it is removed', async () => {
+    await show(<TodayPage now={new Date(2026, 9, 6, 19, 30)} />)
+    const inSuggestions = () => box.querySelectorAll('[data-photo-suggestions] img').length
+    expect(inSuggestions()).toBe(2)
+    await act(async () => box.querySelector<HTMLButtonElement>('[data-photo-suggestions] button')!.click())
+    await idle()
+    expect(inSuggestions()).toBe(1)
+    expect(box.querySelectorAll('[data-photos-today] img')).toHaveLength(1)
+    await act(async () => named('Foto wieder entfernen')!.click())
+    await idle()
+    expect(calls.some((call) => call.method === 'DELETE' && call.url === `/api/photos/${KEPT}`)).toBe(true)
+    expect(inSuggestions()).toBe(2)
+    expect(box.querySelector('[data-photos-today]')).toBeNull()
+  })
+
+  it('says in one sentence that there is no photo yet, instead of an empty row', async () => {
+    await show(<TodayPage now={new Date(2026, 9, 6, 19, 30)} />)
+    expect(box.querySelector('[data-photos-empty]')?.textContent).toBe('Noch kein Foto für heute. Lade eines hoch oder nimm unten einen Vorschlag.')
+    expect(box.querySelector('[data-photos-today]')).toBeNull()
+    act(() => root.unmount())
+    box.remove()
+    connected = false
+    await show(<TodayPage now={new Date(2026, 9, 6, 19, 30)} />)
+    expect(box.querySelector('[data-photos-empty]')?.textContent).toBe('Noch kein Foto für heute.')
+    expect(box.querySelector('[data-photo-suggestions]')).toBeNull()
+  })
+
+  it('shows the upload while it runs and puts the new photo in the first row', async () => {
+    connected = false
+    let finish!: () => void
+    uploadGate = new Promise<void>((resolve) => (finish = resolve))
+    await show(<TodayPage now={new Date(2026, 9, 6, 19, 30)} />)
+    const input = box.querySelector<HTMLInputElement>('input[type=file][aria-label="Hochladen"]')!
+    Object.defineProperty(input, 'files', { value: [new File(['x'], 'a.jpg', { type: 'image/jpeg' })], configurable: true })
+    await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })))
+    expect(named('Wird hochgeladen …')?.disabled).toBe(true)
+    expect(box.querySelector('[data-photos-today]')).toBeNull()
+    finish()
+    await idle()
+    expect(upload().disabled).toBe(false)
+    expect(box.querySelector(`[data-photos-today] img[src="/api/photos/${UPLOADED}/preview"]`)).toBeTruthy()
   })
 })

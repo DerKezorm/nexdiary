@@ -72,12 +72,7 @@ export function useImmichDay(date: string | undefined, enabled = true, mode: 'da
     [date, mode],
   )
 
-  /** A photo taken from Immich was deleted: its tile is free again. */
-  const released = useCallback((photoId: string) => {
-    setPhotos((current) => current && current.map((entry) => (entry.photo_id === photoId ? { ...entry, photo_id: null } : entry)))
-  }, [])
-
-  return { photos, away, connected, taking, problem, take, released }
+  return { photos, away, connected, taking, problem, take }
 }
 
 export type ImmichDayState = ReturnType<typeof useImmichDay>
