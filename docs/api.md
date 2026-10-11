@@ -38,3 +38,37 @@ Errors look like `{"detail": {"code": "token_invalid", "message": "No valid API 
 ### `GET /api/v1/me`
 
 Who the token speaks for: `name`, `display_name`, `level` (always `read`) and the nexdiary `version`.
+
+### `GET /api/v1/dashboard`
+
+A few numbers for a dashboard card, all of them for the account of the token and nobody else:
+
+```json
+{
+  "version": "0.7.0",
+  "today_written": true,
+  "streak": 12,
+  "streak_unit": "days",
+  "entries_month": 9,
+  "notes_month": 31,
+  "next_capsule": "2026-12-24",
+  "next_capsule_days": 74
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `version` | The nexdiary version. |
+| `today_written` | The page of today is written (it has text). "Today" is the date in the time zone the account uses. |
+| `streak` | The streak the interface shows. |
+| `streak_unit` | `days` at a weekly goal of 7 (every day), `weeks` at a lower goal. The streak counts in that unit. |
+| `entries_month` | Pages with text in the current calendar month, up to today. |
+| `notes_month` | Notes in the current calendar month, up to today. |
+| `next_capsule` | The day (`YYYY-MM-DD`) the next time capsule *for this account* opens, or `null` while none is closed. Capsules the account wrote to itself count; capsules it wrote only to other people do not. |
+| `next_capsule_days` | Whole days from today to `next_capsule`, or `null`. |
+
+**What it deliberately does not give.** No text, title, tag, value (1 to 10) or mood, not even the names of the values;
+no photo; nothing of any other account; for a capsule only the day it opens, never its title, text, sender or
+recipients. The numbers are counts and days, so a card can show them and a leaked token shows no more than that.
+
+Reading makes no change: asking never creates a data key for an account that has not written yet.

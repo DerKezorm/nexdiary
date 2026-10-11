@@ -7,7 +7,8 @@ Walls, in this order: a request that carries an ``Origin`` is refused (browsers 
 can use a token it found); API tokens must be switched on by the operator; the token must be valid; the token must stay
 under its rate. The session cookie counts for nothing here.
 
-A token reads as its account and never more. The numbers of the diary come with the blocks that make the diary.
+A token reads as its account and never more. What comes out is counts and days only (``services/dashboard.py``): never
+a text, a title, a value, a tag or the name of a person.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from fastapi import APIRouter, Depends, Request
 from .. import __version__
 from ..db import SessionLocal
 from ..errors import error
-from ..services import apitokens, logs
+from ..services import apitokens, dashboard, logs
 from ..services.apitokens import Caller
 
 logger = logging.getLogger("nexdiary.api")
@@ -61,3 +62,9 @@ def me(found: Reader) -> dict[str, Any]:
         "level": found.level,
         "version": __version__,
     }
+
+
+@router.get("/dashboard", summary="A few numbers for a dashboard card: counts and days, never what is written")
+def dashboard_numbers(found: Reader) -> dict[str, Any]:
+    with SessionLocal() as db:
+        return dashboard.numbers(db, found.account)
