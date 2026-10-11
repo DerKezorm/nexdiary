@@ -16,6 +16,11 @@
         "title": "The second factor per provider",
         "where": "Settings, Sign-in, the form of a provider",
         "body": "\"The provider checks the second factor itself\": then a sign-in through it asks for no code of nexdiary's own. Off, whoever has a second factor here gives its code after the provider. An account that signs in through providers only is never made to set one up; an account with a password still is when it signs in with the password. Your provider keeps what it did before: the code is asked unless you had switched that off."
+      },
+      {
+        "title": "Photos of today in two rows",
+        "where": "Today",
+        "body": "\"Upload\" and, when Immich is set up, \"All photos\" stay at the top. Below them are the photos that belong to the day, and apart from them the suggestions from Immich. Tap a suggestion to take it; it moves into the first row. Remove the photo again and it goes back to the suggestions."
       }
     ],
     "smallTitle": "Also",
@@ -23,7 +28,8 @@
       "Before the public address changes, nexdiary says which redirect addresses authentik and the providers by hand still know.",
       "Behind a reverse proxy named in NEXDIARY_TRUSTED_PROXIES, nexdiary believes the scheme it reports (X-Forwarded-Proto).",
       "In the list of accounts, the operator sees which providers each account is linked to and can remove a link, with the own password; the person is told.",
-      "\"Ready for the internet?\" names the providers that are trusted with the second factor."
+      "\"Ready for the internet?\" names the providers that are trusted with the second factor.",
+      "Mails now carry a Date header. Some providers, among them iCloud, Outlook and Gmail, silently dropped mails without one."
     ]
   },
   "0.6.0": {
