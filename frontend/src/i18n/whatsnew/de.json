@@ -1,4 +1,18 @@
 {
+  "0.8.1": {
+    "lead": "Eine kleine Korrektur für den Betrieb hinter einem Reverse Proxy.",
+    "sections": [
+      {
+        "title": "X-Forwarded-Proto nur von vertrauten Proxys",
+        "where": "Einstellungen, Anmeldung, Bereit fürs Internet?",
+        "body": "Ob Cookies das Secure-Flag bekommen und ob „Bereit fürs Internet?“ https als in Ordnung zeigt, richtet sich jetzt nur noch nach einem Proxy, der in NEXDIARY_TRUSTED_PROXIES steht. Bisher zählte dafür der Kopf X-Forwarded-Proto von jedem Absender. Läuft nexdiary hinter einem Proxy, trag ihn dort ein oder setz NEXDIARY_COOKIE_SECURE auf on, sonst bleiben die Cookies im Modus auto ohne Secure."
+      }
+    ],
+    "smallTitle": "Außerdem",
+    "small": [
+      "Der https-Hinweis in „Bereit fürs Internet?“ nennt NEXDIARY_TRUSTED_PROXIES."
+    ]
+  },
   "0.8.0": {
     "lead": "Ein paar Zahlen zu deinem Tagebuch für eine Dashboard-Karte, gelesen mit einem API-Token.",
     "sections": [
