@@ -538,3 +538,29 @@ def test_starts_at_once_make_one_entry_and_no_error(boss: Account, provider: Fak
     assert failed == []
     with SessionLocal() as db:
         assert [entry.slug for entry in oidc_store.SqlStore(db).list_providers()] == ["oidc"]
+
+
+def test_a_linking_ends_only_in_a_full_session_of_the_account_that_started_it(
+    client: TestClient, boss: Account, provider: FakeProvider
+) -> None:
+    """A session that may only set up its second factor links nothing: the link is a way in."""
+    from app.models import STAGE_SETUP
+    from app.security import SESSION_COOKIE, start_session
+
+    from .oidc_helpers import come_back
+
+    configure(client, provider)
+    alex = make_account("alex")
+    member = fresh_browser()
+    sign_in(member, alex)
+    started = member.post("/api/oidc/sso/link", json={"password": PASSWORD})
+    assert started.status_code == 200
+    with SessionLocal() as db:
+        row = db.get(Account, alex.id)
+        assert row is not None
+        member.cookies.set(SESSION_COOKIE, start_session(db, row, "127.0.0.1", "tests", stage=STAGE_SETUP))
+    provider.person = {"sub": "person-1"}
+    answer = come_back(member, provider, started.json()["url"])
+    assert error_in(answer) == "oidc_link_mismatch"
+    with SessionLocal() as db:
+        assert db.scalar(select(OidcLink.id)) is None
