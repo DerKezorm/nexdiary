@@ -13,7 +13,8 @@ import { Wordmark } from '../components/Logo'
 import { KeepCodes, RecoveryCodes } from '../components/RecoveryCodes'
 import { ThemeSwitcher } from '../components/ThemeSwitcher'
 import i18n from '../i18n'
-import { errorText } from '../lib/errors'
+import { ProviderButtons } from '../components/ProviderButtons'
+import { errorText, signInErrorText } from '../lib/errors'
 import { answerWithPasskey, passkeysAvailable } from '../lib/webauthn'
 import { safeNext, useAuth } from '../state/auth'
 import { Input } from './settings/ui'
@@ -44,11 +45,13 @@ function Primary({ children, busy = false }: { children: ReactNode; busy?: boole
   )
 }
 
-function Problem({ code }: { code: string | null }) {
+/** What went wrong: a code of the server's answer, or (`fromAddress`) one a way back from a provider put in the
+ * address (`?error=`), told in the shared sign-in module's words, never as the raw code. */
+function Problem({ code, fromAddress = false }: { code: string | null; fromAddress?: boolean }) {
   if (!code) return null
   return (
     <p role="alert" className="rounded-xl border border-bad/40 bg-bad/10 px-3 py-2 text-sm text-bad">
-      {errorText(code)}
+      {fromAddress ? signInErrorText(code) : errorText(code)}
     </p>
   )
 }
@@ -58,7 +61,7 @@ function Or() {
   return (
     <div className="my-5 flex items-center gap-3 text-xs text-muted">
       <span className="h-px flex-1 bg-line" />
-      {t('auth.or')}
+      {t('oidc.login.or')}
       <span className="h-px flex-1 bg-line" />
     </div>
   )
@@ -142,11 +145,15 @@ export function LoginPage() {
   const [code, setCode] = useState('')
   const [remember, setRemember] = useState(true)
   const [busy, setBusy] = useState(false)
-  const [problem, setProblem] = useState<string | null>(params.get('error'))
+  const [problem, setProblem] = useState<string | null>(null)
+  // The code a way back from a provider put in the address, until something else is said.
+  const [arrived, setArrived] = useState<string | null>(params.get('error'))
+  // Password sign-in is off: only the operator may still use it, behind a small link (blueprint 04).
+  const [operatorForm, setOperatorForm] = useState(false)
   const next = safeNext(params.get('next'))
 
   useEffect(() => {
-    void authApi.methods().then(setMethods, () => setMethods({ password: true, oidc: false, oidc_name: '', passkeys: false }))
+    void authApi.methods().then(setMethods, () => setMethods({ password: true, providers: [], passkeys: false }))
   }, [])
 
   if (status === 'loading') return null
@@ -163,6 +170,7 @@ export function LoginPage() {
   }
 
   const submit = async () => {
+    setArrived(null)
     if (step === 'password' && !name.trim()) return setProblem('name_missing')
     if (step === 'password' && !password) return setProblem('password_missing')
     setBusy(true)
@@ -195,6 +203,7 @@ export function LoginPage() {
   const withPasskey = async () => {
     setBusy(true)
     setProblem(null)
+    setArrived(null)
     try {
       const { options } = await passkeyApi.signInBegin()
       const credential = await answerWithPasskey(options)
@@ -225,6 +234,7 @@ export function LoginPage() {
           }}
         >
           <Problem code={problem} />
+          {!problem && <Problem code={arrived} fromAddress />}
           <Input
             label={onlyPasskey ? t('auth.code.recoveryLabel') : t('auth.code.label')}
             value={code}
@@ -253,36 +263,48 @@ export function LoginPage() {
     )
   }
 
+  const providers = methods?.providers ?? []
+  // Password sign-in off and a provider there: the buttons alone, the password form only for the operator.
+  const passwordForm = !methods || methods.password || providers.length === 0 || operatorForm
   return (
     <AuthFrame title={t('auth.login.title')} text={t('auth.login.text')}>
-      <form
-        className="space-y-4"
-        onSubmit={(event) => {
-          event.preventDefault()
-          void submit()
-        }}
-      >
-        <Problem code={problem} />
-        <Input label={t('auth.name')} value={name} onChange={setName} autoComplete="username webauthn" autoFocus />
-        <Input label={t('auth.password')} value={password} onChange={setPassword} type="password" autoComplete="current-password" />
-        <Remember on={remember} onChange={setRemember} />
-        <Primary busy={busy}>{t('auth.login.submit')}</Primary>
-        {methods?.forgot && (
-          <Link to="/forgot" className="block text-center text-xs text-muted hover:text-ink">
-            {t('auth.login.forgot')}
-          </Link>
-        )}
-        {methods && !methods.password && <p className="text-xs text-muted">{t('auth.login.passwordOff')}</p>}
-      </form>
-      {(passkeys || methods?.oidc) && <Or />}
-      <div className="space-y-2.5">
+      {passwordForm ? (
+        <form
+          className="space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void submit()
+          }}
+        >
+          <Problem code={problem} />
+          {!problem && <Problem code={arrived} fromAddress />}
+          <Input label={t('auth.name')} value={name} onChange={setName} autoComplete="username webauthn" autoFocus />
+          <Input label={t('auth.password')} value={password} onChange={setPassword} type="password" autoComplete="current-password" />
+          <Remember on={remember} onChange={setRemember} />
+          <Primary busy={busy}>{t('auth.login.submit')}</Primary>
+          {methods?.forgot && (
+            <Link to="/forgot" className="block text-center text-xs text-muted hover:text-ink">
+              {t('auth.login.forgot')}
+            </Link>
+          )}
+          {methods && !methods.password && <p className="text-xs text-muted">{t('auth.login.passwordOff')}</p>}
+        </form>
+      ) : (
+        <>
+          <Problem code={problem} />
+          {!problem && <Problem code={arrived} fromAddress />}
+        </>
+      )}
+      {passwordForm && (passkeys || providers.length > 0) && <Or />}
+      <div className={`space-y-2.5 ${passwordForm ? '' : 'mt-4'}`}>
         {passkeys && passkeyButton}
-        {methods?.oidc && (
-          <a href={`/api/oidc/start?next=${encodeURIComponent(next)}`} className={OUTLINE}>
-            {t('auth.login.oidc', { name: methods.oidc_name || 'OpenID Connect' })}
-          </a>
-        )}
+        <ProviderButtons providers={providers} />
       </div>
+      {!passwordForm && (
+        <button type="button" className="mt-5 block w-full text-center text-xs text-muted hover:text-ink" onClick={() => setOperatorForm(true)}>
+          {t('oidc.login.operator')}
+        </button>
+      )}
     </AuthFrame>
   )
 }
@@ -437,7 +459,7 @@ export function InvitePage() {
 
   return (
     <AuthFrame title={t('auth.invite.title')} text={t('auth.invite.text')}>
-      {methods && !methods.password && !methods.oidc && <p className="text-sm text-ink-2">{t('auth.invite.noWay')}</p>}
+      {methods && !methods.password && methods.providers.length === 0 && <p className="text-sm text-ink-2">{t('auth.invite.noWay')}</p>}
       {(!methods || methods.password) && (
         <form
           className="space-y-4"
@@ -462,13 +484,11 @@ export function InvitePage() {
           <Primary busy={busy}>{t('auth.invite.submit')}</Primary>
         </form>
       )}
-      {/* Through the sign-in provider: the invitation is the permission for the new account. */}
-      {methods?.oidc && (
+      {/* Through a sign-in provider: the invitation travels along and is the permission for the new account. */}
+      {methods && methods.providers.length > 0 && (
         <>
           {methods.password && <Or />}
-          <a href={`/api/oidc/start?invite=${encodeURIComponent(token)}`} className={OUTLINE}>
-            {t('auth.invite.withProvider', { name: methods.oidc_name || 'OpenID Connect' })}
-          </a>
+          <ProviderButtons providers={methods.providers} invite={token} />
         </>
       )}
     </AuthFrame>

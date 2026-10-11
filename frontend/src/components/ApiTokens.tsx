@@ -42,7 +42,7 @@ function Line({ label, text, copied, onCopy }: { label: string; text: string; co
 export function ApiTokens() {
   const { t, i18n } = useTranslation()
   const { me } = useAuth()
-  const [state, setState] = useState<{ allowed: boolean; tokens: ApiToken[] } | null>(null)
+  const [state, setState] = useState<{ allowed: boolean; tokens: ApiToken[]; second_factor_pending?: boolean } | null>(null)
   const [making, setMaking] = useState(false)
   const [name, setName] = useState('')
   const [days, setDays] = useState<Lifetime>('never')
@@ -91,8 +91,20 @@ export function ApiTokens() {
     return { text: t('apiTokens.runsOut', { day: day(token.expires_at) }), soon: at - now <= WEEK }
   }
 
+  const waits = Boolean(state.second_factor_pending)
+
   return (
     <Card id="api-tokens" icon={Plug} title={t('apiTokens.title')} text={t('apiTokens.text')}>
+      {/* A provider checked the second factor for this session, but a token has no session: it works only once the
+          account has a factor of its own. Making one stays possible. */}
+      {waits && (
+        <p role="note" className="rounded-xl border border-warn/40 bg-warn/10 px-3 py-2 text-sm text-warn" data-testid="api-tokens-waits">
+          {t('apiTokens.waitsForSecondFactor')}{' '}
+          <Link to="/konto?tab=security" className="font-semibold underline">
+            {t('apiTokens.setUpSecondFactor')}
+          </Link>
+        </p>
+      )}
       {shown && (
         <div className="rounded-xl border border-accent/40 bg-accent-soft/50 p-4 text-sm" data-testid="api-token-shown">
           <p className="font-semibold">{t('apiTokens.shownOnce', { name: shown.name })}</p>
@@ -126,6 +138,11 @@ export function ApiTokens() {
                     )}
                     {' · '}
                     {token.last_used_at ? t('apiTokens.used', { when: moment(token.last_used_at) }) : t('apiTokens.unused')}
+                    {waits && !token.blocked && (
+                      <span className="block text-warn" data-testid="api-token-waits">
+                        {t('apiTokens.waitsForSecondFactor')}
+                      </span>
+                    )}
                   </span>
                 </span>
                 <button

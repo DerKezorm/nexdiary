@@ -587,7 +587,6 @@
     "nameHint": "You sign in with it: 2 to 64 letters without accents, digits, dot, hyphen or underscore.",
     "password": "Password",
     "passwordHint": "At least 12 characters.",
-    "or": "or",
     "backToLogin": "To the sign-in",
     "setup": {
       "title": "Set up nexdiary",
@@ -601,7 +600,6 @@
       "text": "Welcome back to nexdiary.",
       "submit": "Sign in",
       "passwordOff": "Sign-in with a password is turned off here. Only the operator can still use it.",
-      "oidc": "Sign in with {{name}}",
       "passkey": "Sign in with a passkey",
       "forgot": "Forgot your password?"
     },
@@ -620,7 +618,6 @@
       "submit": "Create account",
       "invalidTitle": "Invitation not valid",
       "invalidText": "This invitation no longer works: it was used, has run out or was withdrawn. Ask for a new one.",
-      "withProvider": "Accept with {{name}}",
       "noWay": "Sign-in with a password is off and no sign-in provider is set up. Ask the operator.",
       "haveAccount": "This link is for a new account. You are signed in as {{name}} already and do not need it.",
       "toApp": "To nexdiary"
@@ -736,15 +733,7 @@
       "done": "Password changed. Every other device is signed out."
     },
     "oidc": {
-      "title": "Sign-in provider",
-      "text": "Sign in through {{name}}, besides the password.",
-      "only": "This account signs in through {{name}}.",
-      "linked": "Linked: you can sign in through {{name}} and with your password.",
-      "linkedNow": "Your account is linked to the provider.",
-      "unlink": "Unlink",
-      "unlinked": "No longer linked.",
-      "how": "Link your account with {{name}}, then both work. Your password confirms it is you; then it goes to {{name}} and back. There, its own second factor applies.",
-      "link": "Link with {{name}}"
+      "linkedNow": "Your account is linked to {{name}} now."
     },
     "role": {
       "operator": "Operator",
@@ -848,7 +837,6 @@
   "twofactor": {
     "title": "Second factor",
     "lead": "Besides the password, a code from an app on your phone. Recovery codes on paper get you in when the phone is gone.",
-    "provider": "You sign in through the provider; its second factor applies.",
     "off": "Off.",
     "on_one": "On. {{count}} recovery code left.",
     "on_other": "On. {{count}} recovery codes left.",
@@ -918,17 +906,9 @@
     "copyNamed": "Copy: {{what}}",
     "done": "I have it",
     "used": "last used {{when}}",
-    "unused": "never used"
-  },
-  "authentik": {
-    "step": {
-      "reached": "authentik reached",
-      "signingKey": "Signing key",
-      "mapping": "Mapping for the address",
-      "provider": "Provider",
-      "application": "Application",
-      "fill": "Settings here"
-    }
+    "unused": "never used",
+    "waitsForSecondFactor": "Works only once you set up a second factor.",
+    "setUpSecondFactor": "Set it up now"
   },
   "server": {
     "aiAllowed": "AI allowed",
@@ -1016,46 +996,18 @@
         "text": "Then a password alone is enough again to read a diary. Whoever has a second factor already keeps it.",
         "button": "Stop requiring it"
       },
-      "provider_checks": {
-        "title": "Leave the second factor to the provider?",
-        "text": "Whoever comes in through {{name}} is no longer asked for a second factor here. That is safe only when {{name}} requires one itself.",
-        "button": "Leave it"
-      },
       "link": {
         "title": "Send {{name}} a link to reset the password?",
         "text": "The person chooses their password themselves. The link goes by mail to their address when mail is set up, otherwise you get it once to pass on. The second factor stays.",
         "button": "Send link"
-      }
+      },
+      "unlinkProvider": {"title": "Remove the link of {{name}} to {{provider}}?", "text": "{{name}} then no longer signs in through {{provider}} until the account links itself again. {{name}} is told so.", "button": "Remove"}
     },
     "signin": "Sign-in",
-    "signinText": "How people get in.",
-    "passwordLogin": "Sign-in with a password",
-    "passwordLoginHint": "Off: members get in through the provider only. As the operator you can always use your password.",
     "twoFactorRequired": "Require a second factor",
-    "twoFactorRequiredHint": "Every account must set it up before it gets any further: right after the password.",
+    "twoFactorRequiredHint": "Every account with a password must set it up before it gets any further: right after the password. Whoever comes in through a provider that checks the second factor itself is not asked there.",
     "ownSecondFactorFirst": "Set up your own second factor first (My account, Security), or you would be the first one who cannot go on.",
-    "publicUrl": "Public address",
-    "publicUrlHint": "The address nexdiary is reached under. Invitations and the provider use it.",
-    "oidc": "OpenID Connect",
-    "oidcOn": "Set up with {{issuer}}.",
-    "oidcOff": "Not set up.",
-    "redirect": "Redirect address for the provider",
-    "oidcIssuer": "Issuer",
-    "clientId": "Client ID",
-    "clientSecret": "Client secret",
     "secretKept": "stored, leave empty to keep it",
-    "oidcName": "Name on the button",
-    "oidcAutoCreate": "New people get an account",
-    "oidcAutoCreateHint": "Off: only invited or linked accounts get in through the provider.",
-    "oidcRemove": "Remove",
-    "authentik": {
-      "title": "authentik in one step",
-      "text": "With an API token that may create applications, nexdiary sets up provider and application in authentik by itself. The token is used for that only and not stored.",
-      "url": "Address of authentik",
-      "token": "API token",
-      "run": "Set up",
-      "blueprint": "Download a blueprint instead"
-    },
     "apiTokens": {
       "title": "API tokens",
       "text": "Accounts connect nexdiary with programs such as nexdeck. A token only reads, and never more than its account. Off by default.",
@@ -1199,8 +1151,6 @@
       "save": "Save",
       "out": "What goes out: an encrypted message to the push service of each browser (Google for Chrome, Apple for Safari, Mozilla for Firefox). Only the device can read it. It holds the reminder only, never an entry."
     },
-    "providerChecks": "{{name}} checks the second factor",
-    "providerChecksHint": "On: whoever comes in through {{name}} needs no second factor of their own here. Turn on only when {{name}} requires one itself.",
     "withoutMasterKey": "⚠️ Without the master key a backup cannot be read, not even by you.",
     "encryption": {
       "title": "Encryption",
@@ -1222,7 +1172,9 @@
     },
     "linkSent": "The link for {{name}} went to {{email}}. It works once and for 24 hours.",
     "linkShown": "The link for {{name}}, shown only now, valid once and for 24 hours. Pass it on, the person chooses the password themselves:",
-    "linkLabel": "Link to the password"
+    "linkLabel": "Link to the password",
+    "unlinkProvider": "Remove the link to {{name}}",
+    "providers": {"order": "Move {{name}}", "more": "More"}
   },
   "editor": {
     "tools": "Formatting",
@@ -1576,20 +1528,6 @@
     "share_no_day": "Without an answer which day they belong to, the shared photos were not kept. Please share them again.",
     "note_too_long": "The note is too long (at most {{max}} characters).",
     "oidc_account": "This account signs in through the provider.",
-    "oidc_denied": "The provider did not let you in.",
-    "oidc_email_taken": "Your mail address belongs to another account.",
-    "oidc_email_unverified": "The provider did not confirm your mail address.",
-    "oidc_exchange_failed": "The provider did not confirm the sign-in.",
-    "oidc_issuer_mismatch": "The provider answers under another address.",
-    "oidc_link_mismatch": "This link belongs to another account.",
-    "oidc_no_account": "There is no account for you here. Ask for an invitation.",
-    "oidc_not_configured": "No sign-in provider is set up.",
-    "oidc_only_account": "This account signs in through the provider only.",
-    "oidc_provider_invalid": "The provider does not answer like an OpenID Connect provider.",
-    "oidc_provider_unreachable": "The provider cannot be reached.",
-    "oidc_state_mismatch": "The sign-in ran out or came from elsewhere. Try again.",
-    "oidc_subject_taken": "This identity is linked to another account already.",
-    "oidc_token_invalid": "The provider's answer was not valid.",
     "operator_network": "The operator's settings can be reached from the home network only.",
     "operator_only": "Only the operator may do this.",
     "order_mismatch": "The order no longer fits. Reload the page.",
@@ -1834,7 +1772,8 @@
     "two_factor": {
       "title": "Second factor for everybody",
       "ok": "Whoever signs in with a password needs a code or a passkey as well.",
-      "bad": "Off: a guessed or stolen password is enough to read a diary. Turn on “Require a second factor” below."
+      "bad": "Off: a guessed or stolen password is enough to read a diary. Turn on “Require a second factor” below.",
+      "warn": "Required for accounts with a password. At {{providers}} the provider checks the second factor itself, nexdiary asks for none of its own there. Check that the provider really requires one."
     },
     "own_account": {
       "title": "Your own account",

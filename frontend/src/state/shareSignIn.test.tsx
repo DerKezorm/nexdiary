@@ -51,7 +51,7 @@ function serve(): void {
         const sent = JSON.parse(String(init!.body)) as { id: string; text: string; photo_id: string }
         return json({ id: sent.id, date: '2026-10-10', text: sent.text, prompt: null, photo_id: sent.photo_id, created_at: '2026-10-10T09:00:00+00:00', updated_at: null, unreadable: false }, 201)
       }
-      if (url === '/api/auth/methods') return json({ password: true, oidc: true, oidc_name: 'authentik' })
+      if (url === '/api/auth/methods') return json({ password: true, providers: [{ slug: 'authentik', label: 'authentik' }] })
       if (url === '/api/auth/totp/begin') return json({ secret: 'A'.repeat(32), uri: 'otpauth://totp/nexdiary:jule', qr_svg: '<svg/>' })
       return json({})
     }),

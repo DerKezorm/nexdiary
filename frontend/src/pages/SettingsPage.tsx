@@ -14,7 +14,8 @@ import { AiCard } from './settings/AiCard'
 import { ImmichServerCard } from './settings/ImmichCards'
 import { PushServerCard } from './settings/PushCards'
 import { EncryptionCard, ReadinessCard } from './settings/ReadinessCards'
-import { AccountsCard, ApiTokensCard, BackupsCard, LanguagesCard, LogCard, MailCard, SignInCard, StorageCard, useServerSettings } from './settings/ServerCards'
+import { AccountsCard, ApiTokensCard, BackupsCard, LanguagesCard, LogCard, MailCard, StorageCard, useServerSettings } from './settings/ServerCards'
+import { SignInPart } from './settings/SignInCards'
 import { TabRow, type Tab } from './settings/ui'
 
 type Part = 'accounts' | 'signin' | 'mail' | 'ai' | 'immich' | 'push' | 'backups' | 'languages' | 'log' | 'api'
@@ -67,7 +68,7 @@ function ServerPart({ part }: { part: Part }) {
       return (
         <div className="space-y-6">
           <ReadinessCard />
-          <SignInCard server={server} />
+          <SignInPart server={server} />
         </div>
       )
     case 'ai':

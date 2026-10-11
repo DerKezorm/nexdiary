@@ -19,7 +19,7 @@ import { idle } from '../test/wait'
 
 const me: Me = {
   id: 1, name: 'jule', display_name: 'Jule', role: 'operator', sign_in: 'password', email: 'jule@example.com', language: 'de',
-  oidc_linked: false, two_factor: true, totp: true, passkeys: 0, two_factor_recovery_left: 8, avatar: null, version: '0.1.0', whats_new_seen: '0.1.0',
+  two_factor: true, totp: true, passkeys: 0, two_factor_recovery_left: 8, avatar: null, version: '0.1.0', whats_new_seen: '0.1.0',
   session_stage: 'full', second_factor_required: true,
   profile: {
     palette: 'salbei', mode: 'light', layout: 'page', quick_start: true, journal: 'blog', timezone: 'Europe/Berlin', timezone_source: 'browser', ai: true,
@@ -107,7 +107,7 @@ beforeEach(async () => {
   await changeLanguage('de', false)
   auth.status = 'signedOut'
   auth.me = me
-  answers = { 'GET /api/auth/methods': { password: true, oidc: false, oidc_name: '', passkeys: false, forgot: false } }
+  answers = { 'GET /api/auth/methods': { password: true, providers: [], passkeys: false, forgot: false } }
   serve()
 })
 
@@ -124,14 +124,14 @@ describe('"Passwort vergessen?" on the sign-in page', () => {
     expect(box.textContent).not.toContain('Passwort vergessen?')
     act(() => root.unmount())
     box.remove()
-    answers['GET /api/auth/methods'] = { password: true, oidc: false, oidc_name: '', passkeys: false, forgot: true }
+    answers['GET /api/auth/methods'] = { password: true, providers: [], passkeys: false, forgot: true }
     await show(<LoginPage />)
     const link = [...box.querySelectorAll('a')].find((item) => item.textContent === 'Passwort vergessen?')
     expect(link?.getAttribute('href')).toBe('/forgot')
   })
 
   it('asks for the link with the name, and says the same whatever the name is', async () => {
-    answers['GET /api/auth/methods'] = { password: true, oidc: false, oidc_name: '', passkeys: false, forgot: true }
+    answers['GET /api/auth/methods'] = { password: true, providers: [], passkeys: false, forgot: true }
     answers['POST /api/auth/forgot'] = { ok: true }
     await show(<ForgotPage />, '/forgot')
     expect(box.querySelector('h1')!.textContent).toBe('Passwort vergessen')
@@ -150,7 +150,7 @@ describe('"Passwort vergessen?" on the sign-in page', () => {
   })
 
   it('still says so when the mail was switched off between the page opening and the request', async () => {
-    answers['GET /api/auth/methods'] = { password: true, oidc: false, oidc_name: '', passkeys: false, forgot: true }
+    answers['GET /api/auth/methods'] = { password: true, providers: [], passkeys: false, forgot: true }
     answers['POST /api/auth/forgot'] = { refused: 'reset_off' }
     await show(<ForgotPage />, '/forgot')
     await type(field('Name oder Mailadresse'), 'anna')
@@ -234,12 +234,12 @@ describe('what the server offers', () => {
     Object.defineProperty(window, 'isSecureContext', { value: true, configurable: true })
     vi.stubGlobal('PublicKeyCredential', function PublicKeyCredential() {})
     answers['GET /api/auth/passkeys'] = []
-    answers['GET /api/auth/methods'] = { password: true, oidc: false, oidc_name: '', passkeys: false }
+    answers['GET /api/auth/methods'] = { password: true, providers: [], passkeys: false }
     await show(<PasskeysCard me={me} />, '/konto')
     expect(button('Passkey anlegen', box)!.disabled).toBe(true)
     act(() => root.unmount())
     box.remove()
-    answers['GET /api/auth/methods'] = { password: true, oidc: false, oidc_name: '', passkeys: true }
+    answers['GET /api/auth/methods'] = { password: true, providers: [], passkeys: true }
     await show(<PasskeysCard me={me} />, '/konto')
     expect(button('Passkey anlegen', box)!.disabled).toBe(false)
   })
@@ -267,7 +267,7 @@ describe('what the server offers', () => {
 
 describe("the operator's pages say what they hold", () => {
   const settings: ServerSettings = {
-    public_url: 'https://diary.example.com', password_login: true, two_factor_required: true, oidc_second_factor_by_provider: false, master_key_saved_at: null,
+    public_url: 'https://diary.example.com', password_login: true, two_factor_required: true, master_key_saved_at: null,
     backup_schedule: 'daily', backup_keep: 7, smtp_host: '', smtp_port: 587, smtp_security: 'starttls', smtp_user: '', smtp_password_set: false, smtp_from: '',
     api_tokens_allowed: true, update_check: true, storage_per_person_gb: 5,
   }

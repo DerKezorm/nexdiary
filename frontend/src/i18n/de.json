@@ -587,7 +587,6 @@
     "nameHint": "Damit meldest du dich an: 2 bis 64 Buchstaben ohne Umlaute, Ziffern, Punkt, Bindestrich oder Unterstrich.",
     "password": "Passwort",
     "passwordHint": "Mindestens 12 Zeichen.",
-    "or": "oder",
     "backToLogin": "Zur Anmeldung",
     "setup": {
       "title": "nexdiary einrichten",
@@ -601,7 +600,6 @@
       "text": "Willkommen zurück bei nexdiary.",
       "submit": "Anmelden",
       "passwordOff": "Die Anmeldung mit Passwort ist hier abgeschaltet. Nur der Betreiber kann es noch.",
-      "oidc": "Mit {{name}} anmelden",
       "passkey": "Mit Passkey anmelden",
       "forgot": "Passwort vergessen?"
     },
@@ -620,7 +618,6 @@
       "submit": "Konto anlegen",
       "invalidTitle": "Einladung nicht gültig",
       "invalidText": "Diese Einladung gilt nicht mehr: Sie ist benutzt, abgelaufen oder zurückgezogen. Frag nach einer neuen.",
-      "withProvider": "Mit {{name}} annehmen",
       "noWay": "Die Anmeldung mit Passwort ist abgeschaltet und kein Anmeldeanbieter eingerichtet. Frag den Betreiber.",
       "haveAccount": "Dieser Link ist für ein neues Konto. Du bist schon als {{name}} angemeldet und brauchst ihn nicht.",
       "toApp": "Zu nexdiary"
@@ -736,15 +733,7 @@
       "done": "Passwort geändert. Alle anderen Geräte sind abgemeldet."
     },
     "oidc": {
-      "title": "Anmeldeanbieter",
-      "text": "Über {{name}} anmelden, zusätzlich zum Passwort.",
-      "only": "Dieses Konto meldet sich über {{name}} an.",
-      "linked": "Verknüpft: Du kannst dich über {{name}} und mit deinem Passwort anmelden.",
-      "linkedNow": "Dein Konto ist mit dem Anbieter verknüpft.",
-      "unlink": "Verknüpfung lösen",
-      "unlinked": "Nicht mehr verknüpft.",
-      "how": "Verknüpfe dein Konto mit {{name}}, dann geht beides. Dein Passwort bestätigt, dass du es bist; danach geht es kurz zu {{name}} und zurück. Dort gilt dessen eigener zweiter Faktor.",
-      "link": "Mit {{name}} verknüpfen"
+      "linkedNow": "Dein Konto ist jetzt mit {{name}} verknüpft."
     },
     "role": {
       "operator": "Betreiber",
@@ -848,7 +837,6 @@
   "twofactor": {
     "title": "Zweiter Faktor",
     "lead": "Neben dem Passwort ein Code aus einer App auf dem Handy. Wiederherstellungscodes auf Papier bringen dich hinein, wenn das Handy weg ist.",
-    "provider": "Du meldest dich über den Anbieter an; dort gilt sein zweiter Faktor.",
     "off": "Aus.",
     "on_one": "An. Noch {{count}} Wiederherstellungscode.",
     "on_other": "An. Noch {{count}} Wiederherstellungscodes.",
@@ -918,17 +906,9 @@
     "copyNamed": "Kopieren: {{what}}",
     "done": "Habe ich",
     "used": "zuletzt {{when}}",
-    "unused": "nie benutzt"
-  },
-  "authentik": {
-    "step": {
-      "reached": "authentik erreicht",
-      "signingKey": "Schlüssel zum Signieren",
-      "mapping": "Zuordnung für die Adresse",
-      "provider": "Anbieter",
-      "application": "Anwendung",
-      "fill": "Einstellungen hier"
-    }
+    "unused": "nie benutzt",
+    "waitsForSecondFactor": "Wirkt erst, wenn du einen zweiten Faktor einrichtest.",
+    "setUpSecondFactor": "Jetzt einrichten"
   },
   "server": {
     "aiAllowed": "KI erlaubt",
@@ -1016,46 +996,18 @@
         "text": "Dann reicht wieder ein Passwort, um ein Tagebuch zu lesen. Wer schon einen zweiten Faktor hat, behält ihn.",
         "button": "Nicht mehr verlangen"
       },
-      "provider_checks": {
-        "title": "Dem Anbieter den zweiten Faktor überlassen?",
-        "text": "Wer über {{name}} hereinkommt, wird hier nicht mehr nach einem zweiten Faktor gefragt. Das ist nur sicher, wenn {{name}} selbst einen verlangt.",
-        "button": "Überlassen"
-      },
       "link": {
         "title": "{{name}} einen Link zum Zurücksetzen schicken?",
         "text": "Die Person wählt ihr Passwort selbst. Der Link geht per Mail an ihre Adresse, wenn Mail eingerichtet ist, sonst bekommst du ihn einmal zum Weitergeben. Der zweite Faktor bleibt.",
         "button": "Link schicken"
-      }
+      },
+      "unlinkProvider": {"title": "Verknüpfung von {{name}} mit {{provider}} lösen?", "text": "{{name}} meldet sich danach nicht mehr über {{provider}} an, bis das Konto sich selbst neu verknüpft. {{name}} bekommt darüber Bescheid.", "button": "Lösen"}
     },
     "signin": "Anmeldung",
-    "signinText": "Wie man hereinkommt.",
-    "passwordLogin": "Anmeldung mit Passwort",
-    "passwordLoginHint": "Aus: Mitglieder kommen nur über den Anbieter herein. Du als Betreiber kannst dein Passwort immer nutzen.",
     "twoFactorRequired": "Zweiten Faktor verlangen",
-    "twoFactorRequiredHint": "Jedes Konto muss ihn einrichten, bevor es weiterkommt: direkt nach dem Passwort.",
+    "twoFactorRequiredHint": "Jedes Konto mit Passwort muss ihn einrichten, bevor es weiterkommt: direkt nach dem Passwort. Wer über einen Anbieter kommt, der den zweiten Faktor selbst prüft, wird dabei nicht gefragt.",
     "ownSecondFactorFirst": "Richte zuerst deinen eigenen zweiten Faktor ein (Mein Konto, Sicherheit), sonst wärst du der Erste, der nicht mehr weiterkommt.",
-    "publicUrl": "Öffentliche Adresse",
-    "publicUrlHint": "Die Adresse, unter der man nexdiary erreicht. Einladungen und der Anbieter nutzen sie.",
-    "oidc": "OpenID Connect",
-    "oidcOn": "Eingerichtet mit {{issuer}}.",
-    "oidcOff": "Nicht eingerichtet.",
-    "redirect": "Weiterleitungsadresse für den Anbieter",
-    "oidcIssuer": "Aussteller (Issuer)",
-    "clientId": "Client-ID",
-    "clientSecret": "Client-Geheimnis",
     "secretKept": "gespeichert, leer lassen zum Behalten",
-    "oidcName": "Name auf dem Knopf",
-    "oidcAutoCreate": "Neue Personen bekommen ein Konto",
-    "oidcAutoCreateHint": "Aus: Nur eingeladene oder verknüpfte Konten kommen über den Anbieter herein.",
-    "oidcRemove": "Entfernen",
-    "authentik": {
-      "title": "authentik in einem Schritt",
-      "text": "Mit einem API-Token, das Anwendungen anlegen darf, richtet nexdiary Anbieter und Anwendung in authentik selbst ein. Das Token wird nur dafür benutzt und nicht gespeichert.",
-      "url": "Adresse von authentik",
-      "token": "API-Token",
-      "run": "Einrichten",
-      "blueprint": "Stattdessen Blueprint herunterladen"
-    },
     "apiTokens": {
       "title": "API-Token",
       "text": "Konten verbinden nexdiary mit Programmen wie nexdeck. Ein Token liest nur und nie mehr als sein Konto. Ab Werk aus.",
@@ -1199,8 +1151,6 @@
       "save": "Speichern",
       "out": "Was hinausgeht: eine verschlüsselte Nachricht an den Push-Dienst des jeweiligen Browsers (bei Chrome Google, bei Safari Apple, bei Firefox Mozilla). Lesen kann sie nur das Gerät. Darin steht nur die Erinnerung, nie ein Eintrag."
     },
-    "providerChecks": "{{name}} prüft den zweiten Faktor",
-    "providerChecksHint": "An: Wer über {{name}} hereinkommt, braucht hier keinen eigenen. Nur einschalten, wenn {{name}} selbst einen verlangt.",
     "withoutMasterKey": "⚠️ Ohne den Hauptschlüssel ist eine Sicherung nicht lesbar, auch nicht für dich.",
     "encryption": {
       "title": "Verschlüsselung",
@@ -1222,7 +1172,9 @@
     },
     "linkSent": "Der Link für {{name}} ging an {{email}}. Er gilt einmal und 24 Stunden.",
     "linkShown": "Der Link für {{name}}, nur jetzt zu sehen, einmal und 24 Stunden gültig. Gib ihn weiter, die Person wählt das Passwort selbst:",
-    "linkLabel": "Link zum Passwort"
+    "linkLabel": "Link zum Passwort",
+    "unlinkProvider": "Verknüpfung mit {{name}} lösen",
+    "providers": {"order": "{{name}} verschieben", "more": "Mehr"}
   },
   "editor": {
     "tools": "Formatieren",
@@ -1576,20 +1528,6 @@
     "share_no_day": "Ohne Antwort, zu welchem Tag sie gehören, sind die geteilten Fotos nicht abgelegt. Teile sie bitte noch einmal.",
     "note_too_long": "Die Notiz ist zu lang (höchstens {{max}} Zeichen).",
     "oidc_account": "Dieses Konto meldet sich über den Anbieter an.",
-    "oidc_denied": "Der Anbieter hat dich nicht hereingelassen.",
-    "oidc_email_taken": "Deine Mailadresse gehört zu einem anderen Konto.",
-    "oidc_email_unverified": "Der Anbieter hat deine Mailadresse nicht bestätigt.",
-    "oidc_exchange_failed": "Der Anbieter hat die Anmeldung nicht bestätigt.",
-    "oidc_issuer_mismatch": "Der Anbieter meldet sich unter einer anderen Adresse.",
-    "oidc_link_mismatch": "Diese Verknüpfung gehört zu einem anderen Konto.",
-    "oidc_no_account": "Für dich gibt es hier kein Konto. Bitte um eine Einladung.",
-    "oidc_not_configured": "Es ist kein Anmeldeanbieter eingerichtet.",
-    "oidc_only_account": "Dieses Konto meldet sich nur über den Anbieter an.",
-    "oidc_provider_invalid": "Der Anbieter antwortet nicht wie ein OpenID-Connect-Anbieter.",
-    "oidc_provider_unreachable": "Der Anbieter ist nicht erreichbar.",
-    "oidc_state_mismatch": "Die Anmeldung ist abgelaufen oder kam von woanders. Noch einmal versuchen.",
-    "oidc_subject_taken": "Diese Identität ist schon mit einem anderen Konto verknüpft.",
-    "oidc_token_invalid": "Die Antwort des Anbieters war ungültig.",
     "operator_network": "Die Einstellungen des Betreibers sind nur aus dem Heimnetz erreichbar.",
     "operator_only": "Das darf nur der Betreiber.",
     "order_mismatch": "Die Reihenfolge passt nicht mehr. Lade die Seite neu.",
@@ -1834,7 +1772,8 @@
     "two_factor": {
       "title": "Zweiter Faktor für alle",
       "ok": "Wer sich mit Passwort anmeldet, braucht dazu einen Code oder einen Passkey.",
-      "bad": "Aus: Ein erratenes oder gestohlenes Passwort reicht, um ein Tagebuch zu lesen. Schalte unten „Zweiten Faktor verlangen“ ein."
+      "bad": "Aus: Ein erratenes oder gestohlenes Passwort reicht, um ein Tagebuch zu lesen. Schalte unten „Zweiten Faktor verlangen“ ein.",
+      "warn": "Pflicht für Konten mit Passwort. Bei {{providers}} prüft der Anbieter den zweiten Faktor selbst, nexdiary fragt dort keinen eigenen. Prüf, ob der Anbieter das wirklich verlangt."
     },
     "own_account": {
       "title": "Dein eigenes Konto",

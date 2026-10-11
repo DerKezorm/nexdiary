@@ -6,6 +6,8 @@
 
 import i18n from 'i18next'
 
+import type { AuthentikAddress } from '../vendor/nexoidc/oidc'
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
@@ -170,7 +172,6 @@ export type Me = {
   sign_in: 'password' | 'oidc'
   email: string
   language: string
-  oidc_linked: boolean
   /** A second factor of any kind: a code from an app or a passkey. */
   two_factor: boolean
   /** A code from an app. */
@@ -199,7 +200,62 @@ export type SessionStage = 'full' | 'setup' | 'codes'
 export type SecondFactorWaiting = { second_factor: true; totp: boolean; passkey: boolean }
 
 export type SetupState = { needs_setup: boolean; code_required: boolean; signed_in: boolean; version: string; min_password: number }
-export type Methods = { password: boolean; oidc: boolean; oidc_name: string; passkeys?: boolean; forgot?: boolean }
+/** A button of the sign-in page: an active provider (the shared sign-in module, vendor/nexoidc). */
+export type ProviderButton = { slug: string; label: string }
+export type Methods = { password: boolean; providers: ProviderButton[]; passkeys?: boolean; forgot?: boolean }
+/** An active provider and whether the own account is linked to it. */
+export type MyProvider = ProviderButton & { linked: boolean }
+/** A provider an account is linked to, as a mark in the operator's account list. */
+export type LinkedProvider = { id: number; slug: string; label: string }
+/** An entry of the provider list as the operator sees it: never the secret, only whether one is stored. */
+export type OidcProvider = {
+  id: number
+  slug: string
+  label: string
+  issuer: string
+  client_id: string
+  has_secret: boolean
+  scopes: string
+  enabled: boolean
+  auto_create: boolean
+  trusts_second_factor: boolean
+  /** "" by hand, "authentik" through the button. */
+  managed: string
+  position: number
+  redirect_uri: string
+  links: number
+  editable: boolean
+}
+/** The provider form. `slug` counts only when adding; an empty `client_secret` keeps the stored one. */
+export type OidcProviderForm = {
+  label: string
+  slug?: string
+  issuer: string
+  client_id: string
+  client_secret: string
+  scopes: string
+  enabled: boolean
+  auto_create: boolean
+  trusts_second_factor: boolean
+}
+export type OidcImpact = { issuer_change: number; count: number; only: number; only_names: string[] }
+export type AuthentikStep = { key: string; ok: boolean; detail: string; reason?: string; status?: number }
+export type AuthentikResult = {
+  ok: boolean
+  steps: AuthentikStep[]
+  client_id: string
+  issuer: string
+  provider_id: number | null
+  links_dropped: number
+  /** With a step stopped on `issuer_change`: how many accounts would have to link again. */
+  count?: number
+  /** The public address this run stored (the one the operator confirmed), '' when nexdiary had one. */
+  public_url?: string
+  /** With a step stopped on `public_url_needed`: what the card shows about the address. */
+  address?: AuthentikAddress | null
+}
+/** What saving the public address would leave behind (409 `public_url_change`, module `public_url_change`). */
+export type AddressQuestion = { count: number; hand: number; address: string }
 export type SignedSession = { id: string; device: string; phone: boolean; network: string; created_at: string; last_seen_at: string; remember: boolean; here: boolean }
 export type Passkey = { id: string; name: string; created_at: string; last_used_at: string | null; credential: string }
 export type Readiness = { points: { key: string; state: 'ok' | 'warn' | 'bad'; values: Record<string, unknown> }[]; open: number }
@@ -230,6 +286,32 @@ export const authApi = {
   /** "Forgot your password?": a link to the address on record, if there is one; the answer is the same either way. */
   forgot: (name: string) => api<{ ok: true }>('/api/auth/forgot', { method: 'POST', body: { name } }),
   whatsNewSeen: () => api<Me>('/api/me/whats-new/seen', { method: 'POST' }),
+  myProviders: () => api<MyProvider[]>('/api/oidc/me'),
+  linkStart: (slug: string, password: string) =>
+    api<{ url: string }>(`/api/oidc/${encodeURIComponent(slug)}/link`, { method: 'POST', body: { password } }),
+  unlink: (slug: string) => api<void>(`/api/oidc/${encodeURIComponent(slug)}/link`, { method: 'DELETE' }),
+}
+
+/** The operator's sign-in providers (Settings, Server, Sign-in) and the authentik button. */
+export const oidcAdminApi = {
+  providers: () => api<OidcProvider[]>('/api/oidc/admin/providers'),
+  addProvider: (form: OidcProviderForm) => api<OidcProvider>('/api/oidc/admin/providers', { method: 'POST', body: form }),
+  saveProvider: (id: number, form: OidcProviderForm) =>
+    api<OidcProvider & { dropped: number }>(`/api/oidc/admin/providers/${id}`, { method: 'PUT', body: form }),
+  removeProvider: (id: number) => api<OidcImpact>(`/api/oidc/admin/providers/${id}`, { method: 'DELETE' }),
+  providerImpact: (id: number, issuer = '') =>
+    api<OidcImpact>(`/api/oidc/admin/providers/${id}/impact${issuer ? `?issuer=${encodeURIComponent(issuer)}` : ''}`),
+  orderProviders: (ids: number[]) => api<ProviderButton[]>('/api/oidc/admin/providers/order', { method: 'PUT', body: { ids } }),
+  authentik: (url: string, token: string, confirm_issuer_change = false, public_url = '') =>
+    api<AuthentikResult>('/api/oidc/authentik/setup', { method: 'POST', body: { url, token, confirm_issuer_change, public_url } }),
+  /** What the authentik card shows about the public address. */
+  authentikAddress: () => api<AuthentikAddress>('/api/oidc/authentik/address'),
+  /** "Use it only": saves the address; 409 `public_url_change` asks first (send again with `confirm`). */
+  authentikSaveAddress: (public_url: string, confirm = false) =>
+    api<AuthentikAddress>('/api/oidc/authentik/address', { method: 'POST', body: { public_url, confirm } }),
+  /** Takes an account's link to a provider, with the operator's own password. */
+  unlinkAccount: (accountId: number, providerId: number, current_password: string) =>
+    api<void>(`/api/oidc/admin/accounts/${accountId}/links/${providerId}`, { method: 'DELETE', body: { current_password } }),
 }
 
 export const passkeyApi = {
@@ -258,8 +340,11 @@ export type AnyApiToken = Omit<ApiToken, 'name'> & { account: string }
 
 /** API tokens for programs (`/api/v1`); reading only. */
 export const apiTokensApi = {
-  list: () => api<{ allowed: boolean; tokens: ApiToken[] }>('/api/api-tokens'),
-  make: (name: string, days: number | null) => api<{ token: ApiToken; secret: string }>('/api/api-tokens', { method: 'POST', body: { name, days } }),
+  /** `second_factor_pending`: the operator requires a second factor this account has not set up (it came in through a
+   * provider that checks it): its tokens are made, but work only once it has one. */
+  list: () => api<{ allowed: boolean; tokens: ApiToken[]; second_factor_pending?: boolean }>('/api/api-tokens'),
+  make: (name: string, days: number | null) =>
+    api<{ token: ApiToken; secret: string; second_factor_pending?: boolean }>('/api/api-tokens', { method: 'POST', body: { name, days } }),
   remove: (id: number) => api<void>(`/api/api-tokens/${id}`, { method: 'DELETE' }),
   every: () => api<AnyApiToken[]>('/api/admin/api-tokens'),
   block: (id: number) => api<AnyApiToken>(`/api/admin/api-tokens/${id}/block`, { method: 'POST' }),
