@@ -1,4 +1,23 @@
 {
+  "0.9.0": {
+    "lead": "The photos of a day now stand as small previews, and HDR photos from an iPhone can be uploaded.",
+    "sections": [
+      {
+        "title": "Photos as previews with a magnifier",
+        "where": "Reading a day, a shared day",
+        "body": "The photos under the text of a day stand in rows of small previews, each in the shape of its photo, upright, wide, square or panorama. A tap opens the big view with the whole picture, where you move through all the photos of the day as before."
+      },
+      {
+        "title": "HDR photos from an iPhone",
+        "where": "Uploading photos",
+        "body": "Safari sends an HDR photo as a JPEG that carries a second picture for the brightness. nexdiary took that for something other than a photo and refused it. It is taken now."
+      }
+    ],
+    "smallTitle": "Also",
+    "small": [
+      "The previews load the small copy of a photo; the original only in the big view."
+    ]
+  },
   "0.8.1": {
     "lead": "A small fix for running behind a reverse proxy.",
     "sections": [

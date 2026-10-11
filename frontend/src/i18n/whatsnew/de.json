@@ -1,4 +1,23 @@
 {
+  "0.9.0": {
+    "lead": "Fotos eines Tages stehen jetzt als kleine Vorschauen da, und HDR-Fotos vom iPhone lassen sich hochladen.",
+    "sections": [
+      {
+        "title": "Fotos als Vorschauen mit Lupe",
+        "where": "Tag lesen, geteilter Tag",
+        "body": "Die Fotos unter dem Text eines Tages stehen in Reihen kleiner Vorschauen, jede in der Form ihres Fotos, ob hochkant, quer, quadratisch oder Panorama. Ein Tippen öffnet die Großansicht mit dem ganzen Bild, dort blätterst du wie bisher durch alle Fotos des Tages."
+      },
+      {
+        "title": "HDR-Fotos vom iPhone",
+        "where": "Fotos hochladen",
+        "body": "Safari schickt ein HDR-Foto als JPEG, in dem ein zweites Bild für die Helligkeit steckt. nexdiary hielt das für kein Foto und lehnte es ab. Jetzt wird es angenommen."
+      }
+    ],
+    "smallTitle": "Außerdem",
+    "small": [
+      "Die Vorschauen laden die kleine Fassung eines Fotos, das Original erst in der Großansicht."
+    ]
+  },
   "0.8.1": {
     "lead": "Eine kleine Korrektur für den Betrieb hinter einem Reverse Proxy.",
     "sections": [
