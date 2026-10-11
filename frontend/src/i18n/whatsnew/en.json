@@ -1,4 +1,31 @@
 {
+  "0.7.0": {
+    "lead": "Sign in through several providers at once, each with its own button, set up the same way as in every nex app.",
+    "sections": [
+      {
+        "title": "Several sign-in providers",
+        "where": "Settings, Sign-in",
+        "body": "Add any provider that speaks OpenID Connect: authentik, Microsoft Entra ID, Keycloak, Authelia or Pocket ID, as many as you like. Each gets its own button on the sign-in page and its own redirect address. The provider you had becomes the first entry of the list and keeps working at the address it knew. The authentik button sets authentik up in one step, now with the reason when a step fails, and a blueprint to download instead."
+      },
+      {
+        "title": "Linked by account, never by mail address",
+        "where": "My account, Security",
+        "body": "Link your account to a provider with your password, and unlink it again; a row per provider shows whether it is linked. Somebody who comes through a provider is found only by that link, never by a mail address. New people come by invitation, or as members where the operator switches that on per provider."
+      },
+      {
+        "title": "The second factor per provider",
+        "where": "Settings, Sign-in, the form of a provider",
+        "body": "\"The provider checks the second factor itself\": then a sign-in through it asks for no code of nexdiary's own. Off, whoever has a second factor here gives its code after the provider. An account that signs in through providers only is never made to set one up; an account with a password still is when it signs in with the password. Your provider keeps what it did before: the code is asked unless you had switched that off."
+      }
+    ],
+    "smallTitle": "Also",
+    "small": [
+      "Before the public address changes, nexdiary says which redirect addresses authentik and the providers by hand still know.",
+      "Behind a reverse proxy named in NEXDIARY_TRUSTED_PROXIES, nexdiary believes the scheme it reports (X-Forwarded-Proto).",
+      "In the list of accounts, the operator sees which providers each account is linked to and can remove a link, with the own password; the person is told.",
+      "\"Ready for the internet?\" names the providers that are trusted with the second factor."
+    ]
+  },
   "0.6.0": {
     "lead": "Photos from other apps can now be shared to nexdiary.",
     "sections": [
