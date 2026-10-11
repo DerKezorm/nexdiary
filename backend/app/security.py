@@ -107,9 +107,11 @@ def session_expiry(remember: bool, stage: str, now: datetime) -> datetime:
 
 
 def start_session(
-    db: Session, account: Account, ip: str, user_agent: str, *, remember: bool = True, stage: str = STAGE_FULL
+    db: Session, account: Account, ip: str, user_agent: str, *, remember: bool = True, stage: str = STAGE_FULL,
+    provider_checked: bool = False,
 ) -> str:
-    """Creates a browser session and returns the token for the cookie."""
+    """Creates a browser session and returns the token for the cookie. ``provider_checked``: the sign-in came through
+    a provider whose entry checks the second factor itself (``AuthSession.provider_checked``)."""
     token = new_token()
     now = clock.now()
     db.add(
@@ -123,6 +125,7 @@ def start_session(
             user_agent=user_agent[:255],
             remember=remember,
             stage=stage,
+            provider_checked=provider_checked,
         )
     )
     if stage == STAGE_FULL:
@@ -157,6 +160,8 @@ def current_session(db: Session, token: str | None, ip: str | None = None) -> tu
         if session.remember:
             session.expires_at = session_expiry(True, STAGE_FULL, now)
         db.commit()
+    # Not stored on the account: how this session began (a provider that checks the second factor, or not).
+    account.provider_checked = bool(session.provider_checked)
     return session, account
 
 

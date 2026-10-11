@@ -20,7 +20,7 @@ from . import __version__, private
 from .config import get_settings
 from .db import SessionLocal, init_db
 from .errors import detail
-from .middleware import GuardMiddleware, RequestContextMiddleware, unhandled_error
+from .middleware import ForwardedProtoMiddleware, GuardMiddleware, RequestContextMiddleware, unhandled_error
 from .routers import (
     about,
     ai,
@@ -60,6 +60,7 @@ from .services import (
     logs,
     media_sweep,
     notices,
+    oidc_store,
     pictures,
     reminders,
     settings_service,
@@ -70,6 +71,7 @@ from .services import apitokens as apitokens_service
 from .services import book as book_service
 from .services import capsules as capsules_service
 from .services import passkeys as passkeys_service
+from .vendor import nexoidc
 
 logger = logging.getLogger("nexdiary")
 
@@ -121,6 +123,11 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     # Books of the last run were sealed with keys that died with it.
     book_service.startup()
     apitokens_service.seal_legacy_names()
+    # The single sign-in provider of the settings becomes the entry "oidc" of the list, once (backup first); at every
+    # start what 0.6 changed since is taken over and the way back is written again (services/oidc_store).
+    oidc_store.migrate_settings()
+    # The TLS context of the calls to providers and authentik, read once here outside the event loop (vendor/nexoidc).
+    await nexoidc.warm()
     private.tighten_all()
     logs.attach_store(_read_log_mode, _write_log_mode)
     logs.apply_stored_mode()
@@ -168,6 +175,8 @@ app = FastAPI(
 # Added last, runs first: the request id and headers wrap everything, the guard sits inside it.
 app.add_middleware(GuardMiddleware)
 app.add_middleware(RequestContextMiddleware)
+# Outermost: the scheme a trusted proxy reports is known before anything looks at the request.
+app.add_middleware(ForwardedProtoMiddleware)
 
 
 @app.exception_handler(RequestValidationError)
@@ -225,6 +234,9 @@ app.add_exception_handler(Exception, unhandled_error)
 
 for module in ROUTERS:
     app.include_router(module.router)
+
+# The shared sign-in module learns who it runs in before the first request (vendor/nexoidc).
+oidc_store.configure()
 
 
 #: Files a browser asks the server about again each time: the service worker (an old one would keep its old ways for a

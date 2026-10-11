@@ -68,8 +68,9 @@ def _clear_pending_cookie(response: Response) -> None:
 
 
 def last_factor_guard(db: DbSession, row: AccountRow) -> None:
-    """The operator asks for a second factor: the last one cannot go."""
-    if settings_service.get(db, "two_factor_required") and not totp.provider_checks(db, row):
+    """The operator asks for a second factor: the last one of an account with a password cannot go (whatever way this
+    session came in: its next sign-in with the password would have to set one up again)."""
+    if settings_service.get(db, "two_factor_required") and totp.password_account(row):
         raise error("second_factor_required", "The operator requires a second factor; it cannot be turned off.", 409)
 
 

@@ -19,7 +19,7 @@ import { eventually, idle } from '../test/wait'
 const NOW = Date.now()
 const me: Me = {
   id: 1, name: 'jule', display_name: 'Jule', role: 'operator', sign_in: 'password', email: 'jule@example.com', language: 'de',
-  oidc_linked: false, two_factor: true, totp: true, passkeys: 0, two_factor_recovery_left: 8, avatar: null, version: '0.1.0', whats_new_seen: '0.1.0',
+  two_factor: true, totp: true, passkeys: 0, two_factor_recovery_left: 8, avatar: null, version: '0.1.0', whats_new_seen: '0.1.0',
   session_stage: 'full', second_factor_required: true,
   profile: {
     palette: 'salbei', mode: 'light', layout: 'page', quick_start: true, journal: 'blog', timezone: 'Europe/Berlin', timezone_source: 'browser', ai: true,
@@ -105,7 +105,7 @@ beforeEach(async () => {
   auth.status = 'signedOut'
   auth.me = null
   auth.setMe.mockClear()
-  answers = { 'GET /api/auth/methods': { password: true, oidc: false, oidc_name: '', passkeys: true } }
+  answers = { 'GET /api/auth/methods': { password: true, providers: [], passkeys: true } }
   serve()
 })
 
@@ -242,7 +242,7 @@ describe('the own account, Security', () => {
 
     it('tells the operator where to enter the public address, with a link there, when the server has none', async () => {
       passkeysInTheBrowser(true)
-      answers['GET /api/auth/methods'] = { password: true, oidc: false, oidc_name: '', passkeys: false }
+      answers['GET /api/auth/methods'] = { password: true, providers: [], passkeys: false }
       await show(<PasskeysCard me={me} />, '/konto')
       expect(hint()!.textContent).toBe('Trag zuerst die öffentliche Adresse ein (Einstellungen → Anmeldung).')
       expect(hint()!.querySelector('a')!.getAttribute('href')).toBe('/einstellungen?tab=signin')
@@ -252,7 +252,7 @@ describe('the own account, Security', () => {
 
     it('tells a member that the operator has to enter it, and links nowhere', async () => {
       passkeysInTheBrowser(true)
-      answers['GET /api/auth/methods'] = { password: true, oidc: false, oidc_name: '', passkeys: false }
+      answers['GET /api/auth/methods'] = { password: true, providers: [], passkeys: false }
       await show(<PasskeysCard me={{ ...me, role: 'member' }} />, '/konto')
       expect(hint()!.textContent).toBe('Dein Betreiber muss erst die öffentliche Adresse eintragen.')
       expect(hint()!.querySelector('a')).toBeNull()
@@ -261,7 +261,7 @@ describe('the own account, Security', () => {
     it('says it in English as well, for both', async () => {
       await changeLanguage('en', false)
       passkeysInTheBrowser(true)
-      answers['GET /api/auth/methods'] = { password: true, oidc: false, oidc_name: '', passkeys: false }
+      answers['GET /api/auth/methods'] = { password: true, providers: [], passkeys: false }
       await show(<PasskeysCard me={me} />, '/konto')
       expect(hint()!.textContent).toBe('Enter the public address first (Settings → Sign-in).')
       expect(hint()!.querySelector('a')!.getAttribute('href')).toBe('/einstellungen?tab=signin')
@@ -273,7 +273,7 @@ describe('the own account, Security', () => {
 
     it('keeps the old sentence for a browser that cannot (no https, no API), whatever the server says', async () => {
       passkeysInTheBrowser(false)
-      answers['GET /api/auth/methods'] = { password: true, oidc: false, oidc_name: '', passkeys: true }
+      answers['GET /api/auth/methods'] = { password: true, providers: [], passkeys: true }
       await show(<PasskeysCard me={me} />, '/konto')
       expect(hint()!.textContent).toBe('Passkeys gibt es nur über https (oder localhost) und in Browsern, die sie kennen.')
       expect(hint()!.querySelector('a')).toBeNull()

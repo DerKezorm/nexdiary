@@ -84,7 +84,8 @@ def test_settings_are_the_operators_and_the_password_is_never_shown(client: Test
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
-        ("https://Notes.example.com/", "https://Notes.example.com"),
+        # Scheme and host in small letters, as the sign-in module keeps an address (``flow.clean_public_url``).
+        ("https://Notes.example.com/", "https://notes.example.com"),
         ("http://10.0.0.5:8470", "http://10.0.0.5:8470"),
         ("", ""),
     ],

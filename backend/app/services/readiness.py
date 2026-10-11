@@ -47,8 +47,9 @@ class Point:
 
 def came_over_https(request: Request) -> bool:
     """The request reached nexdiary over https, or the proxy in front says it did."""
-    forwarded = request.headers.get("x-forwarded-proto", "").split(",")[0].strip().lower()
-    return request.url.scheme == "https" or forwarded == "https"
+    from ..middleware import forwarded_proto
+
+    return request.url.scheme == "https" or forwarded_proto(request.scope.get("headers", [])) == "https"
 
 
 def _https(db: Session, request: Request) -> Point:
@@ -61,7 +62,16 @@ def _https(db: Session, request: Request) -> Point:
 
 
 def _two_factor(db: Session) -> Point:
-    return Point("two_factor", OK if settings_service.get(db, "two_factor_required") else BAD)
+    """Required, and for every active sign-in provider: one whose entry says "The provider checks the second factor
+    itself" lets its people in without nexdiary's code, on the provider's word (a warning with their names)."""
+    if not settings_service.get(db, "two_factor_required"):
+        return Point("two_factor", BAD)
+    from .oidc_store import SqlStore
+
+    trusted = [entry.label for entry in SqlStore(db).list_providers() if entry.enabled and entry.trusts_second_factor]
+    if trusted:
+        return Point("two_factor", WARN, {"providers": ", ".join(trusted), "count": len(trusted)})
+    return Point("two_factor", OK)
 
 
 def _own_account(db: Session, operator: Account) -> Point:

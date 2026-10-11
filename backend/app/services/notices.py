@@ -309,6 +309,67 @@ def _send_reset(account_id: int, by: str) -> None:
         logger.exception("A notice of a second factor reset failed")
 
 
+# --- The operator took a link to a sign-in provider ---------------------------------------------------------------
+
+UNLINKED_TEXTS = {
+    "de": ("Verknüpfung gelöst", (
+        "Der Betreiber hat die Verknüpfung deines Kontos mit {provider} gelöst. Über {provider} meldest du dich "
+        "hier erst wieder an, wenn du dein Konto in deinen Kontoeinstellungen neu verknüpfst.")),
+    "en": ("Link removed", (
+        "The operator removed the link between your account and {provider}. You sign in here through {provider} again "
+        "only once you link your account anew in your account settings.")),
+}
+
+
+def provider_unlinked(account: Account, by: str, provider: str) -> None:
+    """Tells the person that the operator took their account's link to a sign-in provider (the shared sign-in
+    blueprint 01: never unseen): by push to their devices and by mail. In the background; a failure touches
+    nothing."""
+    future = _pool.submit(_send_unlinked, account.id, by, provider)
+    with _lock:
+        _pending.add(future)
+    future.add_done_callback(_done)
+
+
+def _send_unlinked(account_id: int, by: str, provider: str) -> None:
+    from ..db import SessionLocal
+
+    try:
+        with SessionLocal() as db:
+            account = db.get(Account, account_id)
+            if account is None:
+                return
+            db.expunge(account)
+            mail_to = account.email if mailer.configured(db) else ""
+
+        def for_lang(lang: str) -> push.Message:
+            title, body = UNLINKED_TEXTS[language_of(lang or account.language)]
+            return push.Message(title=title, body=body.format(provider=provider), url=SECURITY_PATH,
+                                desk=SECURITY_PATH, tag="provider-unlinked", urgency="high")
+
+        result = push.send_to_person(account_id, for_lang)
+        logger.info("Provider unlinked notice pushed name=%s devices=%s", account.name, result.sent)
+        if mail_to:
+            message = EmailMessage()
+            message["To"] = mail_to
+            message["Subject"] = "A sign-in link of your nexdiary account was removed"
+            message.set_content(
+                f"The operator ({by}) removed the link between your nexdiary account {account.name} and "
+                f"{provider}.\n\n"
+                f"You sign in through {provider} again only once you link your account anew in your account "
+                "settings.\nIf you did not expect this, ask the operator.\n"
+            )
+            with SessionLocal() as db:
+                try:
+                    mailer.send_message(db, message)
+                except mailer.MailError:
+                    logger.warning("Provider unlinked notice not mailed name=%s", account.name)
+                    return
+            logger.info("Provider unlinked notice mailed name=%s", account.name)
+    except Exception:
+        logger.exception("A notice of a removed provider link failed")
+
+
 def forget() -> None:
     """For the tests."""
     settle()

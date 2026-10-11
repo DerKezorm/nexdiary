@@ -81,6 +81,11 @@ def _is_trusted_proxy(text: str) -> bool:
     return address is not None and any(address in network for network in networks)
 
 
+def is_trusted_proxy(text: str) -> bool:
+    """The address belongs to a reverse proxy configured in ``NEXDIARY_TRUSTED_PROXIES``."""
+    return _is_trusted_proxy(text)
+
+
 _warned_unknown_proxy = False
 
 

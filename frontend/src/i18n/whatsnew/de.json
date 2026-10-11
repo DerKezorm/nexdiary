@@ -1,4 +1,37 @@
 {
+  "0.7.0": {
+    "lead": "Anmelden über mehrere Anbieter gleichzeitig, jeder mit eigenem Knopf, eingerichtet wie in jeder nex-App.",
+    "sections": [
+      {
+        "title": "Mehrere Anmeldeanbieter",
+        "where": "Einstellungen, Anmeldung",
+        "body": "Trag jeden Anbieter ein, der OpenID Connect spricht: authentik, Microsoft Entra ID, Keycloak, Authelia oder Pocket ID, so viele du willst. Jeder bekommt einen eigenen Knopf auf der Anmeldeseite und eine eigene Rückleitadresse. Dein bisheriger Anbieter wird der erste Eintrag der Liste und meldet weiter unter der Adresse an, die er kennt. Der authentik-Knopf richtet authentik in einem Schritt ein, jetzt mit dem Grund, wenn ein Schritt scheitert, und stattdessen gibt es einen Blueprint zum Herunterladen."
+      },
+      {
+        "title": "Verknüpft über das Konto, nie über die Mailadresse",
+        "where": "Mein Konto, Sicherheit",
+        "body": "Verknüpfe dein Konto mit deinem Passwort mit einem Anbieter und löse die Verknüpfung wieder; je Anbieter zeigt eine Zeile, ob es verknüpft ist. Wer über einen Anbieter kommt, wird nur über diese Verknüpfung gefunden, nie über eine Mailadresse. Neue Leute kommen per Einladung oder, wo der Betreiber es je Anbieter einschaltet, als Mitglied."
+      },
+      {
+        "title": "Der zweite Faktor je Anbieter",
+        "where": "Einstellungen, Anmeldung, Formular eines Anbieters",
+        "body": "„Der Anbieter prüft den zweiten Faktor selbst“: Dann fragt eine Anmeldung über ihn keinen eigenen Code von nexdiary. Aus: Wer hier einen zweiten Faktor hat, gibt nach dem Anbieter seinen Code. Ein Konto, das sich nur über Anbieter anmeldet, muss keinen einrichten; ein Konto mit Passwort weiterhin, wenn es sich mit dem Passwort anmeldet. Dein Anbieter verhält sich wie bisher: Der Code wird gefragt, außer du hattest das abgeschaltet."
+      },
+      {
+        "title": "Fotos von heute in zwei Reihen",
+        "where": "Heute",
+        "body": "Oben stehen „Hochladen“ und, wenn Immich eingerichtet ist, „Alle Fotos“, fest an ihrem Platz. Darunter liegen die Fotos, die zu diesem Tag gehören, und getrennt davon die Vorschläge aus Immich. Ein Vorschlag wird mit einem Tipp übernommen und wandert in die erste Reihe. Entfernst du das Foto wieder, kehrt es zu den Vorschlägen zurück."
+      }
+    ],
+    "smallTitle": "Außerdem",
+    "small": [
+      "Bevor sich die öffentliche Adresse ändert, sagt nexdiary, welche Rückleitadressen authentik und die von Hand eingetragenen Anbieter noch kennen.",
+      "Hinter einem Reverse Proxy, der in NEXDIARY_TRUSTED_PROXIES steht, glaubt nexdiary das Schema, das er meldet (X-Forwarded-Proto).",
+      "In der Kontenliste sieht der Betreiber, mit welchen Anbietern ein Konto verknüpft ist, und kann eine Verknüpfung mit dem eigenen Passwort lösen; die Person bekommt Bescheid.",
+      "„Bereit fürs Internet?“ nennt die Anbieter, denen der zweite Faktor überlassen ist.",
+      "Mails tragen jetzt eine Datumszeile. Manche Anbieter wie iCloud, Outlook und Gmail haben Mails ohne sie still verworfen."
+    ]
+  },
   "0.6.0": {
     "lead": "Fotos aus anderen Apps lassen sich jetzt an nexdiary teilen.",
     "sections": [

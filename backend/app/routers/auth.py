@@ -34,6 +34,7 @@ from ..deps import (
     session_of,
 )
 from ..errors import error
+from ..middleware import forwarded_proto
 from ..models import OPERATOR, ROLES, SIGN_IN_PASSWORD, STAGE_CODES, STAGE_FULL, STAGE_SETUP, AuthSession, utcnow
 from ..models import Account as AccountRow
 from ..security import (
@@ -67,6 +68,8 @@ from ..services import (
     vault,
 )
 from ..services.accounts import AccountError
+from ..services.oidc_store import SqlStore, linked_providers
+from ..vendor.nexoidc import providers
 
 logger = logging.getLogger("nexdiary.auth")
 
@@ -132,8 +135,9 @@ def secure_cookie(request: Request) -> bool:
         return True
     if mode == "off":
         return False
-    forwarded = request.headers.get("x-forwarded-proto", "")
-    return request.url.scheme == "https" or forwarded.split(",")[0].strip() == "https"
+    # Only the Secure flag: a proxy that says https makes the cookie stricter, never weaker. The rightmost value, the
+    # one the proxy nearest to nexdiary wrote (the shared sign-in module README, "Hinter einem Proxy").
+    return request.url.scheme == "https" or forwarded_proto(request.scope.get("headers", [])) == "https"
 
 
 #: How long the browser keeps the cookie of a session that stays: as long as browsers allow (400 days). The server
@@ -207,7 +211,6 @@ def account_view(account: AccountRow) -> dict[str, Any]:
         "sign_in": account.sign_in,
         "email": account.email,
         "language": account.language,
-        "oidc_linked": bool(account.oidc_subject),
         # A second factor of any kind: a code from an app (``totp``) or a passkey.
         "two_factor": on,
         "totp": bool(account.totp_secret_enc),
@@ -223,8 +226,10 @@ def account_view(account: AccountRow) -> dict[str, Any]:
     }
 
 
-#: Where the device cookie goes: the sign-in with a password and the return from the provider, nowhere else.
-DEVICE_PATHS = ("/api/oidc/callback", "/api/auth")
+#: Where the device cookie goes: the sign-in with a password and the returns from the providers (every one of them is
+#: below ``/api/oidc``: ``/api/oidc/callback`` of the entry ``oidc``, ``/api/oidc/<slug>/callback`` of the others),
+#: nowhere else.
+DEVICE_PATHS = ("/api/oidc", "/api/auth")
 
 
 def remember_device(request: Request, response: Response, account: AccountRow) -> bool:
@@ -239,13 +244,18 @@ def remember_device(request: Request, response: Response, account: AccountRow) -
     return known
 
 
-def start(db: DbSession, request: Request, response: Response, account: AccountRow, *, remember: bool = True) -> str:
+def start(
+    db: DbSession, request: Request, response: Response, account: AccountRow, *, remember: bool = True,
+    provider_checked: bool = False,
+) -> str:
     """The session of a sign-in that went through, by any way; gives its stage.
 
     An account that must set up a second factor first gets a session that may do only that, for a quarter of an hour,
     and nothing else happens yet. A full session brings the cookies and, when this browser is new for the account, the
-    notice to the other devices (``services/notices.py``)."""
+    notice to the other devices (``services/notices.py``). ``provider_checked``: the sign-in came through a provider
+    whose entry checks the second factor itself; the session is not sent to set one up (``totp.setup_required``)."""
     agent = request.headers.get("user-agent", "")
+    account.provider_checked = provider_checked
     if totp.setup_required(db, account):
         token = start_session(db, account, client_ip(request), agent, remember=remember, stage=STAGE_SETUP)
         _set_cookie(response, request, token, False)
@@ -253,7 +263,8 @@ def start(db: DbSession, request: Request, response: Response, account: AccountR
     first = not account.signed_in_before
     account.signed_in_before = True
     known = remember_device(request, response, account)
-    token = start_session(db, account, client_ip(request), agent, remember=remember)
+    token = start_session(db, account, client_ip(request), agent, remember=remember,
+                          provider_checked=provider_checked)
     _set_cookie(response, request, token, remember)
     notices.new_sign_in(account, client_ip(request), agent, first=first, known=known)
     return STAGE_FULL
@@ -308,11 +319,10 @@ def methods(request: Request, db: DbSession) -> dict[str, Any]:
     from ..services import passkeys
 
     values = settings_service.get_all(db)
-    oidc = bool(values["oidc_issuer"] and values["oidc_client_id"])
     return {
         "password": bool(values["password_login"]),
-        "oidc": oidc,
-        "oidc_name": values["oidc_provider_name"] if oidc else "",
+        # The buttons of the sign-in page: slug and label of each active provider, nothing else (vendor/nexoidc).
+        "providers": providers.public_list(SqlStore(db)),
         # Passkeys work under the public https address, or on localhost.
         "passkeys": passkeys.available(db, request.url.hostname),
         # "Forgot your password?" where a mail goes out and the link has a public address to point to.
@@ -418,8 +428,10 @@ def me(request: Request, account: Account, db: DbSession) -> dict[str, Any]:
         "mail": mailer.configured(db),
         "session_stage": stage,
         "second_factor_setup_required": stage != STAGE_FULL or totp.setup_required(db, account),
+        # The last factor of an account with a password cannot go while the operator requires one (``routers/totp``),
+        # whatever way this session came in.
         "second_factor_required": bool(settings_service.get(db, "two_factor_required"))
-        and not totp.provider_checks(db, account),
+        and totp.password_account(account),
     }
 
 
@@ -662,10 +674,12 @@ def _row(db: DbSession, account_id: int) -> AccountRow:
 @router.get("/accounts", summary="All accounts (never what is written in them)")
 def list_accounts(_operator: OperatorAccount, db: DbSession) -> list[dict[str, Any]]:
     # Never what a person chose for themselves either: when they are reminded, their time zone, their looks.
+    # The providers each account is linked to, as marks in the list (the shared sign-in blueprint 04).
+    linked = linked_providers(db)
     return [
         {**{key: value for key, value in account_view(row).items() if key != "profile"},
          "locked": accounts.is_locked(row), "blocked": row.blocked_at is not None,
-         "has_password": bool(row.password_hash)}
+         "has_password": bool(row.password_hash), "providers": linked.get(row.id, [])}
         for row in db.scalars(select(AccountRow).order_by(AccountRow.created_at))
     ]
 

@@ -90,8 +90,8 @@ More, in light and dark and on the phone, are in [docs/screenshots](docs/screens
 - **Reminders** by Web Push, daily at your time or after a pause of a few days, not if you already wrote today.
 - **Safe by default.** A second factor is required from the start, passkeys, a list of signed-in devices, a notice when
   somebody signs in from a new device, a brake against guessing, and everything you write is encrypted in the database.
-- **Around it, as in the other nex apps.** Accounts by invitation, sign-in through an OpenID Connect provider (with a
-  one-step setup for authentik), a log in four levels, German and English plus languages the operator adds as JSON
+- **Around it, as in the other nex apps.** Accounts by invitation, sign-in through OpenID Connect providers (several at
+  once, a button each; a one-step setup for authentik), a log in four levels, German and English plus languages the operator adds as JSON
   files, backups with a check before going back, a page "About" that says when a new version is out.
 
 ## Start
@@ -139,7 +139,10 @@ Many people will put nexdiary on the internet; it is made for that. Before you o
    the proxy runs on the same host, or keep both on a Docker network without a published port. Send HSTS from the proxy.
 3. **Tell nexdiary about the proxy**: `NEXDIARY_PUBLIC_URL` (the address people use), `NEXDIARY_TRUSTED_PROXIES` (the
    proxy's address or network; without it every sign-in seems to come from the proxy and the brake against guessing
-   cannot tell people apart) and `NEXDIARY_COOKIE_SECURE: "on"`.
+   cannot tell people apart, and nexdiary believes no `X-Forwarded-Proto`) and `NEXDIARY_COOKIE_SECURE: "on"`.
+   `NEXDIARY_TRUSTED_PROXIES` is the setting for trusted proxies the authentik card means when it warns that the
+   server receives a request as `http`: from a proxy named there, nexdiary takes the rightmost value of
+   `X-Forwarded-Proto` (the one the proxy wrote, `http` or `https`), from anybody else none.
 4. **A second factor** is required from the start: right after the password every account sets one up (a code from an
    app, or a passkey) and keeps the recovery codes. The operator may switch the requirement off; do not.
 5. **Look at "Ready for the internet?"** (Settings, Sign-in). It checks the points above for itself: https, the
@@ -157,6 +160,28 @@ Many people will put nexdiary on the internet; it is made for that. Before you o
 Optionally keep the operator's settings at home: `NEXDIARY_OPERATOR_NETWORKS: "192.168.0.0/16"` refuses them from
 anywhere else (behind a proxy only together with `NEXDIARY_TRUSTED_PROXIES`).
 
+## Sign-in through a provider
+
+Settings, Sign-in has three cards: password sign-in, the public address and the second factor; the list of sign-in
+providers; and authentik in one step. Any provider that speaks OpenID Connect can go in the list (authentik, Microsoft
+Entra ID, Keycloak, Authelia, Pocket ID), each gets its own button on the sign-in page and its own redirect address,
+`https://<public address>/api/oidc/<short name>/callback`. The provider of nexdiary 0.6 and earlier became the entry
+`oidc` and keeps the address it had, `/api/oidc/callback`.
+
+- Somebody is found only by the link of their account to their identity at that provider, never by a mail address.
+  An account links itself under My account, Security (with its password); new people come by invitation, or, where the
+  operator switches on "New people get an account", as members.
+- "The provider checks the second factor itself" (per provider, on for a new one): then a sign-in through it asks for
+  no code of nexdiary's own and sets none up. Off, whoever has a second factor here gives its code after the provider.
+  An account that signs in through providers only is never made to set one up; an account with a password is, when it
+  signs in with the password. The provider of 0.6 kept what 0.6 did: the code is asked unless its switch was on.
+- The operator can always sign in with the password, also when password sign-in is off for the others.
+- Each diary stays sealed with its own key; signing in through a provider opens the account it is linked to, like its
+  password does, and nothing else.
+
+Going back to 0.6: 0.6 does not open a database of schema 17. Restore the backup made before the update ("before
+schema 17") with 0.6; the next update moves the provider over again.
+
 ## Where things are stored
 
 Everything lives in `/data`:
@@ -166,7 +191,7 @@ Everything lives in `/data`:
 | `nexdiary.db` | The SQLite database: accounts, days, notes, values, shares. What people write is sealed in it. |
 | `media/` | Photos and their small pictures, each sealed in its own file. |
 | `keys/master.key` | The master key, made at the first start (mode 0600). It wraps every person's data key. |
-| `secret.key` | The server's own secret (the OIDC secret, the mail password and the like). |
+| `secret.key` | The server's own secret (the client secrets of the sign-in providers, the mail password and the like). |
 | `backups/`, `logs/`, `locales/` | Backups, the log, extra languages as JSON files. |
 
 Mount `/data` from a local disk, never from an SMB or NFS share: SQLite's locking does not work reliably over network
@@ -215,8 +240,8 @@ it is; it is not sealed with your password.
 | `NEXDIARY_LOCALES_DIR` | `<data>/locales` | Extra languages, one JSON file each |
 | `NEXDIARY_MASTER_KEY_FILE` | `<data>/keys/master.key` | Where the master key lies; keep it outside the backups |
 | `NEXDIARY_SECRET_KEY` | made on first start | Protects server-side secrets; when set, it wins over `secret.key` |
-| `NEXDIARY_PUBLIC_URL` | from the request | The address people use, for invitation links and the OIDC redirect. The setting in the interface wins |
-| `NEXDIARY_TRUSTED_PROXIES` | none | Addresses or networks of reverse proxies whose `X-Forwarded-For` is believed, comma separated |
+| `NEXDIARY_PUBLIC_URL` | from the request | The address people use, for invitation links and the redirect address of the sign-in providers. The setting in the interface wins |
+| `NEXDIARY_TRUSTED_PROXIES` | none | Addresses or networks of reverse proxies whose `X-Forwarded-For` and `X-Forwarded-Proto` (its rightmost value) are believed, comma separated |
 | `NEXDIARY_SETUP_TOKEN` | made at start | The code the first account needs |
 | `NEXDIARY_OPERATOR_NETWORKS` | none | Networks the operator's settings may be changed from, comma separated |
 | `NEXDIARY_SESSION_DAYS` | `30` | A session of "stay signed in on this device" ends after this many days without use |

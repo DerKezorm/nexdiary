@@ -17,7 +17,7 @@ import { idle } from '../test/wait'
 const setMe = vi.fn()
 const me: Me = {
   id: 1, name: 'jule', display_name: 'Jule', role: 'member', sign_in: 'password', email: 'jule@example.com', language: 'de',
-  oidc_linked: false, two_factor: true, totp: true, passkeys: 0, two_factor_recovery_left: 10, avatar: null, version: '0.1.0', whats_new_seen: '0.1.0',
+  two_factor: true, totp: true, passkeys: 0, two_factor_recovery_left: 10, avatar: null, version: '0.1.0', whats_new_seen: '0.1.0',
   profile: { palette: 'salbei', mode: 'light', layout: 'page', quick_start: true, journal: 'blog', timezone: 'Europe/Berlin', timezone_source: 'browser', ai: true },
 }
 vi.mock('../state/auth', () => ({ useAuth: () => ({ me, setMe }) }))

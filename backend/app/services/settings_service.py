@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..models import Setting
+from ..vendor.nexoidc import flow
 
 DEFAULTS: dict[str, Any] = {
     "log_mode": "normal",
@@ -17,26 +18,37 @@ DEFAULTS: dict[str, Any] = {
     #: off | daily | weekly. Daily in the night unless the operator decides otherwise.
     "backup_schedule": "daily",
     "backup_keep": 7,
-    #: The address people use to reach nexdiary: invitation links, the OIDC redirect. Empty means
-    #: ``NEXDIARY_PUBLIC_URL``, and without that the request's own.
+    #: The address people use to reach nexdiary: invitation links, the redirect address of the sign-in providers.
+    #: Empty means ``NEXDIARY_PUBLIC_URL``, and without that the request's own.
     "public_url": "",
-    #: Members may sign in with a password. The operator always may: the emergency exit when OIDC fails.
+    #: Members may sign in with a password. The operator always may: the emergency exit when a provider fails. Off
+    #: only while a sign-in provider is on.
     "password_login": True,
     #: Every account needs a second factor (a code from an app or a passkey), on from the start: right after the
     #: password, an account without one sets it up before it gets anywhere. Turning it off asks for the password.
     "two_factor_required": True,
-    #: The operator declares that the OIDC provider checks a second factor itself: then an account that comes through
-    #: the provider is not asked for nexdiary's. Off from the start.
+    #: Before the provider list: "the provider checks a second factor itself" for the one provider of the settings.
+    #: The entry ``oidc`` took its value over (``trusts_second_factor``); it stays for one version as the way back to
+    #: 0.6 and is written from the entry (``services/oidc_store.mirror_way_back``).
     "oidc_second_factor_by_provider": False,
     #: When the operator last saved the master key (ISO time), for "Ready for the internet?"; None: never.
     "master_key_saved_at": None,
-    #: OIDC: issuer, client id and the encrypted client secret; empty means not set up.
+    #: The single OIDC provider before the provider list (``oidc_providers``): read once by the migration
+    #: (``services/oidc_store.migrate_settings``) and left for one version as the way back to 0.6, then gone. Nothing
+    #: reads them to sign anybody in.
     "oidc_issuer": "",
     "oidc_client_id": "",
     "oidc_client_secret_enc": "",
     "oidc_provider_name": "",
-    #: Whether an unknown identity from the provider gets an account. Off: only invited or linked accounts.
     "oidc_auto_create": False,
+    #: What the way back to 0.6 said when this version last wrote it (``migrate.fingerprint``): sums only. At the next
+    #: start the difference to what stands there now is what 0.6 changed.
+    "oidc_legacy_fingerprint": None,
+    #: The issuer 0.6 knows, or "-" (closed): with the entry ``oidc`` it decides what the way back shows (module
+    #: ``migrate.way_back``). nexdiary only stores it.
+    "oidc_legacy_anchor": None,
+    #: The settings above were looked at once and, where there was a provider, became the entry ``oidc``.
+    "oidc_list_migrated": False,
     #: Tokens for programs such as a dashboard card (``/api/v1``): closed until the operator opens it.
     "api_tokens_allowed": False,
     #: Ask GitHub once a day whether a newer nexdiary is out (services/updates). Only the question goes out, so on.
@@ -88,7 +100,8 @@ def get_all(db: Session) -> dict[str, Any]:
     return values
 
 
-def save(db: Session, changes: dict[str, Any]) -> None:
+def save(db: Session, changes: dict[str, Any], *, commit: bool = True) -> None:
+    """Writes the values; ``commit`` False leaves the transaction open (flushed) for a caller that commits once."""
     for key, value in changes.items():
         if key not in DEFAULTS:
             raise KeyError(key)
@@ -97,12 +110,15 @@ def save(db: Session, changes: dict[str, Any]) -> None:
             db.add(Setting(key=key, value=value))
         else:
             row.value = value
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
 
 
 def normalize_public_url(value: str) -> str:
     """``scheme://host[:port]`` and nothing else, or empty. ``ValueError`` for anything people could not type into
-    a browser: no other schemes, no credentials, no path, no query."""
+    a browser: no other schemes, no credentials, no path, no query, nothing the shared sign-in module refuses."""
     text = value.strip()
     if not text:
         return ""
@@ -115,7 +131,9 @@ def normalize_public_url(value: str) -> str:
         parts.port  # noqa: B018 - raises ValueError when the port is not a number
     except ValueError as exc:
         raise ValueError("port") from exc
-    return f"{parts.scheme.lower()}://{parts.netloc}"
+    # Never more than the sign-in module takes (the host's letters, at most 199 characters): what it refuses is no
+    # address here either, or the authentik card and the sign-in would disagree about it.
+    return flow.clean_public_url(f"{parts.scheme.lower()}://{parts.netloc}")
 
 
 def public_url(db: Session) -> str:

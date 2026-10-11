@@ -11,10 +11,12 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
 
-import { aiApi, api, authApi, type Autowrite, type Me, type Methods } from '../api/client'
+import { aiApi, api, authApi, type Autowrite, type Me, type MyProvider } from '../api/client'
 import { ApiTokens } from '../components/ApiTokens'
 import { Avatar } from '../components/Avatar'
 import { providerName } from '../lib/aiProviders'
+import { signInErrorText } from '../lib/errors'
+import { go } from '../lib/providers'
 import { useAiState } from '../state/ai'
 import { useAuth } from '../state/auth'
 import { ImmichCard } from './settings/ImmichCards'
@@ -268,21 +270,11 @@ function Profile({ me }: { me: Me }) {
 
 function Security({ me }: { me: Me }) {
   const { t } = useTranslation()
-  const { refresh } = useAuth()
-  const [params] = useSearchParams()
-  const [methods, setMethods] = useState<Methods | null>(null)
-  const [pw, setPw] = useState({ current: '', next: '', again: '', link: '' })
+  const [pw, setPw] = useState({ current: '', next: '', again: '' })
   const password = useAction()
   const [unsent, setUnsent] = useState<string | null>(null)
-  const link = useAction()
-  const [linkDone] = useState(params.get('linked') ? t('me.oidc.linkedNow') : null)
-  const [linkProblem] = useState(params.get('error'))
   // Until the second factor is set up, the server answers nothing else: only its cards are shown.
   const restricted = Boolean(me.second_factor_setup_required)
-  useEffect(() => {
-    if (!restricted) authApi.methods().then(setMethods, () => setMethods(null))
-  }, [restricted])
-  const provider = methods?.oidc_name || 'OpenID Connect'
   if (restricted)
     return (
       <>
@@ -327,48 +319,98 @@ function Security({ me }: { me: Me }) {
       <SecondFactorCard me={me} />
       <PasskeysCard me={me} />
 
-      {(methods?.oidc || me.sign_in === 'oidc' || me.oidc_linked) && (
-        <Card icon={ShieldCheck} title={t('me.oidc.title')} text={t('me.oidc.text', { name: provider })}>
-          {me.sign_in === 'oidc' ? (
-            <p className="text-sm text-ink-2">{t('me.oidc.only', { name: provider })}</p>
-          ) : me.oidc_linked ? (
-            <div className="flex flex-wrap items-center gap-3 text-sm">
-              <span className="text-ink-2">{t('me.oidc.linked', { name: provider })}</span>
-              <Button
-                busy={link.busy}
-                onClick={() =>
-                  void link.run(async () => {
-                    await api('/api/oidc/link', { method: 'DELETE' })
-                    await refresh()
-                  }, t('me.oidc.unlinked'))
-                }
-              >
-                {t('me.oidc.unlink')}
-              </Button>
-            </div>
-          ) : (
-            <form
-              className="space-y-3"
-              onSubmit={(event) => {
-                event.preventDefault()
-                void link.run(async () => {
-                  const { url } = await api<{ url: string }>('/api/oidc/link/start', { method: 'POST', body: { password: pw.link } })
-                  window.location.assign(url)
-                })
-              }}
-            >
-              <p className="text-sm text-ink-2">{t('me.oidc.how', { name: provider })}</p>
-              <Input label={t('auth.password')} type="password" value={pw.link} onChange={(value) => setPw({ ...pw, link: value })} autoComplete="current-password" className="max-w-sm" />
-              <Button type="submit" busy={link.busy}>
-                {t('me.oidc.link', { name: provider })}
-              </Button>
-            </form>
-          )}
-          <Feedback problem={link.problem ?? linkProblem} done={link.done ?? linkDone} />
-        </Card>
-      )}
+      <ProvidersCard me={me} />
 
       <DevicesCard me={me} />
     </>
+  )
+}
+
+/**
+ * Sign-in providers (blueprint 04, "Mein Konto → Sicherheit → Anmeldeanbieter"): a row per active provider with its
+ * state and "Link" or "Unlink". Linking asks for the own password once more, then goes to the provider; the way back
+ * lands here with `?linked=<slug>` or `?error=<code>`. An account without a password links nothing more and keeps its
+ * last link (the server says `oidc_only_account`).
+ */
+function ProvidersCard({ me }: { me: Me }) {
+  const { t } = useTranslation()
+  const [params] = useSearchParams()
+  const [providers, setProviders] = useState<MyProvider[] | null>(null)
+  const [linking, setLinking] = useState<string | null>(null)
+  const [password, setPassword] = useState('')
+  const action = useAction()
+  const [arrived] = useState(params.get('error'))
+  const [linked] = useState(params.get('linked'))
+  const load = () => authApi.myProviders().then(setProviders, () => setProviders([]))
+  useEffect(() => {
+    void load()
+  }, [])
+  if (!providers || providers.length === 0) return null
+  const withPassword = me.sign_in === 'password'
+  const linkedCount = providers.filter((entry) => entry.linked).length
+  const linkedLabel = linked ? providers.find((entry) => entry.slug === linked)?.label : undefined
+  return (
+    <Card icon={ShieldCheck} title={t('oidc.account.title')} text={withPassword ? t('oidc.account.text') : undefined}>
+      <ul className="divide-y divide-line rounded-xl border border-line" data-testid="my-providers">
+        {providers.map((entry) => (
+          <li key={entry.slug} className="flex flex-wrap items-center gap-3 px-4 py-3 text-sm">
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold">{entry.label}</span>
+              <span className={`block text-xs ${entry.linked ? 'text-accent' : 'text-muted'}`}>
+                {entry.linked ? t('oidc.account.linked') : t('oidc.account.notLinked')}
+              </span>
+            </span>
+            {entry.linked ? (
+              !withPassword && linkedCount <= 1 ? (
+                <span className="text-xs text-muted">{t('oidc.account.only', { name: entry.label })}</span>
+              ) : (
+                <Button
+                  small
+                  busy={action.busy}
+                  label={`${t('oidc.account.unlink')}: ${entry.label}`}
+                  onClick={() =>
+                    void action.run(async () => {
+                      await authApi.unlink(entry.slug)
+                      await load()
+                    })
+                  }
+                >
+                  {t('oidc.account.unlink')}
+                </Button>
+              )
+            ) : (
+              withPassword && (
+                <Button small busy={action.busy} label={`${t('oidc.account.link')}: ${entry.label}`} onClick={() => setLinking(linking === entry.slug ? null : entry.slug)}>
+                  {t('oidc.account.link')}
+                </Button>
+              )
+            )}
+            {linking === entry.slug && (
+              <form
+                className="flex basis-full flex-wrap items-end gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  void action.run(async () => {
+                    const { url } = await authApi.linkStart(entry.slug, password)
+                    go(url)
+                  })
+                }}
+              >
+                <Input label={t('auth.password')} type="password" value={password} onChange={setPassword} autoComplete="current-password" autoFocus className="min-w-52 flex-1" />
+                <Button type="submit" primary busy={action.busy} disabled={!password}>
+                  {t('oidc.account.link')}
+                </Button>
+              </form>
+            )}
+          </li>
+        ))}
+      </ul>
+      {arrived && !action.problem && (
+        <p role="alert" className="rounded-xl border border-bad/40 bg-bad/10 px-3 py-2 text-sm text-bad">
+          {signInErrorText(arrived)}
+        </p>
+      )}
+      <Feedback problem={action.problem} done={action.done ?? (linkedLabel ? t('me.oidc.linkedNow', { name: linkedLabel }) : null)} values={action.values} />
+    </Card>
   )
 }
