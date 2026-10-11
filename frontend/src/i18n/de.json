@@ -1005,7 +1005,7 @@
     },
     "signin": "Anmeldung",
     "twoFactorRequired": "Zweiten Faktor verlangen",
-    "twoFactorRequiredHint": "Jedes Konto mit Passwort muss ihn einrichten, bevor es weiterkommt: direkt nach dem Passwort. Ein Konto mit Passwort ist ebenfalls nicht betroffen, wenn es über einen Anbieter kommt, bei dem „{{trusts}}“ an ist.",
+    "twoFactorRequiredHint": "Jedes Konto mit Passwort muss ihn einrichten, bevor es weiterkommt: direkt nach dem Passwort. Konten von einem Anmeldeanbieter bringen dessen eigenen mit. Ein Konto mit Passwort ist ebenfalls nicht betroffen, wenn es über einen Anbieter kommt, bei dem „{{trusts}}“ an ist.",
     "ownSecondFactorFirst": "Richte zuerst deinen eigenen zweiten Faktor ein (Mein Konto, Sicherheit), sonst wärst du der Erste, der nicht mehr weiterkommt. Nicht betroffen ist, wer sich über einen Anbieter anmeldet, bei dem „{{trusts}}“ an ist.",
     "secretKept": "gespeichert, leer lassen zum Behalten",
     "apiTokens": {
