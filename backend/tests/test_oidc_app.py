@@ -493,3 +493,48 @@ def test_trusting_a_provider_with_the_second_factor_asks_the_password_only_where
     # Turning it off again, or saving while it stays on, asks nothing.
     assert client.put(f"/api/oidc/admin/providers/{entry['id']}", json={**form, "trusts_second_factor": True}).status_code == 200
     assert client.put(f"/api/oidc/admin/providers/{entry['id']}", json={**form, "trusts_second_factor": False}).status_code == 200
+
+
+# --- Two starts at once ----------------------------------------------------------------------------------------------
+
+
+def test_a_start_that_meets_the_row_of_another_start_reads_everything_again(monkeypatch: pytest.MonkeyPatch) -> None:
+    from sqlalchemy.exc import IntegrityError
+
+    calls: list[int] = []
+    real = oidc_store._migrate_once
+
+    def once(backup: bool) -> bool:
+        calls.append(1)
+        if len(calls) == 1:
+            raise IntegrityError("INSERT INTO settings", {}, Exception("UNIQUE constraint failed: settings.key"))
+        return real(backup)
+
+    monkeypatch.setattr(oidc_store, "_migrate_once", once)
+    oidc_store.migrate_settings(backup=False)
+    assert len(calls) == 2
+
+
+def test_starts_at_once_make_one_entry_and_no_error(boss: Account, provider: FakeProvider) -> None:
+    import threading
+
+    make_account("alex")
+    legacy(provider, trusted=False, subjects={"alex": "person-1"})
+    failed: list[BaseException] = []
+    gate = threading.Barrier(4, timeout=10)
+
+    def start() -> None:
+        try:
+            gate.wait()
+            oidc_store.migrate_settings(backup=False)
+        except BaseException as exc:  # noqa: BLE001 - the test reports whatever went wrong
+            failed.append(exc)
+
+    threads = [threading.Thread(target=start) for _ in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert failed == []
+    with SessionLocal() as db:
+        assert [entry.slug for entry in oidc_store.SqlStore(db).list_providers()] == ["oidc"]
