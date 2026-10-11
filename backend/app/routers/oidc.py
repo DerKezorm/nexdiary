@@ -76,10 +76,6 @@ logger = logging.getLogger("nexdiary.oidc")
 
 #: Where the sign-in page asks for the code of nexdiary's own second factor after a provider that is not trusted.
 CODE_STEP = "/login?step=code"
-#: "The provider checks the second factor itself" turned on (a new entry with it, or an entry from off to on) asks
-#: for the operator's own password first, as "Require a second factor" turned off does (``routers/settings.WEAKER``).
-#: Off, as the shared blueprint lays it out; the form has the same switch (``SignInCards.tsx``), both go on together.
-TRUSTS_NEEDS_PASSWORD = False
 #: Codes that cost nothing to produce (a forged return, a braked sender, a provider that is not there): they never
 #: count against the sender.
 FREE_REFUSALS = ("oidc_state_mismatch", "too_many_attempts", "oidc_not_configured")
@@ -97,19 +93,9 @@ class ProviderIn(BaseModel):
     #: "The provider checks the second factor itself" (on for a new entry, the blueprint). Turned on without a password
     #: of the operator, as the blueprint lays it out; "Require a second factor" itself still asks for it.
     trusts_second_factor: bool = True
-    #: The operator's own password, when turning the provider's check of the second factor on asks for it
-    #: (``TRUSTS_NEEDS_PASSWORD``). Never part of the entry.
-    current_password: str = Field(default="", max_length=200)
 
     def form(self) -> providers.Form:
-        return providers.Form(**self.model_dump(exclude={"current_password"}))
-
-
-def _trust_guard(request: Request, db: Any, operator: AccountRow, payload: ProviderIn, before: bool) -> None:
-    """Turning the provider's check of the second factor on makes signing in weaker for everybody who comes through
-    it; with ``TRUSTS_NEEDS_PASSWORD`` it asks for the operator's password first."""
-    if TRUSTS_NEEDS_PASSWORD and payload.trusts_second_factor and not before:
-        confirm_operator(request, db, operator, payload.current_password)
+        return providers.Form(**self.model_dump())
 
 
 class PasswordIn(BaseModel):
@@ -183,7 +169,6 @@ def admin_providers(_operator: OperatorAccount, request: Request) -> list[dict[s
 @router.post("/admin/providers", status_code=201, summary="Add a provider; the issuer is checked by discovery")
 async def add_provider(payload: ProviderIn, operator: OperatorAccount, request: Request) -> dict[str, Any]:
     with store() as s:
-        _trust_guard(request, s.db, operator, payload, False)
         try:
             created = await providers.create(s, payload.form())
         except ProviderInvalid as exc:
@@ -207,8 +192,6 @@ async def save_provider(
     provider_id: Annotated[int, Path(ge=1)], payload: ProviderIn, operator: OperatorAccount, request: Request
 ) -> dict[str, Any]:
     with store() as s:
-        entry = s.get_provider(provider_id)
-        _trust_guard(request, s.db, operator, payload, bool(entry and entry.trusts_second_factor))
         try:
             saved, dropped = await providers.update(s, provider_id, payload.form())
         except ProviderInvalid as exc:

@@ -34,11 +34,6 @@ import { Button, Card, Confirm, CopyLink, Feedback, Input, Toggle, useAction } f
 
 type Server = ReturnType<typeof useServerSettings>
 
-/** "The provider checks the second factor itself" turned on in the form asks for the operator's password first. Off,
- * as the blueprint lays it out; the server has the same switch (`TRUSTS_NEEDS_PASSWORD` in `routers/oidc.py`), and
- * both go on together. */
-const TRUSTS_NEEDS_PASSWORD = false
-
 /** The whole part: the list is loaded once and shared, the button changes it too. */
 export function SignInPart({ server }: { server: Server }) {
   const [providers, setProviders] = useState<OidcProvider[] | null>(null)
@@ -315,10 +310,6 @@ function ProviderDialog({ entry, publicUrl, onClose, onSaved }: { entry: OidcPro
   const [busy, setBusy] = useState(false)
   const [fieldError, setFieldError] = useState<{ field: FieldName; text: string } | null>(null)
   const [confirmIssuer, setConfirmIssuer] = useState<number | null>(null)
-  // Turning the provider's own check of the second factor on asks for the operator's password, when that is wanted.
-  const [askPassword, setAskPassword] = useState(false)
-  const { me } = useAuth()
-  const trustsTurnedOn = form.trusts_second_factor && !entry?.trusts_second_factor
 
   const slug = entry ? entry.slug : slugTyped ? (form.slug ?? '') : slugFromLabel(form.label)
   const base = (publicUrl || window.location.origin).replace(/\/+$/, '')
@@ -333,12 +324,11 @@ function ProviderDialog({ entry, publicUrl, onClose, onSaved }: { entry: OidcPro
     return { field, text: key ? t(key) : errorText(error.code, error.values) }
   }
 
-  const save = async (current_password?: string) => {
-    if (TRUSTS_NEEDS_PASSWORD && trustsTurnedOn && current_password === undefined && me?.sign_in === 'password') return setAskPassword(true)
+  const save = async () => {
     setBusy(true)
     setFieldError(null)
     try {
-      const body = { ...form, slug: entry ? undefined : slug, ...(current_password !== undefined ? { current_password } : {}) }
+      const body = { ...form, slug: entry ? undefined : slug }
       if (entry) await oidcAdminApi.saveProvider(entry.id, body)
       else await oidcAdminApi.addProvider(body)
       await onSaved()
@@ -438,20 +428,6 @@ function ProviderDialog({ entry, publicUrl, onClose, onSaved }: { entry: OidcPro
           </Button>
         </div>
       </form>
-      {askPassword && (
-        <Confirm
-          title={t('oidc.admin.trustsSecondFactor')}
-          text={t('oidc.admin.trustsSecondFactorHint')}
-          confirm={t('common.save')}
-          danger
-          password
-          onCancel={() => setAskPassword(false)}
-          onConfirm={async (password) => {
-            setAskPassword(false)
-            await save(password)
-          }}
-        />
-      )}
       {confirmIssuer !== null && (
         <Confirm
           title={t('oidc.admin.issuer')}
