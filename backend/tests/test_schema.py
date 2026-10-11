@@ -50,9 +50,21 @@ def fresh_schema_sql() -> str:
     return "".join(" ".join(row[0].split()) + ";\n" for row in rows)
 
 
+def drop_v17(connection: sqlite3.Connection) -> None:
+    """Takes away what version 17 added (the sign-in providers as a list, the mark of a session that came through a
+    provider which checks the second factor)."""
+    for statement in (
+        "DROP TABLE oidc_links",
+        "DROP TABLE oidc_providers",
+        "ALTER TABLE auth_sessions DROP COLUMN provider_checked",
+    ):
+        connection.execute(statement)
+
+
 def drop_v16(connection: sqlite3.Connection) -> None:
-    """Takes away what version 16 added (the photos of a capsule in a table of their own, the mark of a letter in plain
-    words): the first photo of each capsule goes back into the columns of version 15."""
+    """Takes away what version 16 and everything after it added (the photos of a capsule in a table of their own, the
+    mark of a letter in plain words): the first photo of each capsule goes back into the columns of version 15."""
+    drop_v17(connection)
     for statement in (
         "ALTER TABLE capsules DROP COLUMN plain",
         "ALTER TABLE capsules ADD COLUMN photo_uid VARCHAR(32)",

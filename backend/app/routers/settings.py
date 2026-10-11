@@ -2,7 +2,7 @@
 saving the master key.
 
 Secrets (the mail password) are written encrypted and never read back: the answer only says whether one is set.
-The OIDC settings live in ``routers/oidc.py``.
+The sign-in providers live in ``routers/oidc.py``.
 """
 
 from __future__ import annotations
@@ -28,6 +28,8 @@ from ..errors import error
 from ..models import Account as AccountRow
 from ..security import encrypt_secret
 from ..services import accounts, mailer, passkeys, quota, readiness, settings_service, totp, vault
+from ..services.oidc_store import SqlStore
+from ..vendor.nexoidc import authentik, providers
 
 logger = logging.getLogger("nexdiary.settings")
 
@@ -38,7 +40,6 @@ class SettingsOut(BaseModel):
     public_url: str
     password_login: bool
     two_factor_required: bool
-    oidc_second_factor_by_provider: bool
     master_key_saved_at: str | None
     backup_schedule: str
     backup_keep: int
@@ -55,9 +56,11 @@ class SettingsOut(BaseModel):
 
 class SettingsIn(BaseModel):
     public_url: str | None = Field(default=None, max_length=255)
+    #: The operator answered the question that came back as 409 ``public_url_change`` (authentik or a provider by hand
+    #: knows the old redirect address). Not a setting; it only goes with ``public_url``.
+    confirm_address: bool = False
     password_login: bool | None = None
     two_factor_required: bool | None = None
-    oidc_second_factor_by_provider: bool | None = None
     #: The operator's password once more: asked when a change makes signing in weaker.
     current_password: str = Field(default="", max_length=200)
     backup_schedule: Literal["off", "daily", "weekly"] | None = None
@@ -85,7 +88,6 @@ def _view(db: DbSession) -> SettingsOut:
         public_url=values["public_url"],
         password_login=values["password_login"],
         two_factor_required=bool(values["two_factor_required"]),
-        oidc_second_factor_by_provider=bool(values["oidc_second_factor_by_provider"]),
         master_key_saved_at=values["master_key_saved_at"],
         backup_schedule=values["backup_schedule"],
         backup_keep=values["backup_keep"],
@@ -106,8 +108,10 @@ def read(_operator: OperatorAccount, db: DbSession) -> SettingsOut:
     return _view(db)
 
 
-#: Changes that make signing in weaker: each asks for the operator's password once more.
-WEAKER = {"two_factor_required": False, "oidc_second_factor_by_provider": True}
+#: Changes that make signing in weaker: each asks for the operator's password once more. "The provider checks the
+#: second factor itself" is a switch of each provider's entry now (``routers/oidc.py``), as the shared sign-in
+#: blueprint lays it out.
+WEAKER = {"two_factor_required": False}
 
 
 @router.put("", response_model=SettingsOut)
@@ -119,13 +123,21 @@ def save(payload: SettingsIn, request: Request, operator: OperatorAccount, db: D
         confirm_operator(request, db, operator, payload.current_password)
     changes: dict[str, Any] = {}
     for key, value in sent.items():
-        if value is None or key == "current_password":
+        if value is None or key in ("current_password", "confirm_address"):
             continue
         if key == "public_url":
             try:
                 value = settings_service.normalize_public_url(value)
             except ValueError as exc:
                 raise error("invalid_url", "Give an address like https://diary.example.com.", 422) from exc
+            # Saving the address (emptying it too) changes the redirect address of the sign-in: authentik, set up by
+            # the button, and every active provider by hand know the old one. Ask first, save nothing (blueprint 04,
+            # card 1).
+            question = authentik.public_url_guard(SqlStore(db), value, str(request.base_url),
+                                                  confirm=payload.confirm_address)
+            if question is not None:
+                raise error("public_url_change", "The address changes what the sign-in providers know.", 409,
+                            **question)
         elif key == "smtp_from":
             value = value.strip()
             if value and not accounts.EMAIL_PATTERN.match(value):
@@ -136,9 +148,9 @@ def save(payload: SettingsIn, request: Request, operator: OperatorAccount, db: D
             # Else the operator would be the first one sent to set it up, with nothing else in reach.
             raise error("own_second_factor_first", "Set up your own second factor first.", 409)
         elif key == "password_login" and not value:
-            current = settings_service.get_all(db)
-            if not (current["oidc_issuer"] and current["oidc_client_id"]):
-                # Without a provider nobody but the operator could sign in any more, and invitations would fail.
+            if not providers.public_list(SqlStore(db)):
+                # Without an active provider nobody but the operator could sign in any more, and invitations would
+                # fail (blueprint 01, "Passwort-Anmeldung").
                 raise error("provider_first", "Set up a sign-in provider first.", 409)
         elif key == "smtp_password":
             changes["smtp_password_enc"] = encrypt_secret(value)

@@ -50,6 +50,9 @@ from app.services import (  # noqa: E402
     updates,
 )
 
+# The fake sign-in provider of the shared contract tests, for nexdiary's own tests (``oidc_helpers.py``).
+from .oidc_helpers import provider  # noqa: E402, F401
+
 DATA_DIR = _DATA
 MEDIA = Path(_DATA) / "media"
 TAB = {"X-Nexdiary-Client": "tab-tests000"}

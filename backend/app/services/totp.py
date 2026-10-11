@@ -36,7 +36,7 @@ import segno
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from ..models import SIGN_IN_OIDC, Account, Passkey
+from ..models import SIGN_IN_PASSWORD, Account, Passkey
 from ..security import decrypt_secret, encrypt_secret, server_key
 from . import settings_service
 
@@ -182,21 +182,34 @@ def has_second_factor(db: Session, account: Account) -> bool:
     return bool(account.totp_secret_enc) or passkey_count(db, account.id) > 0
 
 
-def provider_checks(db: Session, account: Account) -> bool:
-    """The account signs in through the provider only, and the operator declared that the provider checks a second
-    factor: nexdiary does not ask for its own."""
-    return account.sign_in == SIGN_IN_OIDC and bool(settings_service.get(db, "oidc_second_factor_by_provider"))
+def password_account(account: Account) -> bool:
+    """The account signs in with a password of its own (not through providers only)."""
+    return account.sign_in == SIGN_IN_PASSWORD and bool(account.password_hash)
+
+
+def provider_checks(_db: Session, account: Account) -> bool:
+    """nexdiary does not ask this account for a second factor of its own here (the shared sign-in blueprint 01, "Zweiter
+    Faktor", decided 2026-10-10): an account that signs in through providers only is never made to set one up, and
+    neither is the session of an account that came in through a provider whose entry checks the second factor itself.
+    The same account signing in with its password is asked as before."""
+    return not password_account(account) or bool(account.provider_checked)
+
+
+def factor_missing(db: Session, account: Account) -> bool:
+    """The operator requires a second factor, and this password account has none of its own yet, whatever session it
+    is in. An API token never has a session: it waits until the account has one."""
+    return (
+        bool(settings_service.get(db, "two_factor_required"))
+        and password_account(account)
+        and not has_second_factor(db, account)
+    )
 
 
 def setup_required(db: Session, account: Account) -> bool:
-    """The operator requires a second factor (the default), and this account has none yet. Such an account sets it up
-    before it reaches anything else. An account from OIDC is asked as well, unless the operator declared that the
-    provider checks one."""
-    return (
-        bool(settings_service.get(db, "two_factor_required"))
-        and not provider_checks(db, account)
-        and not has_second_factor(db, account)
-    )
+    """The operator requires a second factor (the default), and this password account has none yet. Such an account
+    sets it up before it reaches anything else, unless this session came through a provider that checks the second
+    factor itself (``provider_checks``)."""
+    return factor_missing(db, account) and not account.provider_checked
 
 
 def claim_step(db: Session, account_id: int, step: int) -> bool:

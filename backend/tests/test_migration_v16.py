@@ -19,6 +19,7 @@ from typing import Any
 
 import pytest
 
+from app.db import SCHEMA_VERSION
 from app.services import vault
 
 from .fixtures.v15.make import fixture_key
@@ -65,7 +66,8 @@ def seen(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
 
 def test_the_schema_comes_to_16_with_nothing_lost(seen: dict[str, Any]) -> None:
     old = old_rows()
-    assert seen["version"] == 16 and seen["schema_as_new"] is True
+    # The start takes every step there is now (16 and what came after), with the one backup before the first.
+    assert seen["version"] == SCHEMA_VERSION and seen["schema_as_new"] is True
     assert seen["backups"] == 1, "a backup before the step"
     assert seen["photo_rows"] == old["photos"], "each photo moved as it was: its id (its files), shape and size"
     assert len(old["photos"]) == 2

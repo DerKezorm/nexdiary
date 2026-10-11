@@ -37,7 +37,7 @@ _settings.data_dir.mkdir(parents=True, exist_ok=True)
 BUSY_SECONDS = 15
 
 #: The version of the schema the models describe.
-SCHEMA_VERSION = 16
+SCHEMA_VERSION = 17
 
 
 def _v2_diary(connection: Connection) -> None:
@@ -347,12 +347,46 @@ def _v16_capsule_photos(connection: Connection) -> None:
         connection.exec_driver_sql(statement)
 
 
+def _v17_sign_in_providers(connection: Connection) -> None:
+    """Version 17: the sign-in providers as a list (the shared sign-in blueprint): one row per provider, one per linked
+    identity, and a mark on a session that came through a provider which checks the second factor itself. The provider
+    of the settings and the subjects of the accounts become rows of these tables at the start after this step
+    (``services/oidc_store.migrate_settings``); the old settings and the column stay as the way back. Every new column
+    has a default in the database: 0.6 writes sessions without it. Written out as it stood then, not taken from the
+    models."""
+    for statement in (
+        "ALTER TABLE auth_sessions ADD COLUMN provider_checked BOOLEAN DEFAULT 0 NOT NULL",
+        (
+            "CREATE TABLE oidc_providers ( id INTEGER NOT NULL, slug VARCHAR(40) NOT NULL, "
+            "label VARCHAR(64) NOT NULL, issuer VARCHAR(500) NOT NULL, client_id VARCHAR(255) NOT NULL, "
+            "client_secret_enc TEXT DEFAULT '' NOT NULL, scopes VARCHAR(500) DEFAULT 'openid profile email' NOT NULL, "
+            "enabled BOOLEAN DEFAULT 1 NOT NULL, "
+            "auto_create BOOLEAN DEFAULT 0 NOT NULL, trusts_second_factor BOOLEAN DEFAULT 1 NOT NULL, "
+            "managed VARCHAR(20) DEFAULT '' NOT NULL, position INTEGER DEFAULT 0 NOT NULL, "
+            "redirect_path VARCHAR(300) DEFAULT '' NOT NULL, registered_redirect VARCHAR(500) DEFAULT '' NOT NULL, "
+            "created_at DATETIME NOT NULL, PRIMARY KEY (id), UNIQUE (slug) )"
+        ),
+        (
+            "CREATE TABLE oidc_links ( id INTEGER NOT NULL, provider_id INTEGER NOT NULL, "
+            "subject VARCHAR(255) NOT NULL, account_id INTEGER NOT NULL, issuer VARCHAR(500) NOT NULL, "
+            "email VARCHAR(320), created_at DATETIME NOT NULL, last_used_at DATETIME, PRIMARY KEY (id), "
+            "CONSTRAINT uq_oidc_links_provider_subject UNIQUE (provider_id, subject), "
+            "CONSTRAINT uq_oidc_links_provider_account UNIQUE (provider_id, account_id), "
+            "FOREIGN KEY(provider_id) REFERENCES oidc_providers (id) ON DELETE CASCADE, "
+            "FOREIGN KEY(account_id) REFERENCES users (id) ON DELETE CASCADE )"
+        ),
+        "CREATE INDEX ix_oidc_links_account_id ON oidc_links (account_id)",
+        "CREATE INDEX ix_oidc_links_provider_id ON oidc_links (provider_id)",
+    ):
+        connection.exec_driver_sql(statement)
+
+
 #: ``MIGRATIONS[n]`` brings a database from version ``n - 1`` to ``n``. Version 1 is the first schema; it has no step.
 MIGRATIONS: dict[int, Callable[[Connection], None]] = {
     2: _v2_diary, 3: _v3_photos_and_drafts, 4: _v4_sharing, 5: _v5_writing_prompts, 6: _v6_immich, 7: _v7_push,
     8: _v8_security, 9: _v9_recovery, 10: _v10_nights_and_locks, 11: _v11_automatic_writing,
     12: _v12_text_photos, 13: _v13_writing_templates, 14: _v14_time_capsules, 15: _v15_family_question,
-    16: _v16_capsule_photos,
+    16: _v16_capsule_photos, 17: _v17_sign_in_providers,
 }
 
 # No pool with an upper bound: with the default pool the sixteenth concurrent request would block the event

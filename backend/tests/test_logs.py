@@ -160,6 +160,7 @@ def test_tokens_in_addresses_never_reach_the_log() -> None:
         f"POST /api/invite/{invite} -> 200 in 3ms",
         f"GET /invite/{invite}",
         f"GET /api/oidc/callback?code={code}&state={code} -> 303",
+        f"GET /api/oidc/sso/callback?state={code}&code={code} -> 303",
         f"GET /api/v1/me?token={key}",
         f"Pasted {key} somewhere",
     ]

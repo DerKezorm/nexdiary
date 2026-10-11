@@ -383,11 +383,14 @@ def test_required_mode_lets_an_account_without_a_second_factor_only_enrol(
     assert anna.get("/api/api-tokens").status_code == 200
 
 
-def test_accounts_from_a_provider_set_one_up_unless_the_operator_says_the_provider_checks(
+def test_an_account_through_providers_only_is_not_made_to_set_one_up_and_may_enrol_one_of_its_own(
     client: TestClient, operator: Account, clock: Clock
 ) -> None:
+    """Decided 2026-10-10 (the shared sign-in blueprint 01, "Zweiter Faktor"): "Require a second factor" makes only
+    accounts with a password set one up. An account that comes in through providers only is not sent to the setup,
+    whatever its provider's entry says; it may still enrol one of its own right after signing in."""
     with SessionLocal() as db:
-        row = Account(name="idp-user", role="member", sign_in=SIGN_IN_OIDC, oidc_subject="sub-1", email="u@example.com")
+        row = Account(name="idp-user", role="member", sign_in=SIGN_IN_OIDC, email="u@example.com")
         db.add(row)
         db.commit()
         token = start_session(db, row, "127.0.0.1", "tests")
@@ -395,16 +398,20 @@ def test_accounts_from_a_provider_set_one_up_unless_the_operator_says_the_provid
     other.cookies.set(SESSION_COOKIE, token)
     enrol(client)
     assert client.put("/api/settings", json={"two_factor_required": True}).status_code == 200
-    # Required: an account from the provider needs nexdiary's own second factor as well.
-    blocked = other.get("/api/api-tokens")
-    assert blocked.status_code == 403 and blocked.json()["detail"]["code"] == "second_factor_setup_required"
-    # Unless the operator declares that the provider checks one: that weakens sign-in and needs the password.
-    without = client.put("/api/settings", json={"oidc_second_factor_by_provider": True})
-    assert without.status_code == 401 and without.json()["detail"]["code"] == "wrong_password"
-    declared = client.put("/api/settings", json={"oidc_second_factor_by_provider": True, "current_password": PASSWORD})
-    assert declared.status_code == 200 and declared.json()["oidc_second_factor_by_provider"] is True
+    me = other.get("/api/auth/me")
+    assert me.status_code == 200 and me.json()["second_factor_setup_required"] is False
+    assert me.json()["second_factor_required"] is False
     assert other.get("/api/api-tokens").status_code == 200
-    # Such an account may still enrol one of its own, without a password: right after signing in through the provider.
+    with SessionLocal() as db:
+        stored = db.scalar(select(Account).where(Account.name == "idp-user"))
+        assert stored is not None and not totp.factor_missing(db, stored) and not totp.setup_required(db, stored)
+    # A password account without one is held at the setup, as before.
+    member = make_account("pw-user")
+    blocked = TestClient(app, base_url="http://testserver", headers={"X-Nexdiary-Client": "tab-pwuser00"})
+    sign_in(blocked, member)
+    held = blocked.get("/api/api-tokens")
+    assert held.status_code == 403 and held.json()["detail"]["code"] == "second_factor_setup_required"
+    # The provider-only account may enrol one of its own, without a password: right after signing in.
     begun = other.post("/api/auth/totp/begin")
     assert begun.status_code == 200
     confirmed = other.post("/api/auth/totp/confirm", json={"code": current_code(begun.json()["secret"])})
@@ -421,7 +428,7 @@ def test_an_account_from_a_provider_changes_its_factor_only_soon_after_signing_i
     from app import clock as app_clock
 
     with SessionLocal() as db:
-        row = Account(name="idp-user", role="member", sign_in=SIGN_IN_OIDC, oidc_subject="sub-1", email="u@example.com")
+        row = Account(name="idp-user", role="member", sign_in=SIGN_IN_OIDC, email="u@example.com")
         db.add(row)
         db.commit()
         token = start_session(db, row, "127.0.0.1", "tests")
