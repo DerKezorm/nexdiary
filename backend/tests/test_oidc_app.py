@@ -287,6 +287,24 @@ def test_ready_for_the_internet_names_the_providers_that_check_the_second_factor
     assert two_factor()["state"] == "bad"
 
 
+def test_ready_for_the_internet_does_not_count_a_provider_that_is_switched_off(
+    client: TestClient, boss: Account, provider: FakeProvider
+) -> None:
+    require_second_factor()
+    entry = configure(client, provider, trusts_second_factor=True)
+
+    def two_factor() -> dict[str, Any]:
+        points = client.get("/api/settings/readiness").json()["points"]
+        return next(point for point in points if point["key"] == "two_factor")
+
+    assert two_factor()["state"] == "warn"
+    off = client.put(f"/api/oidc/admin/providers/{entry['id']}", json={
+        "label": "Test SSO", "issuer": provider.issuer, "client_id": provider.client_id,
+        "trusts_second_factor": True, "enabled": False})
+    assert off.status_code == 200 and off.json()["enabled"] is False
+    assert two_factor() == {"key": "two_factor", "state": "ok", "values": {}}, "nobody comes in through it"
+
+
 # --- The operator takes a link ----------------------------------------------------------------------------------------
 
 
@@ -469,6 +487,37 @@ def test_0_6_turning_its_switch_off_makes_the_entry_ask_the_code_again(
     with SessionLocal() as db:
         entry = oidc_store.SqlStore(db).provider_by_slug("oidc")
         assert entry is not None and entry.trusts_second_factor is False and entry.enabled
+
+
+def test_a_backup_goes_before_taking_over_what_0_6_changed_and_only_then(
+    client: TestClient, boss: Account, provider: FakeProvider, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.services import backups
+
+    make_account("alex")
+    make_account("olga")
+    legacy(provider, trusted=True, subjects={"alex": "person-1"})
+    oidc_store.migrate_settings(backup=False)
+    made: list[str] = []
+    monkeypatch.setattr(backups, "create", lambda **kwargs: made.append(str(kwargs.get("note", ""))))
+    # Nothing changed in 0.6 since the fingerprint: a start takes nothing over and saves nothing.
+    oidc_store.migrate_settings(backup=True)
+    assert made == []
+    # 0.6 linked another person: the start takes it over, and a backup goes first.
+    with SessionLocal() as db:
+        olga = db.scalar(select(Account).where(Account.name == "olga"))
+        assert olga is not None
+        olga.oidc_subject = "person-2"
+        db.commit()
+    oidc_store.migrate_settings(backup=True)
+    assert made == ["before taking over the old sign-in settings"]
+    with SessionLocal() as db:
+        entry = oidc_store.SqlStore(db).provider_by_slug("oidc")
+        assert entry is not None
+        assert [link.subject for link in oidc_store.SqlStore(db).links_of_provider(entry.id)] == ["person-1", "person-2"]
+    # The next start finds nothing new again.
+    oidc_store.migrate_settings(backup=True)
+    assert len(made) == 1
 
 
 # --- The operator's password before trusting a provider with the second factor (switch, off by default) ---------------

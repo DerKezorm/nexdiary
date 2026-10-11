@@ -146,9 +146,17 @@ describe('the sign-in page', () => {
     answers['GET /api/auth/methods'] = { password: false, providers: PROVIDERS, passkeys: false, forgot: false }
     await show(<LoginPage />)
     expect(field('Passwort', box)).toBeNull()
+    expect(box.textContent).not.toContain('oder')
     expect(button('Mit authentik anmelden')).toBeTruthy()
     await click(button('Als Betreiber mit Passwort anmelden'))
     expect(field('Passwort', box)).toBeTruthy()
+  })
+
+  it('keeps the password form while password sign-in is off but no provider is active: nobody could come in otherwise', async () => {
+    answers['GET /api/auth/methods'] = { password: false, providers: [], passkeys: false, forgot: false }
+    await show(<LoginPage />)
+    expect(field('Passwort', box)).toBeTruthy()
+    expect(box.querySelector('[data-testid="provider-buttons"] button')).toBeNull()
   })
 
   it('tells a code from the way back in the words of the shared module, never the code itself', async () => {
