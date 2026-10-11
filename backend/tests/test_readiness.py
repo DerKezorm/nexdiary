@@ -65,14 +65,22 @@ def test_only_the_operator_sees_the_check(client: TestClient, operator: Account)
     assert anna.get("/api/settings/readiness").status_code == 403
 
 
-def test_https_needs_the_public_address_and_the_request_on_https(client: TestClient, operator: Account) -> None:
+def test_https_needs_the_public_address_and_the_request_on_https(
+    client: TestClient, operator: Account, monkeypatch: pytest.MonkeyPatch
+) -> None:
     assert points(client)["https"]["state"] == "bad"
     save({"public_url": "http://diary.example.com"})
     assert points(client)["https"]["state"] == "bad"
     save({"public_url": "https://diary.example.com"})
     assert points(client)["https"]["state"] == "warn", "the address says https, the request did not come over it"
     assert points(https_client(operator))["https"]["state"] == "ok"
-    assert points(client, headers={"X-Forwarded-Proto": "https"})["https"]["state"] == "ok"
+    assert points(client, headers={"X-Forwarded-Proto": "https"})["https"]["state"] == "warn", "nobody is trusted yet"
+    monkeypatch.setattr(get_settings(), "trusted_proxies", "172.18.0.0/16")
+    proxy = TestClient(app, base_url="http://testserver", headers=TAB, client=("172.18.0.2", 50000))
+    sign_in(proxy, operator)
+    assert points(proxy, headers={"X-Forwarded-Proto": "https"})["https"]["state"] == "ok"
+    assert points(proxy, headers={"X-Forwarded-Proto": "https"})["cookies"]["state"] == "ok"
+    assert points(client, headers={"X-Forwarded-Proto": "https"})["cookies"]["state"] == "warn"
 
 
 def test_the_second_factor_for_everybody_and_for_the_operator(client: TestClient, operator: Account) -> None:

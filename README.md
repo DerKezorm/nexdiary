@@ -245,7 +245,7 @@ it is; it is not sealed with your password.
 | `NEXDIARY_SETUP_TOKEN` | made at start | The code the first account needs |
 | `NEXDIARY_OPERATOR_NETWORKS` | none | Networks the operator's settings may be changed from, comma separated |
 | `NEXDIARY_SESSION_DAYS` | `30` | A session of "stay signed in on this device" ends after this many days without use |
-| `NEXDIARY_COOKIE_SECURE` | `auto` | `on`, `off` or `auto` (from the request or `X-Forwarded-Proto`) |
+| `NEXDIARY_COOKIE_SECURE` | `auto` | `on`, `off` or `auto` (from the request, or `X-Forwarded-Proto` of a trusted proxy) |
 | `NEXDIARY_COOKIE_SUFFIX` | none | Appended to the cookie names; keeps two instances on one host apart |
 | `NEXDIARY_LOG_LEVEL` | stored setting | `quiet`, `normal`, `detailed` or `trace`; overrides the setting |
 | `NEXDIARY_API_DOCS` | `false` | Serves `/api/docs` and `/api/openapi.json` |

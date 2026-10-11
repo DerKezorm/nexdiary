@@ -34,7 +34,6 @@ from ..deps import (
     session_of,
 )
 from ..errors import error
-from ..middleware import forwarded_proto
 from ..models import OPERATOR, ROLES, SIGN_IN_PASSWORD, STAGE_CODES, STAGE_FULL, STAGE_SETUP, AuthSession, utcnow
 from ..models import Account as AccountRow
 from ..security import (
@@ -135,9 +134,10 @@ def secure_cookie(request: Request) -> bool:
         return True
     if mode == "off":
         return False
-    # Only the Secure flag: a proxy that says https makes the cookie stricter, never weaker. The rightmost value, the
-    # one the proxy nearest to nexdiary wrote (the shared sign-in module README, "Hinter einem Proxy").
-    return request.url.scheme == "https" or forwarded_proto(request.scope.get("headers", [])) == "https"
+    # The scheme as ``ForwardedProtoMiddleware`` left it: the connection's own, or the rightmost value of
+    # ``X-Forwarded-Proto`` from a proxy in ``NEXDIARY_TRUSTED_PROXIES``, never the header of anybody else (the shared
+    # sign-in module README, "Hinter einem Proxy"). Behind a proxy nexdiary was not told about: ``on``.
+    return request.url.scheme == "https"
 
 
 #: How long the browser keeps the cookie of a session that stays: as long as browsers allow (400 days). The server

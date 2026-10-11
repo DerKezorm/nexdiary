@@ -46,10 +46,10 @@ class Point:
 
 
 def came_over_https(request: Request) -> bool:
-    """The request reached nexdiary over https, or the proxy in front says it did."""
-    from ..middleware import forwarded_proto
-
-    return request.url.scheme == "https" or forwarded_proto(request.scope.get("headers", [])) == "https"
+    """The request reached nexdiary over https, or a trusted proxy in front says it did (``ForwardedProtoMiddleware``
+    set the scheme then). What anybody else writes into ``X-Forwarded-Proto`` does not count: the cookies would not be
+    ``Secure`` for it either."""
+    return request.url.scheme == "https"
 
 
 def _https(db: Session, request: Request) -> Point:
