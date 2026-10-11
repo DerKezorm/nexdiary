@@ -1,4 +1,18 @@
 {
+  "0.8.0": {
+    "lead": "A few numbers about your diary for a dashboard card, read with an API token.",
+    "sections": [
+      {
+        "title": "Numbers for a dashboard card",
+        "where": "My account, Connections",
+        "body": "With an API token, a program such as a dashboard card can ask whether you wrote today, how long your streak is, how many pages and notes this month has and the day your next time capsule opens. Only counts and days: never a text, a title, a value or a tag. The operator switches API tokens on under Settings, API."
+      }
+    ],
+    "smallTitle": "Also",
+    "small": [
+      "The hints under “Require a second factor” name the provider switch that exempts a sign-in."
+    ]
+  },
   "0.7.0": {
     "lead": "Sign in through several providers at once, each with its own button, set up the same way as in every nex app.",
     "sections": [

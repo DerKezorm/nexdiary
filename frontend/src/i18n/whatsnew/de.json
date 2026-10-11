@@ -1,4 +1,18 @@
 {
+  "0.8.0": {
+    "lead": "Ein paar Zahlen zu deinem Tagebuch für eine Dashboard-Karte, gelesen mit einem API-Token.",
+    "sections": [
+      {
+        "title": "Zahlen für eine Dashboard-Karte",
+        "where": "Mein Konto, Verbindungen",
+        "body": "Mit einem API-Token kann ein Programm wie eine Dashboard-Karte abfragen, ob du heute geschrieben hast, wie lang deine Serie ist, wie viele Seiten und Notizen es in diesem Monat gibt und an welchem Tag sich deine nächste Zeitkapsel öffnet. Nur Zahlen und Tage, nie ein Text, ein Titel, ein Wert oder ein Tag. Der Betreiber schaltet API-Tokens unter Einstellungen, API ein."
+      }
+    ],
+    "smallTitle": "Außerdem",
+    "small": [
+      "Die Hinweise unter „Zweiten Faktor verlangen“ nennen den Schalter beim Anbieter, der eine Anmeldung ausnimmt."
+    ]
+  },
   "0.7.0": {
     "lead": "Anmelden über mehrere Anbieter gleichzeitig, jeder mit eigenem Knopf, eingerichtet wie in jeder nex-App.",
     "sections": [
