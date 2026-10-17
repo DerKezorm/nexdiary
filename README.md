@@ -1,15 +1,12 @@
 # nexdiary
 
-[![Website: nexdiary.nexapps.dev](https://img.shields.io/badge/website-nexdiary.nexapps.dev-5a7a52?style=for-the-badge)](https://nexdiary.nexapps.dev)
-
 A diary for the family, on your own server. Jot things down during the day without minding the spelling, and in the
 evening turn them into a page: by yourself, or with an AI that only orders and smooths. Every person sees only their
 own diary; single days can be shared with people of the family, and the operator manages the accounts without ever
 seeing what is written in them.
 
 nexdiary is one of the nex apps and looks like them: warm paper by day, candlelight by night, sage green (or four other
-colours of your choice). What it can do, the full guide and answers to common questions are on the project site,
-**[nexdiary.nexapps.dev](https://nexdiary.nexapps.dev)**.
+colours of your choice).
 
 ![Today: the notes of the day as a timeline, the values, the photos, and the button to write the day up](docs/screenshots/today.webp)
 
