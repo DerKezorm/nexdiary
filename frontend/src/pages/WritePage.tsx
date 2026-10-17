@@ -1,5 +1,5 @@
 /**
- * Writing a day up, as the mock's write view (`Today.tsx`, mode "schreiben"): title, cover, the text in the editor,
+ * Writing a day up: title, cover, the text in the editor,
  * beside it the tags and the notes of the day. For today and for any day before (`/tag/:date/schreiben`).
  *
  * Nothing is lost on the way:
@@ -1265,11 +1265,11 @@ export default function WritePage() {
   )
 }
 
-/** "Weiterschreiben?", as the mock: four questions at a time to put in as a subheading at the end, more on a tap. */
+/** "Weiterschreiben?": four questions at a time to put in as a subheading at the end, more on a tap. */
 function WritePrompts({ date, onInsert }: { date: string; onInsert: (question: string) => void }) {
   const { t } = useTranslation()
   const [pool, setPool] = useState<Question[]>([])
-  // As the mock: the question of the day stood on "Today" already; the writing begins two further on.
+  // The question of the day stood on "Today" already; the writing begins two further on.
   const [start, setStart] = useState(2)
   useEffect(() => {
     let alive = true

@@ -73,7 +73,7 @@ def test_the_groups_come_in_both_languages_alike() -> None:
         assert len(entry["de"][1]) == len(entry["en"][1]) >= 3, entry["id"]
         for text in [entry["de"][0], entry["en"][0], *entry["de"][1], *entry["en"][1]]:
             assert "–" not in text and "—" not in text and len(text) <= prompts.QUESTION_MAX, text
-    # The German questions as the mock has them, word for word.
+    # The German questions, word for word.
     assert prompts.SETS[0]["de"][1][0] == "Was hat dich heute glücklich gemacht?"
     assert prompts.SETS[5]["de"] == ("Rückblick am Sonntag", ["Was war das Beste an dieser Woche?",
                                                               "Was hast du diese Woche gelernt?",

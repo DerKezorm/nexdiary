@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 /**
- * The illustrations for days without a photo, drawn as in the mock (`attrappe/src/components/Illustration.tsx`): every
+ * The illustrations for days without a photo, every
  * motif at four times of day and in four seasons. Which motifs exist, their group and whether they are indoors stands
  * in `catalog.json`; here is only how each one is drawn. A new motif: an entry in the catalog, a drawing here, its name
  * in the languages (`covers.motifs`). The tests find any of the three missing.

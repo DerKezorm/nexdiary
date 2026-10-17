@@ -1,8 +1,7 @@
 /**
- * "My values", as the mock's card: every value with its two ends and a switch whether it is asked, and a field for one
- * of one's own. On top of the mock (the server can do it, the mock only hints): the pencil of a row opens a dialog to
- * rename the value, give it other ends or a hint, move it up or down, or delete it. The row itself stays as quiet as
- * the mock's, and its text wraps on a phone instead of being cut off.
+ * "My values": every value with its two ends and a switch whether it is asked, and a field for one of one's own. The
+ * pencil of a row opens a dialog to rename the value, give it other ends or a hint, move it up or down, or delete it.
+ * The row itself stays quiet, and its text wraps on a phone instead of being cut off.
  */
 import { ArrowDown, ArrowUp, Pencil, Plus, SlidersHorizontal } from 'lucide-react'
 import { useEffect, useState } from 'react'

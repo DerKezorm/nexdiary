@@ -1,5 +1,5 @@
 /**
- * Time capsules, as the mock's `CapsulesPage.tsx`: letters that open on a date, to oneself or to others on the server,
+ * Time capsules: letters that open on a date, to oneself or to others on the server,
  * not tied to a day of the diary. A letter is written in the editor of the diary and read as a page is read, with as
  * many photos as the person's storage holds. Until its day a recipient sees who wrote and when it opens, nothing more; a letter
  * only to oneself is sealed for its writer too. Every rule lives on the server: this page shows what it was given.

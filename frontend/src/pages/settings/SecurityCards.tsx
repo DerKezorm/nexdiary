@@ -1,5 +1,5 @@
 /**
- * The own account, Security, as the mock: the second factor (a code from an app), passkeys, and the signed-in devices
+ * The own account, Security: the second factor (a code from an app), passkeys, and the signed-in devices
  * with "sign out everywhere else" and the notice of a new sign-in. The server decides; the cards show and ask.
  */
 import { Fingerprint, Laptop, ShieldCheck, Smartphone, Trash2 } from 'lucide-react'

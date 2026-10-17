@@ -34,7 +34,7 @@ describe('shipped languages', () => {
     expect(dashed.map(([key]) => key)).toEqual([])
   })
 
-  it('say trash in English, never bin (decided 06.10.2026)', () => {
+  it('say trash in English, never bin', () => {
     expect([...english].filter(([, text]) => /\bbins?\b/i.test(text)).map(([key, text]) => `${key}: ${text}`)).toEqual([])
     // Floor: the English texts are read at all.
     expect(english.size).toBeGreaterThan(300)
@@ -47,7 +47,7 @@ describe('shipped languages', () => {
     }
   })
 
-  it('call the program version Version in German (decided 06.10.2026)', () => {
+  it('call the program version Version in German', () => {
     const about = [...german].filter(([key]) => key.startsWith('about.'))
     expect(about.filter(([, text]) => /Fassung/.test(text)).map(([key, text]) => `${key}: ${text}`)).toEqual([])
     expect(german.get('about.version')).toBe('Version')
@@ -74,13 +74,13 @@ describe('what is new', () => {
   const german = strings(whatsNewDe)
   const english = strings(whatsNewEn)
 
-  it('call the program version Version in German, in released entries too (decided 06.10.2026)', () => {
+  it('call the program version Version in German, in released entries too', () => {
     expect(german.filter((text) => PROGRAM_FASSUNG.test(text))).toEqual([])
     // Floor: the entries are read at all.
     expect(german.length).toBeGreaterThan(8)
   })
 
-  it('say trash in English (decided 06.10.2026)', () => {
+  it('say trash in English', () => {
     expect(english.filter((text) => /\bbins?\b/i.test(text))).toEqual([])
     expect(english.length).toBeGreaterThan(8)
   })

@@ -188,9 +188,9 @@ def password_account(account: Account) -> bool:
 
 
 def provider_checks(_db: Session, account: Account) -> bool:
-    """nexdiary does not ask this account for a second factor of its own here (the shared sign-in blueprint 01, "Zweiter
-    Faktor", decided 2026-10-10): an account that signs in through providers only is never made to set one up, and
-    neither is the session of an account that came in through a provider whose entry checks the second factor itself.
+    """nexdiary does not ask this account for a second factor of its own here: an account that signs in through
+    providers only is never made to set one up, and neither is the session of an account that came in through a
+    provider whose entry checks the second factor itself.
     The same account signing in with its password is asked as before."""
     return not password_account(account) or bool(account.provider_checked)
 

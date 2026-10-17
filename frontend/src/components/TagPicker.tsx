@@ -1,5 +1,5 @@
 /**
- * The tags of a day, as the mock's tag block: the chosen ones filled (a tap takes one away), "+ Tag" opens the
+ * The tags of a day: the chosen ones filled (a tap takes one away), "+ Tag" opens the
  * suggestions and a field for a tag of one's own. Used on "Today" and when writing a day up.
  */
 import { Plus, Tag, X } from 'lucide-react'

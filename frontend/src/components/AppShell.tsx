@@ -23,7 +23,7 @@ const NAV = [
   { to: '/geteilt', label: 'nav.shared', icon: Heart },
 ]
 
-/** The bar at the bottom of a phone holds five, as the mock: "My photos" is in the account menu there. */
+/** The bar at the bottom of a phone holds five: "My photos" is in the account menu there. */
 const PHONE_NAV = NAV.filter((item) => item.to !== '/fotos')
 
 /** Whether the person has a photo at all: "My photos" shows in the menu from the first one. Asked again on each
@@ -44,13 +44,13 @@ function useHasPhotos(): boolean {
   return has
 }
 
-/** The frame of the mock: a sidebar on a large screen, a header and a bar at the bottom on a phone. */
-/** Below this width nexdiary counts as on a phone (the breakpoint of the mock, `md`). */
+/** The frame: a sidebar on a large screen, a header and a bar at the bottom on a phone. */
+/** Below this width nexdiary counts as on a phone (the breakpoint `md`). */
 const PHONE_WIDTH = 768
 const QUICK_SHOWN = 'nexdiary.quickShown'
 
 /**
- * On a phone nexdiary opens on the quick note, once per visit (as the mock): "Alles" from there stays in the whole app.
+ * On a phone nexdiary opens on the quick note, once per visit: "Alles" from there stays in the whole app.
  * Off when the person switched it off under My account, Look.
  */
 // eslint-disable-next-line react-refresh/only-export-components
@@ -140,7 +140,7 @@ function Frame() {
               key={to}
               to={to}
               end={to === '/'}
-              // Writing a day up belongs to "Today", as in the mock.
+              // Writing a day up belongs to "Today".
               className={({ isActive }) => `flex items-center gap-3 rounded-xl px-3 py-2.5 font-semibold transition ${isActive || (writing && to === '/') ? 'bg-accent-soft text-accent' : 'text-ink-2 hover:bg-sheet-2'}`}
             >
               <Icon size={19} /> {t(label)}

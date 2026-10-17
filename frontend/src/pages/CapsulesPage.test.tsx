@@ -1,5 +1,5 @@
 /**
- * Time capsules as the mock shows them: both tabs with their counts, the sealed envelopes that say only who and when,
+ * Time capsules: both tabs with their counts, the sealed envelopes that say only who and when,
  * the one opened today with "Brief lesen", the own capsules with "Ändern", "Zurückziehen" and "versiegelt", and the
  * dialog with several people and the hint that follows the choice. The letter is written in the editor of the diary
  * (without a picture button) and read as a page, its photos as a gallery that opens the big view; many photos go up

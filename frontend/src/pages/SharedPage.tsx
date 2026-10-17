@@ -1,5 +1,5 @@
 /**
- * Shared, as the mock's `SharedPage.tsx`: the days others in the family gave to me, and the ones I gave. A shared day
+ * Shared: the days others in the family gave to me, and the ones I gave. A shared day
  * is read only; the one who shared it can take it back at any time, and then it is gone here too. Values and notes
  * show only when the day was shared with them: the server sends nothing else.
  */

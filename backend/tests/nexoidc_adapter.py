@@ -44,7 +44,7 @@ class Adapter(StandardAdapter):
     single_account = False
     has_invitations = True
     only_authentik = False
-    #: nexdiary is not one of the apps of the Verbund (Bauplan 06): never coupled to nexsuite.
+    #: nexdiary is never coupled to an outside identity provider of a suite.
     supports_coupling = False
     has_second_factor = True
     legacy_model = "single"

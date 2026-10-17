@@ -1,5 +1,5 @@
 /**
- * "2026 als Buch", as the mock's dialog: three pages as a preview (the title page with six covers, a chapter, a day),
+ * "2026 als Buch": three pages as a preview (the title page with six covers, a chapter, a day),
  * the format and what goes in, about how many pages, and "PDF erstellen". The server sets the book in the background
  * (`/api/book`); this dialog asks how far it is until it is done, then the browser fetches the PDF once, by itself.
  * Closing the dialog while the book is set gives it up.

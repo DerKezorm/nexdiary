@@ -1,5 +1,5 @@
 /**
- * The page of a day being written, as the mock's `Editor.tsx`: a round bar (bold, italic, subheading, quote, list,
+ * The page of a day being written: a round bar (bold, italic, subheading, quote, list,
  * undo) that stays in view while scrolling, and below it the text in the diary's serif. Redo is on the keyboard
  * (Ctrl+Y, Ctrl+Shift+Z, Cmd+Shift+Z).
  *

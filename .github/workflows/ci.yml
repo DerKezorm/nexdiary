@@ -1,5 +1,5 @@
-# Tests and a trial build of the image, on Linux like the image itself. Windows, where the project is written, runs
-# the full set locally with every block; a Windows runner here found only races against its slow clock.
+# Tests and a trial build of the image, on Linux like the image itself. Windows runs
+# the full set locally; a Windows runner here found only races against its slow clock.
 # Nothing is published from here: an image goes out only from release.yml, when a tag is pushed.
 name: CI
 

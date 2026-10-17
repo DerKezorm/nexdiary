@@ -386,9 +386,9 @@ def test_required_mode_lets_an_account_without_a_second_factor_only_enrol(
 def test_an_account_through_providers_only_is_not_made_to_set_one_up_and_may_enrol_one_of_its_own(
     client: TestClient, operator: Account, clock: Clock
 ) -> None:
-    """Decided 2026-10-10 (the shared sign-in blueprint 01, "Zweiter Faktor"): "Require a second factor" makes only
-    accounts with a password set one up. An account that comes in through providers only is not sent to the setup,
-    whatever its provider's entry says; it may still enrol one of its own right after signing in."""
+    """With "Require a second factor" on, only accounts with a password set one up. An account that comes
+    in through providers only is not sent to the setup, whatever its provider's entry says; it may still enrol one of
+    its own right after signing in."""
     with SessionLocal() as db:
         row = Account(name="idp-user", role="member", sign_in=SIGN_IN_OIDC, email="u@example.com")
         db.add(row)

@@ -1,5 +1,5 @@
 /**
- * The journal, as the mock's `Journal.tsx`: the own days as a blog (large cards, the newest one big) or a timeline (a
+ * The journal: the own days as a blog (large cards, the newest one big) or a timeline (a
  * line per day, grouped by month), as the account chose under My account, Look. A search over texts and notes (in the
  * body of a request, never in the address) and the tags as filters.
  *

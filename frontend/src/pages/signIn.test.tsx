@@ -1,6 +1,5 @@
 /**
- * Sign-in through providers in the interface, against a stand-in of the server, as the shared sign-in blueprint lays it
- * out (part 04): the sign-in page with a button per provider and the operator's way in when the password is off, a
+ * Sign-in through providers in the interface, against a stand-in of the server: the sign-in page with a button per provider and the operator's way in when the password is off, a
  * code a way back put in the address told in the module's words, the invitation page, the own account with a row per
  * provider, and Settings, Server, Sign-in with its three cards (the question before the public address changes, the
  * provider list and its form, the authentik card with its steps and reasons), the marks in the account list.
@@ -293,7 +292,7 @@ describe('Settings, Server, Sign-in', () => {
     expect(saved).toEqual([{ public_url: 'https://new.example.com', confirm: false }, { public_url: 'https://new.example.com', confirm: true }])
   })
 
-  it('lists the providers with their marks, and the form has its fields in the order of the blueprint', async () => {
+  it('lists the providers with their marks, and the form has its fields in a fixed order', async () => {
     await showCards()
     const row = box.querySelector('[data-testid="provider-list"] li')?.textContent ?? ''
     expect(row).toContain('aktiv')

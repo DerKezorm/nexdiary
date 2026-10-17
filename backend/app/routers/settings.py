@@ -109,8 +109,7 @@ def read(_operator: OperatorAccount, db: DbSession) -> SettingsOut:
 
 
 #: Changes that make signing in weaker: each asks for the operator's password once more. "The provider checks the
-#: second factor itself" is a switch of each provider's entry now (``routers/oidc.py``), as the shared sign-in
-#: blueprint lays it out.
+#: second factor itself" is a switch of each provider's entry now (``routers/oidc.py``).
 WEAKER = {"two_factor_required": False}
 
 
@@ -131,8 +130,7 @@ def save(payload: SettingsIn, request: Request, operator: OperatorAccount, db: D
             except ValueError as exc:
                 raise error("invalid_url", "Give an address like https://diary.example.com.", 422) from exc
             # Saving the address (emptying it too) changes the redirect address of the sign-in: authentik, set up by
-            # the button, and every active provider by hand know the old one. Ask first, save nothing (blueprint 04,
-            # card 1).
+            # the button, and every active provider by hand know the old one. Ask first, save nothing.
             question = authentik.public_url_guard(SqlStore(db), value, str(request.base_url),
                                                   confirm=payload.confirm_address)
             if question is not None:
@@ -150,7 +148,7 @@ def save(payload: SettingsIn, request: Request, operator: OperatorAccount, db: D
         elif key == "password_login" and not value:
             if not providers.public_list(SqlStore(db)):
                 # Without an active provider nobody but the operator could sign in any more, and invitations would
-                # fail (blueprint 01, "Passwort-Anmeldung").
+                # fail.
                 raise error("provider_first", "Set up a sign-in provider first.", 409)
         elif key == "smtp_password":
             changes["smtp_password_enc"] = encrypt_secret(value)

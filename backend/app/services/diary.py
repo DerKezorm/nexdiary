@@ -493,7 +493,7 @@ def excerpt(markdown: str, limit: int = EXCERPT_MAX) -> str:
 
 # --- Values ---------------------------------------------------------------------------------------------------------
 
-#: The values every person starts with, as in the mock: four asked, one off. The language is the account's.
+#: The values every person starts with: four asked, one off. The language is the account's.
 STARTING_VALUES: dict[str, list[dict[str, Any]]] = {
     "de": [
         {"name": "Stimmung", "hint": "Wie ging es dir heute?", "low": "mies", "high": "super", "active": True},

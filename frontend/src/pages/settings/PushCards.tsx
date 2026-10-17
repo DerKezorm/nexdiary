@@ -1,5 +1,5 @@
 /**
- * Web Push and reminders, as the mock: under My account, Reminders, the devices of the person ("Benachrichtigungen auf
+ * Web Push and reminders: under My account, Reminders, the devices of the person ("Benachrichtigungen auf
  * deinen Geräten": each one signed up on its own, renamed, signed off; this one turned on here; a test to all of them)
  * and when to remind ("Wann erinnern": never, every day at a time, after a pause; not on a day with a note; with the
  * question of the day; how it looks). Under Security the switch for the notice of a new sign-in. The operator's card

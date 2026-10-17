@@ -47,7 +47,7 @@ class TokensOut(BaseModel):
 
 class TokenIn(BaseModel):
     name: str = Field(min_length=1, max_length=100)
-    #: Reading only, for now (design answer 03.10.2026); the field stays so a later level fits in.
+    #: Reading only, for now; the field stays so a later level fits in.
     level: str = Field(default="read", max_length=8)
     #: 30, 90 or 365; left out: never runs out.
     days: int | None = None

@@ -1,6 +1,6 @@
 /**
  * Server, Sign-in: "Ready for the internet?", which nexdiary checks about itself each time the page opens. Server,
- * Backups: the encryption and "Save master key". Both as the mock; the server checks, the card says what it means.
+ * Backups: the encryption and "Save master key". The server checks, the card says what it means.
  */
 import { AlertTriangle, Check, Fingerprint, KeyRound, Shield, X } from 'lucide-react'
 import { useEffect, useState } from 'react'

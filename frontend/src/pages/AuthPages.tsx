@@ -1,5 +1,5 @@
 /**
- * The pages before signing in, built as the mock's: the first account (with the setup code from the server's log),
+ * The pages before signing in: the first account (with the setup code from the server's log),
  * signing in (password, then the second factor; a passkey alone; or the provider's button), setting up the second
  * factor right after the password where the operator asks for one, and accepting an invitation.
  */
@@ -109,7 +109,7 @@ export function SetupPage() {
   )
 }
 
-/** "Auf diesem Gerät angemeldet bleiben", as the mock: on from the start. */
+/** "Auf diesem Gerät angemeldet bleiben": on from the start. */
 function Remember({ on, onChange }: { on: boolean; onChange: (value: boolean) => void }) {
   const { t } = useTranslation()
   return (
@@ -148,7 +148,7 @@ export function LoginPage() {
   const [problem, setProblem] = useState<string | null>(null)
   // The code a way back from a provider put in the address, until something else is said.
   const [arrived, setArrived] = useState<string | null>(params.get('error'))
-  // Password sign-in is off: only the operator may still use it, behind a small link (blueprint 04).
+  // Password sign-in is off: only the operator may still use it, behind a small link.
   const [operatorForm, setOperatorForm] = useState(false)
   const next = safeNext(params.get('next'))
 
@@ -312,7 +312,7 @@ export function LoginPage() {
 type Enrolment = { secret: string; uri: string; qr_svg: string }
 
 /**
- * Right after the password, an account without a second factor sets it up here before it gets anywhere (the mock):
+ * Right after the password, an account without a second factor sets it up here before it gets anywhere:
  * the QR code and the key for the app, a code to confirm, then the recovery codes, shown once, and "I have them".
  * Only then does the server make the session a full one.
  */

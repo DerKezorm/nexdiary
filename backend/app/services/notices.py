@@ -322,9 +322,8 @@ UNLINKED_TEXTS = {
 
 
 def provider_unlinked(account: Account, by: str, provider: str) -> None:
-    """Tells the person that the operator took their account's link to a sign-in provider (the shared sign-in
-    blueprint 01: never unseen): by push to their devices and by mail. In the background; a failure touches
-    nothing."""
+    """Tells the person that the operator took their account's link to a sign-in provider (never unseen): by push to
+    their devices and by mail. In the background; a failure touches nothing."""
     future = _pool.submit(_send_unlinked, account.id, by, provider)
     with _lock:
         _pending.add(future)

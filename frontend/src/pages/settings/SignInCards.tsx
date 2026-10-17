@@ -1,11 +1,11 @@
 /**
- * Settings, Server, Sign-in: three cards one below the other, as the shared sign-in blueprint lays them out for every
- * nex app (part 04). Order, wording and behaviour come from there; the parts (card, switch, field, button, question)
+ * Settings, Server, Sign-in: three cards one below the other, the same in every
+ * nex app. Order, wording and behaviour come from the shared module; the parts (card, switch, field, button, question)
  * are nexdiary's own. "Ready for the internet?" stands above them, as before.
  *
  * 1. Sign-in: password sign-in (locked on while no provider is active), the public address, the second factor.
  * 2. Sign-in providers: the list with its marks, the drag handle, and the form as a dialog.
- * 3. authentik in one step: address, token, "Set up", the blueprint, and the steps with the reason of a failure.
+ * 3. authentik in one step: address, token, "Set up", the authentik blueprint file, and the steps with the reason of a failure.
  */
 import { GripVertical, KeyRound, ShieldCheck, Sparkles } from 'lucide-react'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
@@ -61,7 +61,7 @@ export function SignInCard({ server, anyActive }: { server: Server; anyActive: b
   const { t } = useTranslation()
   const { me } = useAuth()
   const [address, setAddress] = useState<string | null>(null)
-  // The address changes what authentik or a provider by hand knows: ask before saving (blueprint 04).
+  // The address changes what authentik or a provider by hand knows: ask before saving.
   const [asking, setAsking] = useState<{ question: AddressQuestion; url: string } | null>(null)
   // Turning "Require a second factor" off makes signing in weaker: the operator's password first.
   const [weaker, setWeaker] = useState(false)
@@ -291,7 +291,7 @@ const EMPTY: OidcProviderForm = {
 
 type FieldName = 'label' | 'slug' | 'issuer' | 'client_id' | 'client_secret' | 'scopes' | 'id'
 
-/** The provider form as a dialog, fields in the blueprint's order. */
+/** The provider form as a dialog, fields in a fixed order. */
 function ProviderDialog({ entry, publicUrl, onClose, onSaved }: { entry: OidcProvider | null; publicUrl: string; onClose: () => void; onSaved: () => Promise<void> }) {
   const { t } = useTranslation()
   const [form, setForm] = useState<OidcProviderForm>(
@@ -472,9 +472,9 @@ export function AuthentikCard({
   const { t } = useTranslation()
   const [authentik, setAuthentik] = useState({ url: '', token: '' })
   const [steps, setSteps] = useState<AuthentikResult | null>(null)
-  // The button stopped before an issuer change and asks how many accounts would have to link again (Bauplan 03).
+  // The button stopped before an issuer change and asks how many accounts would have to link again.
   const [asking, setAsking] = useState<number | null>(null)
-  // "Use it only" asks too when the address changes what authentik knows (Bauplan 04, card 1 and 3).
+  // "Use it only" asks too when the address changes what authentik knows.
   const [askingAddress, setAskingAddress] = useState<AddressQuestion | null>(null)
   const [unusable, setUnusable] = useState(false)
   const [address, setAddress] = useState<AuthentikAddress | null>(null)

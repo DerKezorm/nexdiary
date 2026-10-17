@@ -1,5 +1,5 @@
 /**
- * The strip on "Today", as the mock's `ReviewTeaser`: from Monday to Wednesday last week with its small covers, from
+ * The strip on "Today": from Monday to Wednesday last week with its small covers, from
  * the 1st to the 3rd of a month last month instead; only when that time has a page (the server decides, in the
  * person's time zone). A small X hides it for that week or month on this device.
  */

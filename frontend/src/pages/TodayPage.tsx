@@ -1,5 +1,5 @@
 /**
- * "Today", as the mock's `Today.tsx`, in the three layouts a person chooses under My account, Look: one page, two columns,
+ * "Today", in the three layouts a person chooses under My account, Look: one page, two columns,
  * or like a chat. Notes are thrown down here, changed and deleted; the values of the day are rated.
  *
  * Photos are taken or picked with the camera button beside the field (they go with the next note) and under "Fotos
@@ -202,7 +202,7 @@ function Before({ today }: { today: TodayState }) {
   )
 }
 
-/** The question of the day, as the mock: a small push for days when nothing comes to mind. The same all day; "Andere
+/** The question of the day: a small push for days when nothing comes to mind. The same all day; "Andere
  * Frage" moves it on for today. The answer becomes a note with its question, and the next question comes. */
 function PromptCard({ today }: { today: TodayState }) {
   const { t } = useTranslation()
@@ -272,7 +272,7 @@ function PromptCard({ today }: { today: TodayState }) {
   )
 }
 
-/** "Den Tag aufschreiben", as the mock's finish card: "Ausformulieren" with the AI (short or long) and "Erst fragen
+/** "Den Tag aufschreiben", the finish card: "Ausformulieren" with the AI (short or long) and "Erst fragen
  * lassen" above "Selbst schreiben" when there is an AI for this person and notes to write from. A day that has a page
  * already keeps the button, for notes added later; the writing page asks before the AI writes over the saved page.
  * "Heute nur kurz" below, only on an empty day: no notes, no saved page, no draft (the server decides the same). */

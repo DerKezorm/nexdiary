@@ -1,7 +1,7 @@
 /**
  * The strip on "Today": last week with seven small covers (the free days dashed) or last month by its name, leading to
  * that week or month; nothing when the server has nothing to look back on; hidden with the X for that period on this
- * device, back for the next one. And it stands where the mock puts it, in each of the three layouts.
+ * device, back for the next one. And it stands in the same place in each of the three layouts.
  */
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -135,7 +135,7 @@ describe('the strip', () => {
 })
 
 describe('on Today', () => {
-  it.each(['page', 'columns', 'chat'] as const)('stands where the mock puts it in the layout %s', async (layout) => {
+  it.each(['page', 'columns', 'chat'] as const)('stands in its place in the layout %s', async (layout) => {
     me.profile = { ...me.profile, layout }
     await show(<TodayPage now={new Date(2026, 9, 6, 19, 30)} />)
     const found = strip()!

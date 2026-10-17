@@ -76,7 +76,7 @@ def provider_only(name: str) -> Account:
     return row
 
 
-# --- The second factor (decided 2026-10-10, zusatz "Zweiten Faktor verlangen") ----------------------------------------
+# --- The second factor ("Require a second factor") ----------------------------------------
 
 
 def test_through_a_provider_that_checks_it_a_password_account_is_not_sent_to_set_one_up_but_with_its_password_it_is(
@@ -520,7 +520,7 @@ def test_a_backup_goes_before_taking_over_what_0_6_changed_and_only_then(
     assert len(made) == 1
 
 
-# --- Trusting a provider with the second factor asks no password (the blueprint) --------------------------------------
+# --- Trusting a provider with the second factor asks no password --------------------------------------
 
 
 def test_trusting_a_provider_with_the_second_factor_asks_no_password_of_the_operator(

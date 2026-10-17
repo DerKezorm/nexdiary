@@ -90,7 +90,7 @@ export function AccountPage() {
   )
 }
 
-/** "KI beim Schreiben", as the mock: the own switch, and below it what the operator set up for everybody. */
+/** "KI beim Schreiben": the own switch, and below it what the operator set up for everybody. */
 function AiPart({ me }: { me: Me }) {
   const { t } = useTranslation()
   const { setMe } = useAuth()
@@ -327,7 +327,7 @@ function Security({ me }: { me: Me }) {
 }
 
 /**
- * Sign-in providers (blueprint 04, "Mein Konto → Sicherheit → Anmeldeanbieter"): a row per active provider with its
+ * Sign-in providers (My account, Security): a row per active provider with its
  * state and "Link" or "Unlink". Linking asks for the own password once more, then goes to the provider; the way back
  * lands here with `?linked=<slug>` or `?error=<code>`. An account without a password links nothing more and keeps its
  * last link (the server says `oidc_only_account`).

@@ -3,7 +3,7 @@ import { useEffect, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 
-/** A dialog over the page, as the mock's: from below on a phone, in the middle on a larger screen. Escape and the scrim
+/** A dialog over the page: from below on a phone, in the middle on a larger screen. Escape and the scrim
  * close it, focus starts inside and comes back afterwards. `above`: over everything, also over the big view of a photo
  * (drawn into the body, outside the page behind, which stands still while that view is open). `full`: the whole screen
  * on a phone (a letter written in the editor), as usual from the size of a tablet on. While the big view of a photo

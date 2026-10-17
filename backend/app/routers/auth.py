@@ -674,7 +674,7 @@ def _row(db: DbSession, account_id: int) -> AccountRow:
 @router.get("/accounts", summary="All accounts (never what is written in them)")
 def list_accounts(_operator: OperatorAccount, db: DbSession) -> list[dict[str, Any]]:
     # Never what a person chose for themselves either: when they are reminded, their time zone, their looks.
-    # The providers each account is linked to, as marks in the list (the shared sign-in blueprint 04).
+    # The providers each account is linked to, as marks in the list.
     linked = linked_providers(db)
     return [
         {**{key: value for key, value in account_view(row).items() if key != "profile"},

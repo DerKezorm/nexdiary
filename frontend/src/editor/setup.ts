@@ -1,5 +1,5 @@
 /**
- * The diary's editor: Milkdown as in nexlore, cut down to what the bar of the mock offers. Paragraphs, subheadings,
+ * The diary's editor: Milkdown as in nexlore, cut down to a small bar. Paragraphs, subheadings,
  * quotes, lists, bold and italic; undo and redo. No links, no pictures, no code, no tables, no raw HTML: what Markdown
  * would otherwise make of them is turned into text (`flatten.ts`) before it reaches the page.
  *

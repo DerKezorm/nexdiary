@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 
 /**
- * 1 to 10 as a row of buttons, as the mock's; the number stays readable for whoever does not see the colour. Tapping the
+ * 1 to 10 as a row of buttons; the number stays readable for whoever does not see the colour. Tapping the
  * chosen number again takes the rating back (the values are voluntary).
  */
 export function Scale({ value, onChange, low, high, label }: { value?: number; onChange: (n: number | null) => void; low: string; high: string; label: string }) {

@@ -1,5 +1,5 @@
 /**
- * The bookshelf, as the mock's `Shelf.tsx`: every year with a page is a volume, as wide as it is full, in the colour
+ * The bookshelf: every year with a page is a volume, as wide as it is full, in the colour
  * of the accent, the year upright on its spine; after them an empty one waits for the next year. Tapping a volume (or
  * "2026 aufschlagen") shows only that year in the journal, tapping it again shows all; "Als Buch" makes a PDF of it.
  * The numbers come from the server (`/api/journal/overview`): the first volume counts from its first page on, the days
@@ -12,7 +12,7 @@ import { useTranslation } from 'react-i18next'
 import type { JournalVolume } from '../api/client'
 import { BookDialog } from './BookDialog'
 
-/** Volumes darker the older they are: as the mock for three, the older ones go on getting darker. */
+/** Volumes darker the older they are: for three volumes, the older ones go on getting darker. */
 function shade(index: number, count: number): number {
   return Math.max(40, Math.min(100, 70 + (index - Math.max(0, count - 3)) * 10))
 }

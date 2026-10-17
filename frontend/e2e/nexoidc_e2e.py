@@ -1,4 +1,4 @@
-"""Pflichttests 33 and 34 of the shared sign-in blueprint (part 05), end to end in a headless browser against the built
+"""Sign-in through an OpenID Connect provider, end to end in a headless browser against the built
 app: a stand-in provider that speaks OpenID Connect (discovery, authorize, token with an RS256 id token, keys,
 userinfo) runs next to it on a port of its own, never the network.
 

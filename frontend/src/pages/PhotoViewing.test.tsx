@@ -155,7 +155,7 @@ describe('the menu', () => {
     )
     await until(() => entries().includes('Fotos'), 'the entry')
     expect(entries()).toEqual(['Heute', 'Tagebuch', 'Fotos', 'Statistik', 'Zeitkapseln', 'Geteilt'])
-    // The bar of a phone holds five, as the mock: there "Fotos" is in the account menu of the header.
+    // The bar of a phone holds five: there "Fotos" is in the account menu of the header.
     expect([...box.querySelectorAll('main ~ nav a')].map((link) => link.getAttribute('href'))).toEqual(['/', '/tagebuch', '/statistik', '/zeitkapseln', '/geteilt'])
     // Five equal parts that may shrink, each word cut rather than pushing the bar wider than the phone.
     for (const link of box.querySelectorAll('main ~ nav a')) {

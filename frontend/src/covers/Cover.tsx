@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 /**
- * Every day has a cover: its own photo, or one of the illustrations (`drawings.tsx`). As the mock's `Cover.tsx`: the
+ * Every day has a cover: its own photo, or one of the illustrations (`drawings.tsx`): the
  * picture itself, and the picker with the day's photos, what fits the day, a search and filters over all of them.
  */
 import { Check, Crop, ImageIcon, ImagePlus, Images, Loader2, Search, Trash2 } from 'lucide-react'

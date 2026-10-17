@@ -1,5 +1,5 @@
 /**
- * Immich, as the mock's card under My account, Connections: each person connects their own Immich (address and API key; the
+ * Immich, the card under My account, Connections: each person connects their own Immich (address and API key; the
  * key is typed once and never shown again), switches the photos of the day on or off, saves and checks, disconnects.
  * While the operator has not allowed Immich, the card says only that.
  *

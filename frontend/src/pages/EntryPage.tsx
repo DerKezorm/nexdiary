@@ -1,5 +1,5 @@
 /**
- * One own day, read: as the mock's `EntryPage.tsx`. The cover (to change with the picker), the date, the title, the
+ * One own day, read:. The cover (to change with the picker), the date, the title, the
  * text as it was written, the photos of the day, the tags, the values, who it is shared with (and who sent a heart),
  * the notes of the day folded away, the family question of that date (only for whoever answered it then, as the server
  * decides), and a year ago today. "Bearbeiten" leads into the writing page, "Teilen" opens the dialog, "Seite löschen"

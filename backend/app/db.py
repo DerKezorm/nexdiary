@@ -348,7 +348,7 @@ def _v16_capsule_photos(connection: Connection) -> None:
 
 
 def _v17_sign_in_providers(connection: Connection) -> None:
-    """Version 17: the sign-in providers as a list (the shared sign-in blueprint): one row per provider, one per linked
+    """Version 17: the sign-in providers as a list: one row per provider, one per linked
     identity, and a mark on a session that came through a provider which checks the second factor itself. The provider
     of the settings and the subjects of the accounts become rows of these tables at the start after this step
     (``services/oidc_store.migrate_settings``); the old settings and the column stay as the way back. Every new column

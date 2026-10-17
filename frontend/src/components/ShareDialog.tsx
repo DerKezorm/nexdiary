@@ -1,5 +1,5 @@
 /**
- * "Diesen Tag teilen", as the mock's: the other people on the server to choose from, and what they see. Text and
+ * "Diesen Tag teilen": the other people on the server to choose from, and what they see. Text and
  * photos always; the values and the notes of the day only when switched on, for everybody chosen alike. Nobody chosen
  * ends sharing the day. The server decides who may be chosen and what goes out; this only asks.
  */

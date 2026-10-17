@@ -424,7 +424,7 @@ def test_a_full_session_reaches_the_same_routes() -> None:
 
 def test_five_wrong_passwords_lock_the_account_for_a_quarter_of_an_hour(later: Callable[[float], None]) -> None:
     make_account("anna")
-    # Five, as decided (06.10.2026); written out, not taken from the code it checks.
+    # Five; written out, not taken from the code it checks.
     for number in range(5):
         answer = fresh(f"198.51.100.{number + 1}").post("/api/auth/login", json={"name": "anna", "password": "no"})
         assert answer.status_code == 401

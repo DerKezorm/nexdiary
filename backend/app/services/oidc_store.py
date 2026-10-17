@@ -1,7 +1,7 @@
 """nexdiary's side of the shared sign-in module ``vendor/nexoidc``: the ``Store`` over its tables, the start-up
 configuration, and the migration from the single provider of the settings to the list, with the way back to 0.6.
 
-The module (the shared blueprint "Anmeldung mit OIDC und authentik") runs the protocol, decides who an identity is
+The shared module runs the protocol, decides who an identity is
 and keeps the provider list; it never sees a database. What is nexdiary's own lives here: accounts and their names,
 the address an invitation went to, the address a provider-only account follows, and the encryption of the client
 secrets with the server secret.
@@ -134,7 +134,7 @@ def address_taken(db: Session, address: str, own_id: int) -> bool:
 
 def from_provider(db: Session, account: Account, raw: str | None) -> None:
     """What a provider says about the address at a sign-in (the caller commits). ``email_verified`` is never read and
-    the address finds nobody (the shared blueprint 01): it is only where the account is mailed. An account through
+    the address finds nobody: it is only where the account is mailed. An account through
     providers only follows it, never to an address another account has; an account with a password keeps its own."""
     address = clean_address(raw)
     if not address or not provider_only(account) or account.email.lower() == address.lower():
@@ -374,7 +374,7 @@ def has_links(db: Session, account_id: int) -> bool:
     return db.scalar(select(OidcLink.id).where(OidcLink.account_id == account_id).limit(1)) is not None
 
 
-# --- The migration from the single provider of the settings (blueprint 01 "Umstieg", 06 "Wanderung") --------------
+# --- The migration from the single provider of the settings --------------
 
 #: The settings of the single provider before the list. They stay readable for one version (the way back), then go.
 LEGACY_KEYS = ("oidc_issuer", "oidc_client_id", "oidc_client_secret_enc", "oidc_provider_name", "oidc_auto_create",
@@ -388,7 +388,7 @@ FINGERPRINT = "oidc_legacy_fingerprint"
 #: shows (``migrate.way_back``). nexdiary only stores it.
 ANCHOR = "oidc_legacy_anchor"
 #: 0.6's own switch "the provider checks the second factor": off, nexdiary asked its code after the provider. The
-#: entry ``oidc`` takes the value it has at the migration (blueprint 06 "Wanderung": nexdiary asked the code); written
+#: entry ``oidc`` takes the value it has at the migration (nexdiary asked the code); written
 #: back with the way back.
 TRUSTED_SWITCH = "oidc_second_factor_by_provider"
 
@@ -496,7 +496,7 @@ def mirror_way_back(db: Session) -> None:
     """The way back to 0.6: what the old settings and the column show is ``migrate.way_back``'s (one rule in the
     module: the entry ``oidc`` and the stored anchor decide). nexdiary writes it in the old form, the switch "the
     provider checks the second factor" on exactly when the entry is there in full (rule 1: on, trusted, the same
-    issuer; an entry that does not trust it counts as off for 0.6, decided 2026-10-10), stores the anchor that comes
+    issuer; an entry that does not trust it counts as off for 0.6), stores the anchor that comes
     back, and then the fingerprint of what it reads back. Called at every commit that touched the entry, a link or an
     account (``_write_the_way_back``) and at every start; **not** before the migration (the settings and the column are
     still 0.6's own and wait to be read). Flushes; the caller commits."""

@@ -1,5 +1,5 @@
 /**
- * The operator's part of the settings, as the mock (and nexlore): accounts and invitations, sign-in (password, second
+ * The operator's part of the settings: accounts and invitations, sign-in (password, second
  * factor, public address, OIDC and authentik), mail, API tokens, backups, languages and the log. Everything here is the
  * server's; it applies to all. The operator manages accounts and never sees what is written in them.
  */
@@ -87,7 +87,7 @@ export function AccountsCard() {
   const [inviting, setInviting] = useState(false)
   const [invites, setInvites] = useState<OpenInvite[]>([])
   const [menu, setMenu] = useState<number | null>(null)
-  // `provider`: the link the operator takes (blueprint 01: with the own password, the person hears of it).
+  // `provider`: the link the operator takes (with the own password, the person hears of it).
   const [asking, setAsking] = useState<{ kind: Asking; account: AccountRow; provider?: LinkedProvider } | null>(null)
   const [made, setMade] = useState<LinkMade | null>(null)
   const { busy, problem, done, run } = useAction()

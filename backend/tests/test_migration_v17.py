@@ -90,7 +90,7 @@ def test_the_way_back_shows_0_6_its_provider_in_full_only_where_it_trusted_it(
         "oidc_issuer": ISSUER, "oidc_client_id": CLIENT_ID, "oidc_provider_name": "authentik",
         "oidc_auto_create": False, "oidc_second_factor_by_provider": True, "oidc_legacy_anchor": ISSUER}
     assert trusted["way_back_secret"] == fixture_client_secret()
-    # Asked (an entry that does not trust the provider is off for 0.6, decided 2026-10-10): issuer and name stay, the
+    # Asked (an entry that does not trust the provider is off for 0.6): issuer and name stay, the
     # client goes, so that 0.6 lets nobody in without the code it would not ask.
     assert asked["way_back"] == {
         "oidc_issuer": ISSUER, "oidc_client_id": "", "oidc_provider_name": "authentik",

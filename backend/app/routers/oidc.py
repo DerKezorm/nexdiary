@@ -1,7 +1,7 @@
 """Sign-in through OpenID Connect providers, their list, linking, and the authentik button.
 
 The protocol, who an identity is, the provider list and the button live in the shared module ``vendor/nexoidc``
-(the blueprint "Anmeldung mit OIDC und authentik", the same in every nex app); this router puts nexdiary around it:
+(the same in every nex app); this router puts nexdiary around it:
 sessions with their stages, the sign-in brake, the password asked again before linking, nexdiary's own second factor,
 and the error answers.
 
@@ -90,8 +90,8 @@ class ProviderIn(BaseModel):
     scopes: str = Field(default="openid profile email", max_length=500)
     enabled: bool = True
     auto_create: bool = False
-    #: "The provider checks the second factor itself" (on for a new entry, the blueprint). Turned on without a password
-    #: of the operator, as the blueprint lays it out; "Require a second factor" itself still asks for it.
+    #: "The provider checks the second factor itself" (on for a new entry). Turned on without a password
+    #: of the operator; "Require a second factor" itself still asks for it.
     trusts_second_factor: bool = True
 
     def form(self) -> providers.Form:
@@ -328,7 +328,7 @@ async def link_start(
     with store() as s:
         row = s.db.get(AccountRow, account.id)
         assert row is not None
-        # The same brake as before start and return (blueprint 02, "Ablauf" 4): a braked sender links nothing.
+        # The same brake as before start and return a braked sender links nothing.
         wait = brake.wait_seconds(_brake_key(request))
         if wait:
             raise error("too_many_attempts", "Too many attempts. Try again later.", 429, retry_after=wait)
@@ -384,7 +384,7 @@ def operator_unlink(
         if not removed:
             raise error("not_found", "Not found.", 404)
         if account_id != operator.id:
-            # Never unseen (blueprint 01): the person hears of it on their devices and by mail.
+            # Never unseen: the person hears of it on their devices and by mail.
             notices.provider_unlinked(target, operator.name, entry.label)
     logger.warning("Operator unlinked account %s from provider %s by=%s", account_id, provider_id, operator.name)
 

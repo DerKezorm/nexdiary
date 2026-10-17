@@ -1,5 +1,5 @@
 /**
- * The statistics, as the mock's `StatsPage.tsx`: streaks first (they keep people writing), then the year as a calendar,
+ * The statistics: streaks first (they keep people writing), then the year as a calendar,
  * one value over time, the best and the worst day, the weekdays, what goes together, the tags and how the pages come
  * about. Everything is worked out by the server from the own days only; this page draws it. The value most of it is
  * about is the first one the person asks for, under whatever name they gave it.

@@ -1,5 +1,5 @@
 /**
- * Looking back, as the mock's `ReviewPage.tsx`: a week as a strip of covers, a month as a collage, the tiles, the line
+ * Looking back: a week as a strip of covers, a month as a collage, the tiles, the line
  * of the main value per day, the best day and what it was about. The server works it all out from the own pages
  * (`/api/review/<kind>`); this page draws it. The summary comes only on a press of the button, and only when the AI is
  * there for the person; it is shown and never kept.

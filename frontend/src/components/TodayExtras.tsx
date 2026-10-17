@@ -1,5 +1,5 @@
 /**
- * New on "Today", as the mock's `TodayExtras.tsx`: the family question (and the quiet hint to join it), the questions of
+ * New on "Today": the family question (and the quiet hint to join it), the questions of
  * the AI before a day is written up ("Erst fragen lassen", also on the writing page of a past day), and the short
  * entry for tired days ("Heute nur kurz").
  */
