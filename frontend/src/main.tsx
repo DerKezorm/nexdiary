@@ -10,10 +10,12 @@ import './i18n'
 import './index.css'
 import { startSharing } from './lib/sharedInbox'
 import { followSystem } from './lib/theme'
+import { bearTranslatedPages } from './lib/translatedPage'
 import { AuthProvider } from './state/auth'
 
 followSystem()
 startSharing()
+bearTranslatedPages()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
