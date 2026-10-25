@@ -48,6 +48,15 @@ export function dayOfMoment(moment: string, language: string, timeZone?: string)
   }
 }
 
+/** "2026-10-07" in the time zone of the person: the day "Today" stands for. */
+export function todayIn(zone?: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: zone || undefined }).format(new Date())
+  } catch {
+    return new Intl.DateTimeFormat('en-CA').format(new Date())
+  }
+}
+
 /** A calendar day `n` days away, as `YYYY-MM-DD`. */
 export function addDays(day: string, n: number): string {
   const moment = new Date(`${day}T12:00:00Z`)

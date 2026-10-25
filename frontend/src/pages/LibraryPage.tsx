@@ -14,22 +14,13 @@ import { ApiError, photosApi, photoUrl, type LibraryPhoto, type PhotoStorage } f
 import { useDeletePhotos } from '../components/PhotoDelete'
 import { PhotoTile } from '../components/PhotoViews'
 import { useLightbox, type ViewerPhoto } from '../components/Lightbox'
-import { dayOfMoment, longDate, monthName } from '../lib/dates'
+import { dayOfMoment, longDate, monthName, todayIn } from '../lib/dates'
 import { errorText } from '../lib/errors'
 import { formatBytes } from '../lib/bytes'
 import { useAuth } from '../state/auth'
 import { Button, Segment } from './settings/ui'
 
 type Filter = 'all' | 'unused'
-
-/** "2026-10-07" in the time zone of the person: the day "Today" stands for. */
-function todayIn(zone?: string): string {
-  try {
-    return new Intl.DateTimeFormat('en-CA', { timeZone: zone || undefined }).format(new Date())
-  } catch {
-    return new Intl.DateTimeFormat('en-CA').format(new Date())
-  }
-}
 
 const isUsed = (photo: LibraryPhoto) => photo.uses.cover || photo.uses.text || photo.uses.notes.length > 0
 

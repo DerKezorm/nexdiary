@@ -14,6 +14,13 @@
     "saveFirst": "Save your changes first, then the day can be locked.",
     "toDay": "To the day"
   },
+  "addDay": {
+    "button": "Add a past day",
+    "title": "Add a past day",
+    "text": "Pick a day that has gone by, even one without any notes. If it already has a page, that page opens to read.",
+    "date": "Date",
+    "go": "Write it up"
+  },
   "catchUp": {
     "title_one": "{{count}} day with notes and no page",
     "title_other": "{{count}} days with notes and no page",

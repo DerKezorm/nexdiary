@@ -12,6 +12,7 @@ import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 
 import { ApiError, authApi, diaryApi, journalApi, type CatchUp, type JournalDay, type JournalLook, type JournalOverview, type SearchResult } from '../api/client'
+import { AddDayButton } from '../components/AddDay'
 import { Avatar } from '../components/Avatar'
 import { CatchUpCard } from '../components/CatchUp'
 import { Chip } from '../components/Chip'
@@ -221,7 +222,10 @@ export function JournalPage() {
           <h1 className="font-display text-3xl font-semibold tracking-tight sm:text-4xl">{t('journal.title')}</h1>
           {overview && overview.count > 0 && <p className="mt-1 text-ink-2">{t('journal.count', { count: overview.count, since })}</p>}
         </div>
-        {!empty && <LookSwitch look={look} />}
+        <div className="flex shrink-0 items-center gap-2">
+          <AddDayButton />
+          {!empty && <LookSwitch look={look} />}
+        </div>
       </header>
       {overview?.volumes && overview.volumes.length > 0 && (
         <div className="mb-6">
