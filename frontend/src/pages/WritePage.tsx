@@ -35,6 +35,7 @@ import { useTranslation } from 'react-i18next'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { aiApi, ApiError, diaryApi, immichApi, NO_TEMPLATE, photosApi, photoUrl, promptsApi, templatesApi, type AiLength, type CoverCropValue, type DayChange, type DayPage, type Draft, type DraftIn, type ImmichEntry, type ImmichPhoto, type Note, type Photo, type Question, type Template, type TemplateSet } from '../api/client'
+import { AddNote } from '../components/AddNote'
 import { CoverCropDialog } from '../components/CropEditor'
 import { DayPhotoPicker } from '../components/DayPhotoPicker'
 import { DeletePageDialog } from '../components/DeletePage'
@@ -1109,6 +1110,7 @@ export default function WritePage() {
               ))}
             </ul>
           )}
+          {loaded && <AddNote date={date} disabled={formulating} onAdded={(note) => setNotes((current) => (current.some((item) => item.id === note.id) ? current : [...current, note]))} />}
         </section>
       </aside>
 

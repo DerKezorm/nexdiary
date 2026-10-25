@@ -103,6 +103,12 @@ function serve(): void {
       }
       if (url === '/api/ai') return json(aiState)
       if (url.startsWith('/api/prompts/pool')) return json({ questions: pool })
+      if (url === '/api/notes' && method === 'POST') {
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        const note = { id: body!.id, date: body!.date, text: body!.text, unreadable: false, prompt: null, prompt_id: null, photo_id: null, created_at: '2026-10-25T08:00:00+00:00', updated_at: null }
+        if (!dayNotes.some((item) => item.id === note.id)) dayNotes.push(note)
+        return json(note, 201)
+      }
       if (url.startsWith('/api/notes')) return json(dayNotes)
       if (url.startsWith('/api/photos')) return json(photos)
       if (url.startsWith('/api/today')) return json({ date: DATE, notes: [], day, values: [], streak: 5, photos: [] })
@@ -515,6 +521,33 @@ describe('writing a day up', () => {
       box.remove()
     }
     await show()
+  })
+
+  it('takes a note for the day being written, once however often it is clicked, and then offers the AI', async () => {
+    await show()
+    await idle()
+    expect(box.querySelector('[data-offer-ai]')).toBeNull()
+    const field = box.querySelector<HTMLTextAreaElement>('textarea[aria-label="Notiz hinzufügen"]')!
+    type(field, '  kastanien im park  ')
+    await act(async () => {
+      button('Hinzufügen').click()
+      button('Hinzufügen').click()
+    })
+    await idle()
+    const sent = calls.filter((call) => call.method === 'POST' && call.url === '/api/notes')
+    expect(sent).toHaveLength(1)
+    expect(sent[0].body).toEqual({ id: expect.stringMatching(/^[0-9a-f-]{36}$/), text: 'kastanien im park', date: DATE })
+    expect(field.value).toBe('')
+    expect(box.querySelector('aside')!.textContent).toContain('kastanien im park')
+    expect(box.querySelector('[data-offer-ai]')).not.toBeNull()
+    // Enter adds the next one, with an id of its own.
+    type(field, 'abends kalt')
+    await act(async () => field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+    await idle()
+    const ids = calls.filter((call) => call.method === 'POST' && call.url === '/api/notes').map((call) => call.body!.id)
+    expect(ids).toHaveLength(2)
+    expect(ids[1]).not.toBe(ids[0])
+    expect(box.querySelector('aside')!.textContent).toContain('abends kalt')
   })
 
   it('asks before writing over a draft: keep it, or have it written anew', async () => {
