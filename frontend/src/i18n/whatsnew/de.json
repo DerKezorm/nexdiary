@@ -1,4 +1,23 @@
 {
+  "0.10.0": {
+    "lead": "Vergangene Tage lassen sich jetzt nachtragen, auch ganz ohne Notizen, und mit ein paar Stichpunkten von der KI ausformulieren.",
+    "sections": [
+      {
+        "title": "Tag nachtragen",
+        "where": "Tagebuch",
+        "body": "Oben im Tagebuch steht neben Blog und Zeitleiste der Knopf „Tag nachtragen“. Du wählst ein Datum, gestern ist schon vorgewählt, und landest beim Schreiben dieses Tages. Das geht auch für einen Tag, an dem du nichts notiert hast. Hat der Tag schon eine Seite, öffnet sie sich zum Lesen."
+      },
+      {
+        "title": "Notizen beim Schreiben",
+        "where": "Schreiben, Deine Notizen",
+        "body": "Unter „Deine Notizen“ kannst du beim Schreiben Notizen hinzufügen. Sie gehören zu dem Tag, den du gerade schreibst, nicht zu heute. Sobald der Tag Notizen hat, steht „Ausformulieren mit KI“ bereit, so wird ein nachgetragener Tag aus ein paar Stichpunkten zur Seite."
+      }
+    ],
+    "smallTitle": "Außerdem",
+    "small": [
+      "Übersetzt der Browser die Seite, etwa Chrome oder Edge, bleibt nexdiary bedienbar. Bisher konnte die ganze Seite verschwinden."
+    ]
+  },
   "0.9.0": {
     "lead": "Fotos eines Tages stehen jetzt als kleine Vorschauen da, und HDR-Fotos vom iPhone lassen sich hochladen.",
     "sections": [

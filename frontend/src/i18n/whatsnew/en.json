@@ -1,4 +1,23 @@
 {
+  "0.10.0": {
+    "lead": "Days gone by can be added now, even without any notes, and written up by the AI from a few words.",
+    "sections": [
+      {
+        "title": "Add a past day",
+        "where": "Journal",
+        "body": "At the top of the journal, next to blog and timeline, stands the button “Add a past day”. You pick a date, yesterday is already chosen, and land in the writing view of that day. This works for a day you noted nothing on, too. If the day already has a page, that page opens to read."
+      },
+      {
+        "title": "Notes while writing",
+        "where": "Writing, Your notes",
+        "body": "Under “Your notes” you can add notes while writing. They belong to the day you are writing, not to today. As soon as the day has notes, “Write it up with AI” is ready, so a day added afterwards becomes a page from a few words."
+      }
+    ],
+    "smallTitle": "Also",
+    "small": [
+      "When the browser translates the page, Chrome or Edge for instance, nexdiary keeps working. Until now the whole page could disappear."
+    ]
+  },
   "0.9.0": {
     "lead": "The photos of a day now stand as small previews, and HDR photos from an iPhone can be uploaded.",
     "sections": [
