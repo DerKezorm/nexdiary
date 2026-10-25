@@ -1,5 +1,5 @@
-"""nexoidc contract tests: nexdiary's adapter (copied once from ``bauplaene/oidc/tests-fuer-apps/adapter_template.py``,
-from then on nexdiary's own file).
+"""nexoidc contract tests: nexdiary's adapter (copied once from the module's template, from then on nexdiary's own
+file).
 
 The contract tests in ``tests/nexoidc/`` are the same in every nex app and never edited here. They reach nexdiary only
 through this class: its real routes, its database, its accounts, invitations and second factor. The test run's own
