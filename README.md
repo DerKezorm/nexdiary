@@ -75,11 +75,15 @@ More, in light and dark and on the phone, are in [docs/screenshots](docs/screens
   and a year can be set as a print-ready PDF book.
 - **A family question.** One question a day for those who join; the others' answers open once you have answered,
   and stay readable on that day later. An answer is final.
-- **Sharing a day.** With chosen people of the family. They read the page and the photos; values and raw notes only if
+- **Sharing a day.** With chosen people of the family. They read the page, the photos and the attachments; values and raw notes only if
   you tick them. A shared day is read-only and cannot be passed on; you take it back at any time. The only reaction is a
   heart.
 - **Photos.** Upload them, or take them from your own [Immich](https://immich.app) (see below). Place and camera data
-  are removed; every photo is drawn anew from its pixels and stored sealed.
+  are removed; every photo is drawn anew from its pixels and stored sealed. Older days take photos too.
+- **Attachments.** Videos, voice recordings, PDFs and links go with a day, beside its photos. Videos and recordings are
+  repacked without place or device data (ffmpeg is in the image) and play in nexdiary; a PDF opens in nexdiary's own
+  viewer; a link is kept as it is, the server never opens it. An HEVC video from an iPhone can be converted to H.264 on
+  the server, so it plays in every browser. Recordings are made in the browser and need https.
 - **On the phone.** All of it works on a phone. The quick note opens on a field and the keyboard; the app installs to the
   home screen with a shortcut "Note". Installed on Android with Chrome or on Windows with Edge, it takes texts, links
   and up to 10 photos shared from other apps, each photo as a note of its own (the iPhone does not offer sharing to web
@@ -186,7 +190,7 @@ Everything lives in `/data`:
 | Where | What |
 |---|---|
 | `nexdiary.db` | The SQLite database: accounts, days, notes, values, shares. What people write is sealed in it. |
-| `media/` | Photos and their small pictures, each sealed in its own file. |
+| `media/` | Photos, attachments and their small pictures, each sealed in its own file. |
 | `keys/master.key` | The master key, made at the first start (mode 0600). It wraps every person's data key. |
 | `secret.key` | The server's own secret (the client secrets of the sign-in providers, the mail password and the like). |
 | `backups/`, `logs/`, `locales/` | Backups, the log, extra languages as JSON files. |
@@ -194,7 +198,7 @@ Everything lives in `/data`:
 Mount `/data` from a local disk, never from an SMB or NFS share: SQLite's locking does not work reliably over network
 filesystems.
 
-**What people write is encrypted in the database**: pages, notes, values, tags, photos and the Immich key. Each person
+**What people write is encrypted in the database**: pages, notes, values, tags, photos, attachments and the Immich key. Each person
 has a data key of their own, wrapped with the master key. That keeps a copy of the database or of a backup unreadable on
 its own. The master key lies on the same machine, so this is no protection against somebody who owns the whole server;
 it is meant for the copies that leave it.
