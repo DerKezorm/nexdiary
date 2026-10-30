@@ -55,7 +55,7 @@ def trusted(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
 @pytest.mark.parametrize("which", ["asked", "trusted"])
 def test_the_provider_of_0_6_becomes_the_entry_oidc_with_its_links(which: str, request: pytest.FixtureRequest) -> None:
     seen = request.getfixturevalue(which)
-    assert seen["version"] == SCHEMA_VERSION == 17 and seen["schema_as_new"] is True
+    assert seen["version"] == SCHEMA_VERSION and seen["schema_as_new"] is True
     assert seen["backups"] == 2, "one before schema 17, one before the provider list"
     slug, label, issuer, client_id, enabled, auto_create, trusts, managed, redirect_path = seen["entries"][0]
     assert len(seen["entries"]) == 1

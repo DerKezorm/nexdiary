@@ -49,7 +49,7 @@ from .. import private
 from ..config import get_settings
 from ..errors import error
 from ..models import Account, Day, Note, Photo
-from . import book_art, book_text, covers, diary, photos, pictures
+from . import attachments, book_art, book_text, covers, diary, photos, pictures
 
 logger = logging.getLogger("nexdiary.book")
 
@@ -86,6 +86,8 @@ TEXTS: dict[str, dict[str, Any]] = {
         "days": {1: "1 Tag", 0: "{n} Tage"},
         "appendix": "Anhang",
         "notes": "Rohnotizen",
+        "attachments": "Anhänge",
+        "kinds": {"video": "Video", "audio": "Ton", "pdf": "PDF", "link": "Link"},
     },
     "en": {
         "months": ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October",
@@ -98,6 +100,8 @@ TEXTS: dict[str, dict[str, Any]] = {
         "days": {1: "1 day", 0: "{n} days"},
         "appendix": "Appendix",
         "notes": "Raw notes",
+        "attachments": "Attachments",
+        "kinds": {"video": "Video", "audio": "Sound", "pdf": "PDF", "link": "Link"},
     },
 }
 
@@ -563,6 +567,8 @@ class Styles:
                            textColor=INK, spaceAfter=10 * scale)
         self.values = style("values", fontName="DiarySerif-Regular", fontSize=8 * scale, leading=11 * scale,
                             textColor=MUTED, spaceBefore=6 * scale)
+        self.attachment = style("attachment", fontName="DiarySerif-Regular", fontSize=8 * scale, leading=11 * scale,
+                                textColor=INK_2, leftIndent=8 * scale)
         self.note = style("note", parent=self.body, fontSize=9.5 * scale, leading=9.5 * scale * 1.45,
                           leftIndent=34 * scale, firstLineIndent=-34 * scale, spaceAfter=3 * scale)
         self.center = style("center", parent=self.body, alignment=TA_CENTER)
@@ -822,6 +828,8 @@ def make(db: Session, job: Job, options: Options, name: str, out: Any) -> int:
     photo_rows = {row.uid: row for row in db.execute(select(Photo.uid, Photo.width, Photo.height).where(
         Photo.user_id == account_id))}
     values = [value for value in diary.list_values(db, account_id, dek) if not value["unreadable"]]
+    # What is attached to each day, as a line each (never the contents of a file).
+    attached = attachments.for_book(db, account_id, dek, first, last)
     days: list[tuple[date, dict[str, Any]]] = []
     for row in rows:
         content = diary._readable_content(account_id, dek, row.date, row.content_enc)
@@ -901,7 +909,8 @@ def make(db: Session, job: Job, options: Options, name: str, out: Any) -> int:
             story.append(Marker(book, chapter=title))
             story.append(Whole(chapter_page))
             story.append(PageBreak())
-        story.extend(_day(book, day, content, options, words, styles, layout, photo_rows, values, cover_of))
+        story.extend(_day(book, day, content, options, words, styles, layout, photo_rows, values, cover_of,
+                          attached.get(day.isoformat(), [])))
         story.append(PageBreak())
 
     if options.notes:
@@ -962,7 +971,8 @@ def _spaced(word: str) -> str:
 
 def _day(book: Book, day: date, content: dict[str, Any], options: Options, words: dict[str, Any], styles: Styles,
          layout: Layout, photo_rows: dict[str, Any], values: list[dict[str, Any]],
-         cover_of: Callable[[date, dict[str, Any]], Picture]) -> list[Flowable]:
+         cover_of: Callable[[date, dict[str, Any]], Picture],
+         attached: list[dict[str, str]] | None = None) -> list[Flowable]:
     out: list[Flowable] = []
     if options.photos:
         out.append(CoverBand(book, cover_of(day, content), layout))
@@ -998,6 +1008,15 @@ def _day(book: Book, day: date, content: dict[str, Any], options: Options, words
                  if type(rating := content["values"].get(value["id"])) is int and 1 <= rating <= 10]
         if rated:
             out.append(Paragraph(" · ".join(rated), styles.values))
+    if attached:
+        # At the end of the day, a line each: a link with its address, anything else its kind and name.
+        out.append(Paragraph(_escape(words["attachments"]), styles.values))
+        for item in attached:
+            kind = words["kinds"].get(item["kind"], item["kind"])
+            line = f"{kind} · {item['name']}"
+            if item["kind"] == "link" and item["url"] and item["url"] != item["name"]:
+                line += f" · {item['url']}"
+            out.append(Paragraph(_escape(line), styles.attachment))
     return out
 
 

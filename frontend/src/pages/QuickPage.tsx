@@ -3,6 +3,8 @@
  * no menus. Where a phone starts (My account, Look, "On the phone"). "Alles" leads into the whole app.
  *
  * The camera button takes or picks a photo for the next note; under the notes "Den Tag aufschreiben" leads to "Today".
+ * While the field is empty a microphone stands beside it: a voice recording goes to the attachments of today (after
+ * midnight, of the day the night question chose); today's recordings stand below the notes.
  * Above the field stands the question of the day: tapped, the next note is the answer and keeps the question; the
  * cross puts it away for this visit.
  *
@@ -15,6 +17,8 @@ import { useTranslation } from 'react-i18next'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 
 import { photoUrl, type Question } from '../api/client'
+import { RecordButton } from '../components/AttachMenu'
+import { Attachments } from '../components/Attachments'
 import { LogoMark } from '../components/Logo'
 import { NightDialog, NightHint } from '../components/NightChoice'
 import { useOwnPhotoViewer } from '../components/ownPhotoViewer'
@@ -86,6 +90,8 @@ export function QuickPage() {
   const notes = today.data?.notes ?? []
   const viewOwn = useOwnPhotoViewer(() => void today.load())
   const photos = today.data?.photos ?? []
+  /** The voice recordings of today, below the notes. */
+  const recordings = (today.data?.attachments ?? []).filter((item) => item.kind === 'audio')
 
   // The newest note stands right above the field, like the last message in a chat.
   useEffect(() => {
@@ -162,6 +168,11 @@ export function QuickPage() {
             ))}
           </ol>
         )}
+        {recordings.length > 0 && today.data && (
+          <div className="mt-4" data-recordings>
+            <Attachments date={today.data.date} items={recordings} />
+          </div>
+        )}
         {notes.length > 0 && (
           <Link to="/?aufschreiben=1" className="mt-5 flex items-center gap-3 rounded-2xl border border-dashed border-accent/40 bg-accent-soft/40 px-4 py-3.5">
             <PenLine size={19} className="shrink-0 text-accent" aria-hidden />
@@ -215,6 +226,10 @@ export function QuickPage() {
         <PendingPhoto photo={pending.photo} busy={pending.busy} onDrop={pending.drop} />
         <div className="flex items-end gap-2">
           <PhotoSourceButton pending={pending} date={today.data?.date} size={22} className="mb-0.5 rounded-full p-3 text-muted active:bg-sheet-2" label={t('photos.take')} />
+          {/* The microphone only while the field is empty, where the send button would not help anyway. */}
+          {!text && today.data && !today.data.day?.locked && (
+            <RecordButton date={today.data.date} resolveDate={today.attachDay} onAdded={today.keepAttachment} size={22} className="mb-0.5 -ml-2 rounded-full p-3 text-muted active:bg-sheet-2" />
+          )}
           <textarea
             ref={field}
             autoFocus

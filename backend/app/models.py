@@ -702,6 +702,72 @@ class FamilyAnswer(Base):
     updated_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
 
 
+# --- Attachments of a day --------------------------------------------------------------------------------------------
+
+
+class Attachment(Base):
+    """A video, a sound, a PDF or a link that belongs to a day (``services/attachments.py``). The file lies sealed in
+    pieces in the media folder (``services/sealed_file.py``) under ``file_id``, a still of a video under ``uid.p``; a
+    link has no file. Everything that says what it is (its name, the address of a link, length, size in pixels, the
+    codec) is sealed in ``meta_enc``; in the clear only what sorting, the limits and the queue of the conversion
+    need."""
+
+    __tablename__ = "attachments"
+    __table_args__ = (
+        UniqueConstraint("uid", name="uq_attachments_uid"),
+        UniqueConstraint("user_id", "upload_id", name="uq_attachments_user_upload"),
+        Index("ix_attachments_user_date", "user_id", "date"),
+        Index("ix_attachments_status", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    uid: Mapped[str] = mapped_column(String(32))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    #: ``YYYY-MM-DD`` in the person's own time zone.
+    date: Mapped[str] = mapped_column(String(10))
+    #: ``video``, ``audio``, ``pdf`` or ``link``.
+    kind: Mapped[str] = mapped_column(String(8))
+    #: ``ready``, ``queued`` or ``converting`` (turning HEVC into H.264), ``failed`` (that did not work; the file is
+    #: the one that came, as before).
+    status: Mapped[str] = mapped_column(String(12), default="ready")
+    #: The name of the sealed file in the media folder: a new one when a conversion replaces it. None for a link.
+    file_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    #: Bytes on disk, sealed: the file and the still of a video.
+    size: Mapped[int] = mapped_column(Integer, default=0)
+    preview_size: Mapped[int] = mapped_column(Integer, default=0)
+    #: Made by the browser for one upload: the same upload sent twice keeps one attachment.
+    upload_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    meta_enc: Mapped[bytes] = mapped_column(LargeBinary)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    #: When the person asked for the conversion: the queue goes oldest first.
+    queued_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+
+
+#: A locked day takes no attachment and gives none away, whatever code asks; the cascade of a deleted account (its row
+#: is gone by then) still takes them.
+for _statement in (
+    (
+        "CREATE TRIGGER trg_attachments_locked_insert BEFORE INSERT ON attachments WHEN EXISTS (SELECT 1 FROM days "
+        "WHERE days.user_id = NEW.user_id AND days.date = NEW.date AND days.locked_at IS NOT NULL) "
+        "BEGIN SELECT RAISE(ABORT, 'day is locked'); END"
+    ),
+    (
+        "CREATE TRIGGER trg_attachments_locked_delete BEFORE DELETE ON attachments WHEN EXISTS (SELECT 1 FROM days "
+        "WHERE days.user_id = OLD.user_id AND days.date = OLD.date AND days.locked_at IS NOT NULL) "
+        "AND EXISTS (SELECT 1 FROM users WHERE users.id = OLD.user_id) "
+        "BEGIN SELECT RAISE(ABORT, 'day is locked'); END"
+    ),
+    (
+        "CREATE TRIGGER trg_attachments_locked_move BEFORE UPDATE OF user_id, date ON attachments "
+        "WHEN (NEW.user_id IS NOT OLD.user_id OR NEW.date IS NOT OLD.date) AND EXISTS (SELECT 1 FROM days "
+        "WHERE days.locked_at IS NOT NULL AND ((days.user_id = OLD.user_id AND days.date = OLD.date) "
+        "OR (days.user_id = NEW.user_id AND days.date = NEW.date))) "
+        "BEGIN SELECT RAISE(ABORT, 'day is locked'); END"
+    ),
+):
+    event.listen(Attachment.__table__, "after_create", DDL(_statement))
+
+
 __all__ = [
     "MEMBER",
     "OPERATOR",
@@ -713,6 +779,7 @@ __all__ = [
     "STAGE_SETUP",
     "Account",
     "ApiToken",
+    "Attachment",
     "AuthSession",
     "Base",
     "Capsule",

@@ -50,9 +50,15 @@ def fresh_schema_sql() -> str:
     return "".join(" ".join(row[0].split()) + ";\n" for row in rows)
 
 
+def drop_v18(connection: sqlite3.Connection) -> None:
+    """Takes away what version 18 added (the attachments of a day, with the triggers of a locked day)."""
+    connection.execute("DROP TABLE attachments")
+
+
 def drop_v17(connection: sqlite3.Connection) -> None:
-    """Takes away what version 17 added (the sign-in providers as a list, the mark of a session that came through a
-    provider which checks the second factor)."""
+    """Takes away what version 17 and everything after it added (the sign-in providers as a list, the mark of a session
+    that came through a provider which checks the second factor)."""
+    drop_v18(connection)
     for statement in (
         "DROP TABLE oidc_links",
         "DROP TABLE oidc_providers",

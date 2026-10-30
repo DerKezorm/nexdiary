@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..deps import Account, DbSession
 from ..errors import error
-from ..services import brakes, diary, family, journal, photos, prompts, short_entry, streaks, vault
+from ..services import attachments, brakes, diary, family, journal, photos, prompts, short_entry, streaks, vault
 
 router = APIRouter(prefix="/api", tags=["diary"])
 logger = logging.getLogger("nexdiary.diary")
@@ -172,6 +172,8 @@ def today(request: Request, account: Account, db: DbSession) -> dict[str, Any]:
         # The streak with its unit, the weekly goal, the week so far and the shields in hand.
         "series": series,
         "photos": photos.list_of_day(db, account.id, key),
+        # Videos, sounds, PDFs and links of the day, oldest first.
+        "attachments": attachments.list_of_day(db, account.id, dek, key),
         # The question of the day (writing prompts); null when the person switched questions off.
         "question": prompts.question_of_day(db, account.id, dek, day, _language(account, request)),
         # The family question of today for whoever joined (``services/family.py``), else null; and whether to tell
@@ -252,10 +254,12 @@ def days(
 @router.get("/days/{date}", summary="The page of one day")
 def day(date: str, account: Account, db: DbSession) -> dict[str, Any]:
     key = diary.check_date(account, date)
-    found = diary.get_day(db, account.id, vault.dek_for(account.id), key)
+    dek = vault.dek_for(account.id)
+    found = diary.get_day(db, account.id, dek, key)
     if found is None:
         raise error("not_found", "Not found.", 404)
-    return found
+    # The videos, sounds, PDFs and links of the day, oldest first.
+    return {**found, "attachments": attachments.list_of_day(db, account.id, dek, key)}
 
 
 @router.put("/days/{date}", summary="Make or change the page of a day; only the fields sent change")
@@ -338,10 +342,12 @@ def put_values_of_day(date: str, payload: ValuesOfDayIn, request: Request, accou
     return diary.change_day(db, account.id, dek, key, lambda content: diary.merge(content, patch))
 
 
-@router.delete("/days/{date}", status_code=204, summary="Delete the page of a day (its notes and photos stay)")
+@router.delete("/days/{date}", status_code=204,
+               summary="Delete the page of a day (its notes, photos and attachments stay)")
 def delete_day(date: str, account: Account, db: DbSession) -> None:
-    """Title, text, tags, ratings and cover go, the shares of the day and its draft with them; the notes and the photos
-    of the day stay, the pictures taken for the text alone go (also one taken a moment ago). Never a locked day."""
+    """Title, text, tags, ratings and cover go, the shares of the day and its draft with them; the notes, the photos
+    and the attachments of the day stay, the pictures taken for the text alone go (also one taken a moment ago).
+    Never a locked day."""
     key = diary.check_date(account, date)
     diary.delete_day(db, account.id, key)
     # Without the grace for photos just taken: no page or draft is left that one could be on its way into.

@@ -5,6 +5,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 
 import { ApiError, authApi, SIGNED_OUT_EVENT, type Me } from '../api/client'
+import { forgetThumbs } from '../lib/pdfThumbs'
 import i18n, { changeLanguage } from '../i18n'
 import { browserTimeZone } from '../lib/dates'
 import { dropAllShared } from '../lib/sharedInbox'
@@ -104,6 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void refresh()
     const gone = () => {
+      forgetThumbs()
       setStatus('signedOut')
       setMeState(null)
     }
@@ -115,6 +117,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await authApi.logout().catch(() => undefined)
     // Photos shared into nexdiary that nobody picked up yet do not wait for the next person on this device.
     await dropAllShared()
+    // What was drawn of the PDFs of this person does not stay in the tab for the next.
+    forgetThumbs()
     setMeState(null)
     setStatus('signedOut')
   }, [])

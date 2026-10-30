@@ -14,7 +14,7 @@ from typing import Any
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
-from .services import logs, pictures
+from .services import attachments, logs, pictures
 
 logger = logging.getLogger("nexdiary.api")
 
@@ -37,19 +37,22 @@ SLOW_MS = 3000
 SLOW_EXPECTED = ("/api/backups",)
 
 #: The interface sets inline styles, hence 'unsafe-inline' for styles only. Scripts stay strict.
-#: ``blob:`` for images: a picture is shown before it is uploaded. The service worker (``/sw.js``, Web Push) and the
-#: manifest come from the site itself, said out loud: a ``worker-src 'none'`` here once broke Web Push in Nexview.
+#: ``blob:`` for images: a picture is shown before it is uploaded. The service worker (``/sw.js``, Web Push), the
+#: worker of the PDF reader (pdf.js) and the manifest come from the site itself, said out loud: a ``worker-src 'none'``
+#: here once broke Web Push in Nexview. ``media-src`` for the videos and sounds of a day (``blob:``: a recording is
+#: played back before it is uploaded).
 CSP = (
-    b"default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; "
-    b"connect-src 'self'; worker-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'self'; "
-    b"form-action 'self'; object-src 'none'"
+    b"default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; "
+    b"font-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; frame-ancestors 'none'; "
+    b"base-uri 'self'; form-action 'self'; object-src 'none'"
 )
 SECURITY_HEADERS: tuple[tuple[bytes, bytes], ...] = (
     (b"content-security-policy", CSP),
     (b"x-content-type-options", b"nosniff"),
     (b"referrer-policy", b"same-origin"),
     (b"x-frame-options", b"DENY"),
-    (b"permissions-policy", b"camera=(), microphone=(), geolocation=()"),
+    # The microphone for a recording attached to a day, and only for nexdiary's own pages.
+    (b"permissions-policy", b"camera=(), microphone=(self), geolocation=()"),
 )
 
 
@@ -160,10 +163,12 @@ CLIENT_PATTERN = re.compile(rb"^[A-Za-z0-9_-]{8,64}$")
 API_PREFIX = "/api/v1/"
 #: Largest body an ordinary request may carry (a day's page is the largest).
 MAX_BODY = 16 * 1024 * 1024
-#: Where another limit holds, checked while streaming: a backup brought in from elsewhere, and every route that takes
-#: a picture, whose decoder says the same number (``pictures.MAX_BYTES``).
+#: Where another limit holds, checked while streaming: a backup brought in from elsewhere, every route that takes
+#: a picture, whose decoder says the same number (``pictures.MAX_BYTES``), and the attachments of a day, whose route
+#: holds a body to the operator's limit for its kind while it comes (this is the largest the operator may set).
 LARGE_BODIES = {
-    "/api/backups/upload": 64 * 1024**3,
+    "/api/backups/upload": 1024**4,
+    "/api/attachments": (attachments.VIDEO_MAX_MB + 1) * 1024 * 1024,
     "/api/auth/avatar": pictures.MAX_BYTES,
     "/api/photos": pictures.MAX_BYTES,
     "/api/capsules/photos": pictures.MAX_BYTES,

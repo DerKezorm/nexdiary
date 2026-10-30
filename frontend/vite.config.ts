@@ -14,6 +14,9 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
+        // The worker of pdf.js comes as `.mjs`; served as `.js` it has a JavaScript type on every server (a module
+        // worker refuses any other, and `nosniff` lets no guess help).
+        assetFileNames: (asset) => (asset.names?.some((name) => name.endsWith('.mjs')) ? 'assets/[name]-[hash].js' : 'assets/[name]-[hash][extname]'),
         // Libraries change rarely. In their own file, they stay cached in the browser after an update. Only those the
         // start page needs: the editor and what it brings (Milkdown, ProseMirror, remark) stay in the chunk of the
         // writing page, loaded when somebody writes.

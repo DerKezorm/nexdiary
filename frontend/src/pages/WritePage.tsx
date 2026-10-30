@@ -15,6 +15,8 @@
  * page scrolls, and Ctrl+S / Cmd+S saves (the browser's own "save page" is kept away).
  * A saved page can be locked for good from here; a locked day is not written on any more.
  * Loaded only when somebody writes: the editor is the heaviest part of the app.
+ * Below the text stands the card of the attachments of the day; its menu lays photos onto the day as well, which never
+ * take the place of the cover (while none was chosen, the one shown is kept as the chosen one).
  *
  * **The AI** writes only when asked: "Ausformulieren" on "Today" comes here with the length in the history state, which
  * is read once and cleared at once (a reload asks nothing); here the same button stands above the text of every day that
@@ -36,6 +38,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { aiApi, ApiError, diaryApi, immichApi, NO_TEMPLATE, photosApi, photoUrl, promptsApi, templatesApi, type AiLength, type CoverCropValue, type DayChange, type DayPage, type Draft, type DraftIn, type ImmichEntry, type ImmichPhoto, type Note, type Photo, type Question, type Template, type TemplateSet } from '../api/client'
 import { AddNote } from '../components/AddNote'
+import { Attachments } from '../components/Attachments'
 import { CoverCropDialog } from '../components/CropEditor'
 import { DayPhotoPicker } from '../components/DayPhotoPicker'
 import { DeletePageDialog } from '../components/DeletePage'
@@ -56,6 +59,7 @@ import { scaffold, templateOf, tidy, untouchedText, withoutEmptySections } from 
 import { coverCropOf } from '../lib/textPhoto'
 import { uploadPhoto } from '../lib/upload'
 import { useAiState } from '../state/ai'
+import { useDayAttachments } from '../state/attachments'
 import { useAuth } from '../state/auth'
 import { useImmichDay, useImmichReady } from '../state/immich'
 
@@ -179,6 +183,10 @@ export default function WritePage() {
   // The photos of the day in the own Immich, asked for only while the cover is being chosen.
   const immich = useImmichDay(date, picking)
   const [uploading, setUploading] = useState(false)
+  const attachments = useDayAttachments(date)
+  /** Photos laid onto the day ("Fotos dazulegen"): how far the upload is; the own Immich to pick from. */
+  const [adding, setAdding] = useState<{ n: number; total: number } | null>(null)
+  const [addingImmich, setAddingImmich] = useState(false)
   const inset = useKeyboardInset()
   const editor = useRef<DiaryEditorHandle>(null)
   /** Where the editor puts its bar of formats: into the sticky top bar, so that both stay at the top together. */
@@ -606,6 +614,34 @@ export default function WritePage() {
     } finally {
       setUploading(false)
     }
+  }
+
+  /** "Fotos dazulegen": photos for the day, never its cover. While no cover was chosen, the one shown (the first
+   * photo of the day, or the illustration) is kept as the chosen one, so that a new photo does not take its place. */
+  const addPhotos = async (files: File[]) => {
+    if (adding) return
+    if (latest.current.page.cover === null) changed({ cover: shownCover })
+    let added = 0
+    setProblem(null)
+    try {
+      for (const [index, file] of files.entries()) {
+        setAdding({ n: index + 1, total: files.length })
+        keepPhotoHere(await uploadPhoto(file, date))
+        added += 1
+      }
+    } catch (error) {
+      setProblem(codeOf(error))
+    } finally {
+      setAdding(null)
+      if (added > 0) navigate(location.pathname, { replace: true, state: { notice: t('attachments.photos.added', { count: added }) } })
+    }
+  }
+
+  /** A photo of the own Immich, whenever it was shot, laid onto this day; the cover stays. */
+  const addFromImmich = async (entry: ImmichEntry) => {
+    if (latest.current.page.cover === null) changed({ cover: shownCover })
+    keepPhotoHere(await immichApi.take(entry.id, date, false, true))
+    navigate(location.pathname, { replace: true, state: { notice: t('attachments.photos.added', { count: 1 }) } })
   }
 
   /** A photo of Immich becomes a photo of this day (copied now); the picker makes it the cover. */
@@ -1058,6 +1094,16 @@ export default function WritePage() {
             </>
           )}
         </article>
+        {loaded && (
+          <div className="mt-4">
+            {adding && (
+              <p role="status" className="mb-3 flex items-center gap-2 text-sm text-muted" data-photos-adding>
+                <Loader2 size={15} className="animate-spin" aria-hidden /> {t('attachments.photos.uploading', { n: adding.n, total: adding.total })}
+              </p>
+            )}
+            <Attachments date={date} items={attachments.items} onChange={attachments.update} editable card onPhotos={(files) => void addPhotos(files)} onImmichPhotos={immichReady ? () => setAddingImmich(true) : undefined} />
+          </div>
+        )}
       </div>
       <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
         {loaded && !formulating && <WritePrompts date={date} onInsert={(question) => editor.current?.insertHeading(question)} />}
@@ -1262,6 +1308,7 @@ export default function WritePage() {
 
       {chooser === 'text' && <ImmichPicker date={date} onClose={() => setChooser(null)} onPick={pickForText} />}
       {chooser === 'cover' && <ImmichPicker date={date} onClose={() => setChooser(null)} onPick={pickForCover} />}
+      {addingImmich && <ImmichPicker date={date} onClose={() => setAddingImmich(false)} onPick={addFromImmich} />}
       {chooser === 'day' && <DayPhotoPicker photos={photos} onPick={(photo) => editor.current?.insertPhoto(photo.id)} onClose={() => setChooser(null)} />}
     </div>
   )

@@ -3,8 +3,8 @@
 The rules, all of them kept here on the server and none in the browser:
 
 * **One day, named people.** A share is the owner, a date with a page, and one other active account. Text, tags, the
-  cover and the photos of the day always go with it; the ratings only with ``with_values``, the raw notes (and the
-  photos that came with them) only with ``with_notes``.
+  cover, the photos and the attachments of the day always go with it; the ratings only with ``with_values``, the raw
+  notes (and the photos that came with them) only with ``with_notes``.
 * **Nothing is copied.** Whoever reads a shared day gets the owner's page opened with the owner's data key at that
   moment, and only the parts the share allows. The reader sees the page as it stands now; taking a share back, or
   deleting the page, leaves nothing behind (the rows go by ``ON DELETE CASCADE``).
@@ -29,7 +29,7 @@ from sqlalchemy.orm import Session
 
 from ..errors import error
 from ..models import Account, Day, Heart, Note, Photo, Share, ShareSeen, UtcDateTime
-from . import covers, diary, photos, vault
+from . import attachments, covers, diary, photos, vault
 
 #: The most people one day can be shared with in one go; a family is far smaller.
 RECIPIENTS_MAX = 50
@@ -287,6 +287,8 @@ def shared_day(db: Session, viewer_id: int, owner_id: int, day: str) -> dict[str
         "cover": cover,
         "cover_crop": crop,
         "photos": listed,
+        # The attachments of the day always go with it, like its photos; never to be converted from here.
+        "attachments": attachments.list_of_day(db, owner_id, dek, day, shared=True),
         "with_values": bool(share.with_values),
         "with_notes": bool(share.with_notes),
         "heart": hearted.isoformat() if hearted else None,
@@ -307,6 +309,14 @@ def shared_photo(db: Session, viewer_id: int, owner_id: int, day: str, uid: str,
     if uid not in allowed:
         raise error("not_found", "Not found.", 404)
     return photos.read(db, owner_id, dek, uid, preview)
+
+
+def shared_attachment(db: Session, viewer_id: int, owner_id: int, day: str, uid: str,
+                      preview: bool) -> attachments.Opened:
+    """An attachment of a day shared with the viewer: only one of exactly that day; any other answers 404."""
+    _share_for(db, viewer_id, owner_id, day)
+    dek, _content = _open_day(db, owner_id, day)
+    return attachments.open_shared(db, owner_id, dek, day, uid, preview)
 
 
 def _received(db: Session, viewer_id: int) -> list[Any]:

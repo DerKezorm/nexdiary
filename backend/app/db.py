@@ -37,7 +37,7 @@ _settings.data_dir.mkdir(parents=True, exist_ok=True)
 BUSY_SECONDS = 15
 
 #: The version of the schema the models describe.
-SCHEMA_VERSION = 17
+SCHEMA_VERSION = 18
 
 
 def _v2_diary(connection: Connection) -> None:
@@ -381,12 +381,50 @@ def _v17_sign_in_providers(connection: Connection) -> None:
         connection.exec_driver_sql(statement)
 
 
+def _v18_attachments(connection: Connection) -> None:
+    """Version 18: attachments of a day (videos, sounds, PDFs, links), their files sealed in pieces in the media folder,
+    with the triggers that keep a locked day's attachments as they are. Written out as it stood then, not taken from
+    the models."""
+    for statement in (
+        (
+            "CREATE TABLE attachments ( id INTEGER NOT NULL, uid VARCHAR(32) NOT NULL, user_id INTEGER NOT NULL, "
+            "date VARCHAR(10) NOT NULL, kind VARCHAR(8) NOT NULL, status VARCHAR(12) NOT NULL, file_id VARCHAR(32), "
+            "size INTEGER NOT NULL, preview_size INTEGER NOT NULL, upload_id VARCHAR(36), meta_enc BLOB NOT NULL, "
+            "created_at DATETIME NOT NULL, queued_at DATETIME, PRIMARY KEY (id), "
+            "CONSTRAINT uq_attachments_uid UNIQUE (uid), "
+            "CONSTRAINT uq_attachments_user_upload UNIQUE (user_id, upload_id), "
+            "FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE )"
+        ),
+        "CREATE INDEX ix_attachments_user_date ON attachments (user_id, date)",
+        "CREATE INDEX ix_attachments_status ON attachments (status)",
+        (
+            "CREATE TRIGGER trg_attachments_locked_insert BEFORE INSERT ON attachments WHEN EXISTS (SELECT 1 FROM days "
+            "WHERE days.user_id = NEW.user_id AND days.date = NEW.date AND days.locked_at IS NOT NULL) "
+            "BEGIN SELECT RAISE(ABORT, 'day is locked'); END"
+        ),
+        (
+            "CREATE TRIGGER trg_attachments_locked_delete BEFORE DELETE ON attachments WHEN EXISTS (SELECT 1 FROM days "
+            "WHERE days.user_id = OLD.user_id AND days.date = OLD.date AND days.locked_at IS NOT NULL) "
+            "AND EXISTS (SELECT 1 FROM users WHERE users.id = OLD.user_id) "
+            "BEGIN SELECT RAISE(ABORT, 'day is locked'); END"
+        ),
+        (
+            "CREATE TRIGGER trg_attachments_locked_move BEFORE UPDATE OF user_id, date ON attachments "
+            "WHEN (NEW.user_id IS NOT OLD.user_id OR NEW.date IS NOT OLD.date) AND EXISTS (SELECT 1 FROM days "
+            "WHERE days.locked_at IS NOT NULL AND ((days.user_id = OLD.user_id AND days.date = OLD.date) "
+            "OR (days.user_id = NEW.user_id AND days.date = NEW.date))) "
+            "BEGIN SELECT RAISE(ABORT, 'day is locked'); END"
+        ),
+    ):
+        connection.exec_driver_sql(statement)
+
+
 #: ``MIGRATIONS[n]`` brings a database from version ``n - 1`` to ``n``. Version 1 is the first schema; it has no step.
 MIGRATIONS: dict[int, Callable[[Connection], None]] = {
     2: _v2_diary, 3: _v3_photos_and_drafts, 4: _v4_sharing, 5: _v5_writing_prompts, 6: _v6_immich, 7: _v7_push,
     8: _v8_security, 9: _v9_recovery, 10: _v10_nights_and_locks, 11: _v11_automatic_writing,
     12: _v12_text_photos, 13: _v13_writing_templates, 14: _v14_time_capsules, 15: _v15_family_question,
-    16: _v16_capsule_photos, 17: _v17_sign_in_providers,
+    16: _v16_capsule_photos, 17: _v17_sign_in_providers, 18: _v18_attachments,
 }
 
 # No pool with an upper bound: with the default pool the sixteenth concurrent request would block the event

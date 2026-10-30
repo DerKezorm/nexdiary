@@ -4,13 +4,17 @@
  * that day, or that it is not used at all; a filter keeps only those, to find what is superfluous. A photo opens in the
  * big view, can be deleted there, and several can be chosen and deleted at once. The line at the top says how much
  * of the storage the photos take. The server answers about the own photos only.
+ *
+ * A second tab (`?tab=anhaenge`) holds the attachments (`components/AttachmentLibrary.tsx`); the storage card on top
+ * says how the space splits into photos, videos, and recordings with PDFs.
  */
-import { Check, ImageOff, Loader2, Trash2 } from 'lucide-react'
+import { Check, ImageOff, Images, Loader2, Paperclip, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 
 import { ApiError, photosApi, photoUrl, type LibraryPhoto, type PhotoStorage } from '../api/client'
+import { AttachmentLibrary } from '../components/AttachmentLibrary'
 import { useDeletePhotos } from '../components/PhotoDelete'
 import { PhotoTile } from '../components/PhotoViews'
 import { useLightbox, type ViewerPhoto } from '../components/Lightbox'
@@ -18,9 +22,10 @@ import { dayOfMoment, longDate, monthName, todayIn } from '../lib/dates'
 import { errorText } from '../lib/errors'
 import { formatBytes } from '../lib/bytes'
 import { useAuth } from '../state/auth'
-import { Button, Segment } from './settings/ui'
+import { Button, Segment, TabRow } from './settings/ui'
 
 type Filter = 'all' | 'unused'
+type Tab = 'fotos' | 'anhaenge'
 
 const isUsed = (photo: LibraryPhoto) => photo.uses.cover || photo.uses.text || photo.uses.notes.length > 0
 
@@ -41,6 +46,8 @@ export function LibraryPage() {
   /** Which request is the current one: an answer to an older one (another filter) is dropped. */
   const round = useRef(0)
   const today = todayIn(me?.profile?.timezone)
+  const [params, setParams] = useSearchParams()
+  const tab: Tab = params.get('tab') === 'anhaenge' ? 'anhaenge' : 'fotos'
 
   const loadPage = useCallback(
     async (kind: Filter, after: string) => {
@@ -136,9 +143,6 @@ export function LibraryPage() {
   const day = (date: string) => dayOfMoment(`${date}T12:00:00Z`, i18n.language, 'UTC')
   const dayLong = (date: string) => longDate(date, i18n.language, true)
 
-  const limit = storage?.limit ?? null
-  const share = storage && limit ? Math.min(100, Math.round((storage.used / limit) * 100)) : null
-
   return (
     <div className="page space-y-6 pt-8 pb-28 lg:pb-12">
       <header>
@@ -146,20 +150,22 @@ export function LibraryPage() {
         <p className="mt-1 text-ink-2">{t('library.intro')}</p>
       </header>
 
-      {storage && (
-        <div className="card px-5 py-4" data-testid="storage">
-          <p className="text-sm font-semibold">
-            {limit !== null ? t('library.storageOf', { used: formatBytes(storage.used, i18n.language), limit: formatBytes(limit, i18n.language) }) : t('library.storage', { used: formatBytes(storage.used, i18n.language) })}
-            <span className="font-normal text-muted"> · {t('library.count', { count: storage.count })}</span>
-          </p>
-          {share !== null && (
-            <div className="mt-2 h-2 overflow-hidden rounded-full bg-sheet-2" role="img" aria-label={t('library.share', { percent: share })}>
-              <div className="h-full rounded-full bg-accent" style={{ width: `${share}%` }} />
-            </div>
-          )}
-        </div>
-      )}
+      {storage && <StorageCard storage={storage} />}
 
+      <TabRow<Tab>
+        tabs={[
+          { value: 'fotos', label: t('attachments.library.tabPhotos', { count: storage?.count ?? photos.length }), icon: Images },
+          { value: 'anhaenge', label: t('attachments.library.tabAttachments', { count: storage?.attachments ?? 0 }), icon: Paperclip },
+        ]}
+        active={tab}
+        onChange={(value) => setParams(value === 'fotos' ? {} : { tab: value }, { replace: true })}
+        label={t('attachments.library.tabs')}
+      />
+
+      {tab === 'anhaenge' && <AttachmentLibrary onRemoved={refreshStorage} />}
+
+      {tab === 'fotos' && (
+        <>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Segment
           value={filter}
@@ -275,6 +281,47 @@ export function LibraryPage() {
           </Button>
         </div>
       )}
+        </>
+      )}
     </div>
+  )
+}
+
+/** The storage of the person: how much of the limit is taken, split into photos, videos, and recordings with PDFs
+ * (links take no space). Without a limit there is no bar, only the parts. */
+function StorageCard({ storage }: { storage: PhotoStorage }) {
+  const { t, i18n } = useTranslation()
+  const limit = storage.limit ?? null
+  const kinds = storage.by_kind
+  const parts = kinds
+    ? [
+        { key: 'photos', label: t('attachments.library.partPhotos'), bytes: kinds.photos, tone: 'bg-accent' },
+        { key: 'video', label: t('attachments.library.partVideo'), bytes: kinds.video, tone: 'bg-accent/60' },
+        { key: 'other', label: t('attachments.library.partOther'), bytes: kinds.audio + kinds.pdf, tone: 'bg-accent/30' },
+      ]
+    : [{ key: 'photos', label: t('attachments.library.partPhotos'), bytes: storage.used, tone: 'bg-accent' }]
+  const share = limit ? Math.min(100, Math.round((storage.used / limit) * 100)) : null
+  const size = (bytes: number) => formatBytes(bytes, i18n.language)
+  return (
+    <section className="card p-5" data-testid="storage">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="font-semibold">{t('attachments.library.storage')}</h2>
+        <span className="text-sm text-muted">{limit !== null ? t('attachments.library.storageOf', { used: size(storage.used), limit: size(limit) }) : t('attachments.library.storageUsed', { used: size(storage.used) })}</span>
+      </div>
+      {share !== null && limit && (
+        <div className="mt-3 flex h-2.5 overflow-hidden rounded-full bg-sheet-2" role="img" aria-label={t('library.share', { percent: share })}>
+          {parts.map((part) => (
+            <span key={part.key} className={part.tone} style={{ width: `${Math.min(100, (part.bytes / limit) * 100)}%` }} />
+          ))}
+        </div>
+      )}
+      <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted" data-storage-parts>
+        {parts.map((part) => (
+          <span key={part.key} className="inline-flex items-center gap-1.5">
+            <span className={`h-2 w-2 rounded-full ${part.tone}`} aria-hidden /> {part.label} {size(part.bytes)}
+          </span>
+        ))}
+      </div>
+    </section>
   )
 }

@@ -1544,7 +1544,7 @@ def _snippet(original: str, places: list[int], start: int, length: int) -> str:
     return ("… " if left > 0 else "") + piece + (" …" if right < len(normal) else "")
 
 
-KIND_ORDER = ("title", "text", "tag", "note")
+KIND_ORDER = ("title", "text", "tag", "note", "attachment")
 
 
 @dataclass
@@ -1568,8 +1568,10 @@ def _find(value: str, needle: str) -> tuple[int, str, list[int]] | None:
 
 
 def search(db: Session, account_id: int, dek: bytes, query: str) -> dict[str, Any]:
-    """In memory, over this person's own titles, texts, tags and notes: everything is sealed on disk, so the database
-    cannot search. Newest first, at most ``SEARCH_RESULTS``."""
+    """In memory, over this person's own titles, texts, tags, notes and the names of their attachments: everything is
+    sealed on disk, so the database cannot search. Newest first, at most ``SEARCH_RESULTS``."""
+    from . import attachments
+
     needle = fold(" ".join(clean_line(query, SEARCH_MAX, "search_too_long").split()))
     if not needle:
         raise error("search_empty", "There is nothing to look for.", 422)
@@ -1599,6 +1601,8 @@ def search(db: Session, account_id: int, dek: bytes, query: str) -> dict[str, An
         found = _find(note, needle)
         if found:
             hits.append(Hit(row.date, "note", _snippet(note, found[2], found[0], len(needle)), row.uid))
+    for day, name in attachments.search(db, account_id, dek, needle):
+        hits.append(Hit(day, "attachment", name))
     # Newest day first; within a day the page before its notes (the sort is stable).
     hits.sort(key=lambda hit: KIND_ORDER.index(hit.kind))
     hits.sort(key=lambda hit: hit.date, reverse=True)

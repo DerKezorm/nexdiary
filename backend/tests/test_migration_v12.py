@@ -46,7 +46,8 @@ def test_a_v11_database_comes_to_v12_whole_and_marks_no_photo(client: TestClient
         assert int(connection.execute("PRAGMA user_version").fetchone()[0]) == database.SCHEMA_VERSION
         migrated = schema_of(connection)
         assert connection.execute("SELECT count(*) FROM photos WHERE for_text = 0").fetchone() == (2,)
-        assert connection.execute("SELECT name FROM sqlite_master WHERE type = 'trigger'").fetchall() == [
+        assert connection.execute("SELECT name FROM sqlite_master WHERE type = 'trigger' "
+                                  "AND tbl_name = 'days'").fetchall() == [
             ("trg_days_locked_stays",)], "the trigger of the lock came through"
     with closing(sqlite3.connect(":memory:")) as connection:
         connection.executescript(fresh_schema_sql())

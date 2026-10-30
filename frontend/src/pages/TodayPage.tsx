@@ -18,6 +18,8 @@ import { useTranslation } from 'react-i18next'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { immichApi, immichThumbUrl, photoUrl, type AiLength, type AiState, type ImmichEntry, type ImmichPhoto, type Note, type TodayData, type ValueDef } from '../api/client'
+import { RecordButton } from '../components/AttachMenu'
+import { Attachments } from '../components/Attachments'
 import { AutoDraftCard, CatchUpCard } from '../components/CatchUp'
 import { Dialog } from '../components/Dialog'
 import { ImmichPicker } from '../components/ImmichPicker'
@@ -114,6 +116,7 @@ export function TodayPage({ now }: { now?: Date }) {
             <div className="space-y-6">
               <ValuesBlock today={today} bare />
               <PhotosBlock today={today} bare />
+              <TodayAttachments today={today} />
               <TagsBlock today={today} bare />
             </div>
           </Dialog>
@@ -140,6 +143,7 @@ export function TodayPage({ now }: { now?: Date }) {
             <FinishCard today={today} ai={ai} now={now} />
             <ValuesBlock today={today} />
             <PhotosBlock today={today} />
+            <TodayAttachments today={today} card />
             <TagsBlock today={today} />
           </aside>
         </div>
@@ -159,6 +163,7 @@ export function TodayPage({ now }: { now?: Date }) {
       <FamilyQuestion today={today} />
       <Timeline today={today} />
       <PhotosBlock today={today} />
+      <TodayAttachments today={today} card />
       <ValuesBlock today={today} />
       <TagsBlock today={today} />
       <FinishCard today={today} ai={ai} now={now} />
@@ -505,6 +510,13 @@ function PhotosBlock({ today, bare = false }: { today: TodayState; bare?: boolea
   )
 }
 
+/** The attachments of today (after midnight: of the day the notes of the night go to, asked first). */
+function TodayAttachments({ today, card = false }: { today: TodayState; card?: boolean }) {
+  const data = today.data
+  if (!data) return null
+  return <Attachments date={data.date} items={data.attachments ?? []} onChange={today.changeAttachments} resolveDate={today.attachDay} editable={!data.day?.locked} card={card} />
+}
+
 function Problem({ code, values }: { code: string; values?: Record<string, unknown> }) {
   return (
     <p role="alert" className="rounded-xl border border-bad/40 bg-bad/10 px-3 py-2 text-sm text-bad">
@@ -573,6 +585,7 @@ function Capture({ today, chat = false }: { today: TodayState; chat?: boolean })
         placeholder={t('today.capture')}
         className="max-h-40 min-h-11 flex-1 resize-none bg-transparent px-1 py-2.5 text-[1.02rem] text-ink placeholder:text-muted focus:outline-none"
       />
+      {today.data && !today.data.day?.locked && <RecordButton date={today.data.date} resolveDate={today.attachDay} onAdded={today.keepAttachment} className="rounded-full p-2.5 text-muted hover:bg-sheet-2 hover:text-accent" size={20} />}
       <button type="button" onClick={() => void add()} disabled={!text.trim() && !pending.photo} className="rounded-full bg-accent p-2.5 text-accent-ink transition disabled:opacity-30" aria-label={t('today.add')}>
         <ArrowUp size={20} />
       </button>

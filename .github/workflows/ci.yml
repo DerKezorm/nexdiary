@@ -33,6 +33,13 @@ jobs:
             backend/requirements.txt
             backend/requirements-dev.txt
 
+      - name: Install ffmpeg
+        # Videos and sounds attached to a day go through ffprobe and ffmpeg; their tests must run here, never be
+        # skipped (NEXDIARY_REQUIRE_FFMPEG below makes a missing ffmpeg fail them).
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+
       - name: Install the backend
         working-directory: backend
         run: python -m pip install -r requirements-dev.txt
@@ -41,7 +48,7 @@ jobs:
         working-directory: backend
         run: |
           python -m ruff check app tests
-          python -m pytest -q
+          NEXDIARY_REQUIRE_FFMPEG=1 python -m pytest -q
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:

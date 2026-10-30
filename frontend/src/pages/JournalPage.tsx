@@ -52,7 +52,7 @@ export function searchEntries(result: SearchResult): Shown[] {
     if (seen.has(hit.date)) continue
     seen.add(hit.date)
     const day = result.days[hit.date]
-    const snippet = hit.kind === 'text' || hit.kind === 'note' ? hit.snippet : null
+    const snippet = hit.kind === 'text' || hit.kind === 'note' || hit.kind === 'attachment' ? hit.snippet : null
     if (day) out.push({ ...day, excerpt: snippet ?? day.excerpt })
     else
       out.push({

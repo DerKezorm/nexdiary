@@ -1,7 +1,8 @@
 /**
  * Shared: the days others in the family gave to me, and the ones I gave. A shared day
  * is read only; the one who shared it can take it back at any time, and then it is gone here too. Values and notes
- * show only when the day was shared with them: the server sends nothing else.
+ * show only when the day was shared with them: the server sends nothing else. Attachments always come along, read only,
+ * their files through the share's own routes.
  */
 import { ArrowLeft, Heart, Lock, Share2, Users } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
@@ -9,6 +10,7 @@ import { useTranslation } from 'react-i18next'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { ApiError, sharedPhotoUrl, sharingApi, type SharedByMe, type SharedDay, type SharedItem } from '../api/client'
+import { Attachments } from '../components/Attachments'
 import { Avatar } from '../components/Avatar'
 import { useLightbox } from '../components/Lightbox'
 import { Markdown } from '../components/Markdown'
@@ -238,6 +240,11 @@ export function SharedEntryPage() {
           <Markdown text={day.text} photo={(id) => src(id, false)} />
           {day.photos.length > 0 && (
             <PhotoGallery className="mt-6" photos={day.photos.map((photo) => ({ id: photo.id, src: src(photo.id, true), width: photo.width, height: photo.height }))} alt={t('photos.alt')} onOpen={openPhoto} />
+          )}
+          {(day.attachments ?? []).length > 0 && (
+            <div className="mt-8 border-t border-line pt-6">
+              <Attachments date={day.date} items={day.attachments ?? []} source={{ owner, date: day.date }} />
+            </div>
           )}
           {day.tags.length > 0 && (
             <div className="mt-8 flex flex-wrap gap-2">

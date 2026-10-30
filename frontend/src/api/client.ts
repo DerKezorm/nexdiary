@@ -435,6 +435,8 @@ export type TodayData = {
   /** The streak with its unit, the goal, this week's count and the shields in hand. */
   series?: StreakView
   photos: Photo[]
+  /** The attachments of the day, oldest first. */
+  attachments?: Attachment[]
   question?: Question | null
   night?: Night
   catch_up?: CatchUp
@@ -624,7 +626,68 @@ export type PhotoUses = { cover: boolean; text: boolean; notes: { id: string; da
 export type PhotoDeletion = { deleted: string[]; locked: string[]; missing: string[] }
 export type LibraryPhoto = Photo & { uses: { cover: boolean; text: boolean; notes: { id: string; date: string }[] } }
 export type LibraryPage = { photos: LibraryPhoto[]; next: string | null }
-export type PhotoStorage = { used: number; limit: number | null; count: number }
+/** `by_kind`: the bytes of photos and of each kind of attachment; `attachments`: how many attachments. */
+export type PhotoStorage = { used: number; limit: number | null; count: number; by_kind?: { photos: number; video: number; audio: number; pdf: number }; attachments?: number }
+
+// ---- Attachments ----------------------------------------------------------------------------------------------------
+
+export type AttachmentKind = 'video' | 'audio' | 'pdf' | 'link'
+
+/** A video, a recording, a PDF or a link of a day, beside the photos and never in the text. `playable` is false only
+ * for a video in HEVC; `can_convert` says whether "Umwandeln" is offered for it now. */
+export type Attachment = {
+  id: string
+  date: string
+  kind: AttachmentKind
+  name: string
+  /** Only for a link. */
+  url?: string
+  size: number
+  seconds: number | null
+  width: number | null
+  height: number | null
+  codec: string | null
+  status: 'ready' | 'queued' | 'converting' | 'failed'
+  progress: number | null
+  playable: boolean
+  can_convert: boolean
+  has_preview: boolean
+  created_at: string
+}
+
+/** What the person may upload: the largest video and the largest recording or PDF, in MB, and whether the server has
+ * ffmpeg at all (without it, no video and no recording). */
+export type AttachmentLimits = { video_max_mb: number; other_max_mb: number; ffmpeg: boolean }
+
+/** The operator's card: the limits, whether converting is offered, ffmpeg, the queue. */
+export type AttachmentSettings = AttachmentLimits & {
+  convert: boolean
+  queue: { waiting: number; running: { id: string; progress: number } | null; last: { seconds_video: number; seconds_took: number } | null }
+}
+
+export type AttachmentLibrary = { attachments: Attachment[]; next: string | null }
+
+const attachment = (id: string) => `/api/attachments/${encodeURIComponent(id)}`
+
+/** The own attachments (the upload of a file goes through `lib/attachmentUpload.ts`, with its progress). */
+export const attachmentsApi = {
+  list: (date: string) => api<{ attachments?: Attachment[] }>('/api/attachments', { query: { date } }).then((found) => (Array.isArray(found?.attachments) ? found.attachments : [])),
+  link: (date: string | null, url: string, title: string | null, uploadId: string) =>
+    api<Attachment>('/api/attachments/link', { method: 'POST', body: { date, url, title, upload_id: uploadId } }),
+  remove: (id: string) => api<void>(attachment(id), { method: 'DELETE' }),
+  convert: (id: string) => api<Attachment>(`${attachment(id)}/convert`, { method: 'POST' }),
+  library: (kind: AttachmentKind | '', order: 'new' | 'size', before = '', limit = 50) =>
+    api<AttachmentLibrary>('/api/attachments/library', { query: { order, limit, ...(kind ? { kind } : {}), ...(before ? { before } : {}) } }),
+  /** Not in the contract of A2 yet: asked for in the report. Without it the page learns the limits from a refusal. */
+  limits: () => api<AttachmentLimits>('/api/attachments/limits'),
+  settings: () => api<AttachmentSettings>('/api/admin/attachments'),
+  saveSettings: (change: Partial<Pick<AttachmentSettings, 'video_max_mb' | 'other_max_mb' | 'convert'>>) => api<AttachmentSettings>('/api/admin/attachments', { method: 'PUT', body: change }),
+}
+
+/** Where the file of an own attachment comes from: to play or read (`?download=1` to save it), its still. */
+export function attachmentUrl(id: string, way: 'file' | 'download' | 'preview' = 'file'): string {
+  return `${attachment(id)}${way === 'preview' ? '/preview' : way === 'download' ? '?download=1' : ''}`
+}
 
 /** The own Immich, as its card shows it. With the operator's bolt closed only `allowed: false`; the key never comes
  * back, only whether one is stored. */
@@ -727,7 +790,7 @@ export type JournalPage = { days: JournalDay[]; more: boolean }
 export type JournalVolume = { year: number; pages: number; days: number; months: number[] }
 export type JournalOverview = { count: number; since: string | null; tags: { tag: string; count: number }[]; volumes?: JournalVolume[]; year?: number; days_left?: number }
 
-export type SearchHit = { date: string; kind: 'title' | 'text' | 'tag' | 'note'; snippet: string; note_id?: string }
+export type SearchHit = { date: string; kind: 'title' | 'text' | 'tag' | 'note' | 'attachment'; snippet: string; note_id?: string }
 export type SearchResult = { results: SearchHit[]; more: boolean; days: Record<string, JournalDay> }
 
 export type DayShares = { date: string; people: Recipient[]; with_values: boolean; with_notes: boolean }
@@ -744,6 +807,8 @@ export type SharedDay = {
   cover: string
   cover_crop?: CoverCropValue | null
   photos: { id: string; width: number; height: number }[]
+  /** Always along with the share, like the photos. */
+  attachments?: Attachment[]
   with_values: boolean
   with_notes: boolean
   heart: string | null
@@ -817,6 +882,11 @@ export const sharingApi = {
 /** A photo of a day shared with me: only through the share, never through the owner's own address. */
 export function sharedPhotoUrl(owner: number, date: string, id: string, preview = false): string {
   return `${shared(owner, date)}/photos/${encodeURIComponent(id)}${preview ? '/preview' : ''}`
+}
+
+/** An attachment of a day shared with me, through the share. */
+export function sharedAttachmentUrl(owner: number, date: string, id: string, way: 'file' | 'download' | 'preview' = 'file'): string {
+  return `${shared(owner, date)}/attachments/${encodeURIComponent(id)}${way === 'preview' ? '/preview' : way === 'download' ? '?download=1' : ''}`
 }
 
 /** A time capsule for me: who sent it (null: an account deleted since), its title and its days; whether it is open

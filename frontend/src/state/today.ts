@@ -5,9 +5,10 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { ApiError, diaryApi, photosApi, promptsApi, type Night, type Note, type Photo, type Question, type TodayData } from '../api/client'
+import { ApiError, diaryApi, photosApi, promptsApi, type Attachment, type Night, type Note, type Photo, type Question, type TodayData } from '../api/client'
 import { newId } from '../lib/ids'
 import { uploadPhoto } from '../lib/upload'
+import { withAttachment } from './attachments'
 import { useAuth } from './auth'
 
 /** The text as the server keeps it: line breaks as \n, no control characters, no space at the ends. */
@@ -324,6 +325,21 @@ export function useToday() {
     }
   }, [load])
 
+  /** The day an attachment goes to, asked the moment it is sent: after midnight the answer of the night question
+   * (asked first when there is none yet), else the day shown; null when the question was put away. */
+  const attachDay = useCallback(async (): Promise<string | null> => {
+    if (!(await dayChosen())) return null
+    return shownDay.current
+  }, [dayChosen])
+
+  /** An attachment the server holds now (uploaded, converted): it joins the attachments of the day it belongs to. */
+  const changeAttachments = useCallback((change: (list: Attachment[]) => Attachment[]) => {
+    setData((current) => (current ? { ...current, attachments: change(current.attachments ?? []) } : current))
+  }, [])
+  const keepAttachment = useCallback((attachment: Attachment) => {
+    setData((current) => (current && current.date === attachment.date ? { ...current, attachments: withAttachment(current.attachments ?? [], attachment) } : current))
+  }, [])
+
   /** Another question of the day, kept by the server for the rest of the day. */
   const anotherQuestion = useCallback(async () => {
     try {
@@ -336,7 +352,7 @@ export function useToday() {
     }
   }, [])
 
-  return { data, problem, problemValues, load, addNote, addShared, changeNote, moveNote, moved, clearMoved: () => setMoved(null), asking, chooseNight, deleteNote, rate, setTags, addPhoto, keepPhoto, deletePhoto, anotherQuestion }
+  return { data, problem, problemValues, load, addNote, addShared, changeNote, moveNote, moved, clearMoved: () => setMoved(null), asking, chooseNight, deleteNote, rate, setTags, addPhoto, keepPhoto, deletePhoto, anotherQuestion, attachDay, changeAttachments, keepAttachment }
 }
 
 export type TodayState = ReturnType<typeof useToday>

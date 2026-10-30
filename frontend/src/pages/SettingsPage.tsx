@@ -1,16 +1,17 @@
 /**
  * Settings, for the operator only: the server in one row of tabs (accounts, sign-in, mail, AI, Immich, Web Push,
- * backups, languages, log, API). Everything personal is under "My account". The part is in the address
+ * attachments, backups, languages, log, API). Everything personal is under "My account". The part is in the address
  * (`?tab=signin`), so a link can point at one. A member has no use for this page and is sent to their account;
  * the addresses of the time before the split (`?tab=server&sub=api`, `?tab=looks`, `?tab=general`) still lead
  * to the right place.
  */
-import { BellRing, HardDrive, Image, KeyRound, Languages, Mail, Plug, ScrollText, Sparkles, Users } from 'lucide-react'
+import { BellRing, HardDrive, Image, KeyRound, Languages, Mail, Paperclip, Plug, ScrollText, Sparkles, Users } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Navigate, useSearchParams } from 'react-router-dom'
 
 import { useAuth } from '../state/auth'
 import { AiCard } from './settings/AiCard'
+import { AttachmentsCard } from './settings/AttachmentsCard'
 import { ImmichServerCard } from './settings/ImmichCards'
 import { PushServerCard } from './settings/PushCards'
 import { EncryptionCard, ReadinessCard } from './settings/ReadinessCards'
@@ -18,9 +19,9 @@ import { AccountsCard, ApiTokensCard, BackupsCard, LanguagesCard, LogCard, MailC
 import { SignInPart } from './settings/SignInCards'
 import { TabRow, type Tab } from './settings/ui'
 
-type Part = 'accounts' | 'signin' | 'mail' | 'ai' | 'immich' | 'push' | 'backups' | 'languages' | 'log' | 'api'
-const PARTS: Part[] = ['accounts', 'signin', 'mail', 'ai', 'immich', 'push', 'backups', 'languages', 'log', 'api']
-const PART_ICON = { accounts: Users, signin: KeyRound, mail: Mail, ai: Sparkles, immich: Image, push: BellRing, backups: HardDrive, languages: Languages, log: ScrollText, api: Plug }
+type Part = 'accounts' | 'signin' | 'mail' | 'ai' | 'immich' | 'push' | 'files' | 'backups' | 'languages' | 'log' | 'api'
+const PARTS: Part[] = ['accounts', 'signin', 'mail', 'ai', 'immich', 'push', 'files', 'backups', 'languages', 'log', 'api']
+const PART_ICON = { accounts: Users, signin: KeyRound, mail: Mail, ai: Sparkles, immich: Image, push: BellRing, files: Paperclip, backups: HardDrive, languages: Languages, log: ScrollText, api: Plug }
 
 /** Where an address of the old layout (`?tab=general`, `?tab=looks`) belongs now; the rest stays on this page. */
 function movedTo(params: URLSearchParams): string | null {
@@ -75,6 +76,8 @@ function ServerPart({ part }: { part: Part }) {
       return <AiCard />
     case 'push':
       return <PushServerCard />
+    case 'files':
+      return <AttachmentsCard />
     case 'immich':
       return <ImmichServerCard />
     case 'mail':

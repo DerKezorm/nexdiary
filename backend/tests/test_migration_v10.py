@@ -58,7 +58,8 @@ def test_a_v9_database_comes_to_v10_whole_and_its_days_can_be_locked(
         assert connection.execute("SELECT count(*) FROM users WHERE ai_allowed = 1 AND immich_allowed = 1 "
                                   "AND night_for IS NULL AND night_day IS NULL").fetchone() == (2,)
         assert connection.execute("SELECT count(*) FROM days WHERE locked_at IS NOT NULL").fetchone() == (0,)
-        assert connection.execute("SELECT name FROM sqlite_master WHERE type = 'trigger'").fetchall() == [
+        assert connection.execute("SELECT name FROM sqlite_master WHERE type = 'trigger' "
+                                  "AND tbl_name = 'days'").fetchall() == [
             ("trg_days_locked_stays",)]
     with closing(sqlite3.connect(":memory:")) as connection:
         connection.executescript(fresh_schema_sql())

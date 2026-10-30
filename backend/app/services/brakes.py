@@ -16,6 +16,8 @@ from ..errors import error
 #: Per person and minute.
 LIMITS = {
     "upload": 30,
+    #: Videos, sounds, PDFs and links attached to days: picked one at a time as well.
+    "attachment": 30,
     "draft": 120,
     "new_day": 60,
     "new_note": 120,
@@ -38,6 +40,7 @@ LIMITS = {
 #: The code and the sentence of the answer.
 CODES = {
     "upload": ("too_many_uploads", "Too many photos at once. Wait a minute."),
+    "attachment": ("too_many_uploads", "Too many attachments at once. Wait a minute."),
     "draft": ("slow_down_writing", "Too much at once. Wait a minute."),
     "new_day": ("slow_down_writing", "Too much at once. Wait a minute."),
     "new_note": ("slow_down_writing", "Too much at once. Wait a minute."),

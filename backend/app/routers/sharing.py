@@ -4,8 +4,8 @@
 * ``/api/people``: whom a day can be shared with (name, shown name, picture; nothing else).
 * ``/api/days/{date}/shares``: who an own day is shared with; share it, end sharing it.
 * ``/api/shares``: the own days shared with somebody.
-* ``/api/shared``: the days others shared with the signed-in person, each one read only, its photos through the share,
-  the heart.
+* ``/api/shared``: the days others shared with the signed-in person, each one read only, its photos and attachments
+  through the share, the heart.
 
 Every rule of who sees what lives in ``services/sharing.py``. A day of somebody else that is not shared with the
 signed-in person answers 404, exactly like one that does not exist; the operator has no way in.
@@ -15,12 +15,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from ..deps import Account, DbSession
 from ..errors import error
-from ..services import diary, journal, photos, sharing, vault
+from ..services import attachments, diary, journal, photos, sharing, vault
+from . import attachments as attachments_router
 
 router = APIRouter(prefix="/api", tags=["journal and sharing"])
 
@@ -162,3 +163,21 @@ def shared_photo(owner: str, date: str, photo_id: str, account: Account, db: DbS
 @router.get("/shared/{owner}/{date}/photos/{photo_id}/preview", summary="The smaller copy of such a photo")
 def shared_preview(owner: str, date: str, photo_id: str, account: Account, db: DbSession) -> Response:
     return _picture(account, db, owner, date, photo_id, preview=True)
+
+
+@router.get("/shared/{owner}/{date}/attachments/{attachment_id}", summary="The file of an attachment of a day shared "
+            "with me (ranges as the browser asks)")
+def shared_attachment(owner: str, date: str, attachment_id: str, request: Request, account: Account, db: DbSession,
+                      download: bool = False) -> Response:
+    opened = sharing.shared_attachment(db, account.id, _owner_id(owner), _shared_date(date),
+                                       attachments.check_id(attachment_id), preview=False)
+    # Not kept by the browser: a share taken back must not leave its files in the cache of the one it was for.
+    return attachments_router.stream(request, opened, download=download, cache="private, no-store")
+
+
+@router.get("/shared/{owner}/{date}/attachments/{attachment_id}/preview",
+            summary="The still of a video of a day shared with me")
+def shared_attachment_preview(owner: str, date: str, attachment_id: str, account: Account, db: DbSession) -> Response:
+    opened = sharing.shared_attachment(db, account.id, _owner_id(owner), _shared_date(date),
+                                       attachments.check_id(attachment_id), preview=True)
+    return attachments_router.still(opened, "private, no-store")

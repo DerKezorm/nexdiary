@@ -51,9 +51,11 @@ from ..security import (
 )
 from ..services import (
     accounts,
+    attachments,
     autowrite,
     book,
     capsules,
+    conversions,
     diary,
     family,
     locales,
@@ -697,11 +699,15 @@ def delete_account(
     # The database takes the days, notes, values, photos and the data key with it (ON DELETE CASCADE): without the
     # key, any copy of what the person wrote is unreadable for good. The photo files go after the rows.
     gone = photos.uids_of(db, account_id) + capsules.files_of(db, account_id)
+    attached = attachments.files_of(db, account_id)
     db.delete(row)
     db.commit()
     # Time capsules stay with the people they are for; only those nobody is left to receive go, with their photos.
     gone += capsules.tidy_after_deletion(db)
     photos.remove_files(gone)
+    # The attachments went with the rows; a conversion of one of them stops, their files go.
+    conversions.cancel_account(account_id)
+    attachments.remove_disk_files(attached)
     vault.shred_leftovers()
     totp.forget_account(account_id)
     # A book of the person being set stops, a finished one goes with its file.

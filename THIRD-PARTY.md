@@ -55,6 +55,20 @@ image, contain:
 The wheel ships these notices in `pillow_heif-*.dist-info/licenses/`. GPL-2.0-or-later and LGPL-3.0 may be combined
 with an AGPL-3.0 work, and the source of every part is public.
 
+### Videos and sounds: ffmpeg
+
+To check the videos and sounds attached to a day, pack them anew without their metadata and turn HEVC into H.264 on
+request, the container image installs ffmpeg (with ffprobe) as the Debian package `ffmpeg`, together with the libraries
+it depends on (libavcodec, libavformat, libavfilter with zimg, x264, x265 and others). nexdiary calls the programs; it
+does not link them.
+
+| What | Licence |
+|---|---|
+| FFmpeg as Debian builds it (`--enable-gpl`, with x264 and x265) | GPL-2.0-or-later as a whole; its own code LGPL-2.1-or-later |
+
+The licences of every package lie in the image under `/usr/share/doc/<package>/copyright`, and the source of each is
+public at Debian (`apt-get source ffmpeg`) and at ffmpeg.org. GPL-2.0-or-later may be combined with an AGPL-3.0 work.
+
 ## Frontend
 
 | Package | Licence |
@@ -63,6 +77,7 @@ with an AGPL-3.0 work, and the source of every part is public.
 | lucide-react | ISC |
 | Milkdown (`@milkdown/kit`), ProseMirror, remark, unified, micromark (the editor and what it brings) | MIT |
 | Fontsource packages | MIT (the fonts themselves OFL-1.1, see above) |
+| pdfjs-dist (PDF.js, reads the PDFs attached to a day; its worker is a file of the build) | Apache-2.0 |
 
 The editor package also installs a few packages for parts of Milkdown that nexdiary does not use (such as DOMPurify,
 MPL-2.0 or Apache-2.0, and Vue, MIT). The build leaves them out: they are not in the image.

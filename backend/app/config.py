@@ -71,6 +71,10 @@ class Settings(BaseSettings):
     #: How many pictures are unpacked at the same moment (photos, profile pictures). Each one may take some 150 MB
     #: while it is open; one is enough for a family, a larger server may give more.
     decode_slots: int = 1
+    #: ffmpeg and ffprobe for videos and sound (``services/media_tools.py``). Empty: looked up on the PATH. Without
+    #: them nexdiary still runs; videos and sound are then not taken.
+    ffmpeg: str = ""
+    ffprobe: str = ""
 
     @field_validator("data_dir", "frontend_dist", "media_dir", "locales_dir", "master_key_file")
     @classmethod

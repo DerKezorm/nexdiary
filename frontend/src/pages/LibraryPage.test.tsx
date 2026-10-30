@@ -111,8 +111,8 @@ describe('the storage line', () => {
   it('says how much of the limit the photos take, and how many there are', async () => {
     await show()
     const line = box.querySelector('[data-testid="storage"]')!
-    expect(line.textContent).toContain('1,2 GB von 5 GB belegt')
-    expect(line.textContent).toContain('5 Fotos')
+    expect(line.textContent).toContain('1,2 GB von 5 GB')
+    expect(box.querySelector('[role="tab"]')!.textContent).toBe('Fotos · 5')
     expect(line.querySelector('[role=img]')!.getAttribute('aria-label')).toBe('24 Prozent deines Platzes belegt')
   })
 
@@ -122,7 +122,7 @@ describe('the storage line', () => {
     await show()
     const line = box.querySelector('[data-testid="storage"]')!
     expect(line.textContent).toContain('50 MB used')
-    expect(line.textContent).toContain('1 photo')
+    expect(box.querySelector('[role="tab"]')!.textContent).toBe('Photos · 1')
     expect(line.querySelector('[role=img]')).toBeNull()
   })
 })
@@ -130,7 +130,7 @@ describe('the storage line', () => {
 describe('the photos', () => {
   it('groups them by month, newest first, and links each use to its day', async () => {
     await show()
-    expect([...box.querySelectorAll('section h2')].map((heading) => heading.textContent)).toEqual(['Oktober 2026', 'September 2026'])
+    expect([...box.querySelectorAll('section[aria-label] h2')].map((heading) => heading.textContent)).toEqual(['Oktober 2026', 'September 2026'])
     expect(tiles().map((item) => item.getAttribute('data-photo'))).toEqual([id(1), id(2), id(3)])
     const links = (n: number) => [...tile(n).querySelectorAll('a')].map((link) => [link.textContent, link.getAttribute('href')])
     // A note of today leads to "Today", the cover and the text of a day to that day.
@@ -149,10 +149,10 @@ describe('the photos', () => {
     await act(async () => button('Mehr laden')!.click())
     await until(() => tiles().length === 5, 'the next page')
     expect(calls.filter((call) => call.url.startsWith('/api/photos/library')).map((call) => new URL(call.url, 'http://x').searchParams.get('before'))).toEqual([null, 'cursor-1'])
-    expect([...box.querySelectorAll('section h2')].map((heading) => heading.textContent)).toEqual(['Oktober 2026', 'September 2026', 'August 2026'])
+    expect([...box.querySelectorAll('section[aria-label] h2')].map((heading) => heading.textContent)).toEqual(['Oktober 2026', 'September 2026', 'August 2026'])
     expect(button('Mehr laden')).toBeUndefined()
     // September 30 and September 12 stand in one month.
-    expect([...box.querySelectorAll('section')[1].querySelectorAll('li[data-photo]')].map((item) => item.getAttribute('data-photo'))).toEqual([id(3), id(4)])
+    expect([...box.querySelectorAll('section[aria-label]')[1].querySelectorAll('li[data-photo]')].map((item) => item.getAttribute('data-photo'))).toEqual([id(3), id(4)])
   })
 
   it('keeps only what nothing uses on the filter, asked of the server', async () => {
@@ -203,6 +203,6 @@ describe('the big view and deleting', () => {
     await act(async () => [...question.querySelectorAll('button')].find((item) => item.textContent === '2 Fotos löschen')!.click())
     await eventually(() => expect(tiles().map((item) => item.getAttribute('data-photo'))).toEqual([id(1)]), 'the photos going')
     expect(calls.find((call) => call.url === '/api/photos/delete')!.body).toEqual({ ids: [id(2), id(3)] })
-    await eventually(() => expect(box.querySelector('[data-testid="storage"]')!.textContent).toContain('3 Fotos'), 'the storage line')
+    await eventually(() => expect(box.querySelector('[role="tab"]')!.textContent).toBe('Fotos · 3'), 'the count of the photos')
   })
 })

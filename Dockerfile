@@ -28,9 +28,10 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# curl for the healthcheck, gosu to drop root at start.
+# curl for the healthcheck, gosu to drop root at start, ffmpeg (with ffprobe) for the videos and sounds attached to a
+# day: checked, packed anew without their metadata, and HEVC turned into H.264 on request.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl gosu \
+    && apt-get install -y --no-install-recommends curl gosu ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt ./

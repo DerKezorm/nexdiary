@@ -1,4 +1,30 @@
 {
+  "0.11.0": {
+    "lead": "A day now holds more than text and photos: videos, voice recordings, PDFs and links. And photos can be added to older days too.",
+    "sections": [
+      {
+        "title": "Attachments",
+        "where": "Reading a day, Today, Writing",
+        "body": "Below the photos of a day stands the section “Attachments”. With “Attach” you add a video, a PDF or a link. Videos play right in nexdiary, a PDF is leafed through page by page, a link opens only when you tap it; nexdiary itself never visits the page. When you share a day, the attachments go along, like the photos. An HEVC video from an iPhone is converted to H.264 by the server if you like, then it plays everywhere."
+      },
+      {
+        "title": "Add photos to older days",
+        "where": "Reading a day, Writing",
+        "body": "The menu “Attach” has “Add photos”, on every day that is not locked. Several at once work, on a phone with the camera too, and from Immich when it is connected. The photos show below the text, the cover stays as it is."
+      },
+      {
+        "title": "Voice recordings",
+        "where": "Today, Quick note",
+        "body": "Next to the field there is a microphone. You record, give the recording a name and keep it, and it lies with the attachments of the day. In the quick note, today's recordings stand below the notes. A recording lasts at most 30 minutes. The microphone works only when nexdiary runs on https."
+      }
+    ],
+    "smallTitle": "Also",
+    "small": [
+      "“My photos” has a tab “Attachments”: every video, recording, PDF and link, filtered by kind, sorted by date or size, to delete. The storage line says how much goes to photos, videos and the rest.",
+      "The operator sets under Settings, Attachments how large a video or a PDF may be and whether HEVC videos are converted.",
+      "The search finds attachments by their name."
+    ]
+  },
   "0.10.0": {
     "lead": "Days gone by can be added now, even without any notes, and written up by the AI from a few words.",
     "sections": [

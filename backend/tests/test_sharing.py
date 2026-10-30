@@ -147,8 +147,8 @@ def test_a_shared_day_shows_text_tags_cover_and_photos_and_nothing_else(family: 
     assert body["from"] == {"id": family.jule_id, "name": "jule", "display_name": "", "avatar": None}
     assert [photo["id"] for photo in body["photos"]] == [family.day_photo], "the day's photos, the cover apart"
     assert "values" not in body and "notes" not in body
-    assert set(body) == {"from", "date", "title", "text", "tags", "cover", "cover_crop", "photos", "with_values",
-                         "with_notes", "heart", "shared_at"}
+    assert set(body) == {"from", "date", "title", "text", "tags", "cover", "cover_crop", "photos", "attachments",
+                         "with_values", "with_notes", "heart", "shared_at"}
     # Not in any answer Ben can get: neither the names of Jule's values nor her notes. And none is kept by a browser
     # or a proxy.
     answers = everything_ben_gets(family)

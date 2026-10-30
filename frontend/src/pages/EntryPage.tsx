@@ -4,13 +4,18 @@
  * the notes of the day folded away, the family question of that date (only for whoever answered it then, as the server
  * decides), and a year ago today. "Bearbeiten" leads into the writing page, "Teilen" opens the dialog, "Seite löschen"
  * asks first and leaves the notes.
+ *
+ * Below the photos stand the attachments of the day (`components/Attachments.tsx`); their menu also lays photos onto
+ * the day ("Fotos dazulegen", several at once, from the device or the own Immich), which never become its cover. A
+ * locked day shows its attachments and takes nothing new.
  */
-import { ChevronDown, Crop, Heart, ImageIcon, Lock, PenLine, Share2, Sparkles, Trash2 } from 'lucide-react'
+import { ChevronDown, Crop, Heart, ImageIcon, Loader2, Lock, PenLine, Share2, Sparkles, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { ApiError, diaryApi, familyApi, immichApi, journalApi, photosApi, photoUrl, sharingApi, type CoverCropValue, type DayPage, type DayShares, type FamilyCard, type ImmichEntry, type ImmichPhoto, type JournalDay, type Note, type Photo, type ValueDef } from '../api/client'
+import { Attachments } from '../components/Attachments'
 import { Avatar } from '../components/Avatar'
 import { CoverCropDialog } from '../components/CropEditor'
 import { DeletePageDialog } from '../components/DeletePage'
@@ -30,6 +35,7 @@ import { nameOf } from '../lib/people'
 import { uploadPhoto } from '../lib/upload'
 import { textPhotoIds } from '../lib/markdown'
 import { useAuth } from '../state/auth'
+import { useDayAttachments } from '../state/attachments'
 import { useImmichDay, useImmichReady } from '../state/immich'
 
 type Loaded = { day: DayPage; notes: Note[]; photos: Photo[]; values: ValueDef[]; shares: DayShares }
@@ -60,6 +66,10 @@ export function EntryPage() {
   const immich = useImmichDay(date, picking)
   const [yearAgo, setYearAgo] = useState<JournalDay | null>(null)
   const { confirmDelete } = useDeletePhotos()
+  const attachments = useDayAttachments(date)
+  /** Photos laid onto the day ("Fotos dazulegen"): how far the upload is; the own Immich to pick from. */
+  const [adding, setAdding] = useState<{ n: number; total: number } | null>(null)
+  const [addingImmich, setAddingImmich] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -115,6 +125,33 @@ export function EntryPage() {
     } finally {
       setUploading(false)
     }
+  }
+
+  const keepPhoto = (photo: Photo) => setData((current) => (current ? { ...current, photos: current.photos.some((item) => item.id === photo.id) ? current.photos : [...current.photos, photo] } : current))
+
+  /** "Fotos dazulegen": photos for the day, one after the other, never its cover; the cover stays as it is. */
+  const addPhotos = async (files: File[]) => {
+    if (adding) return
+    let added = 0
+    setProblem(null)
+    try {
+      for (const [index, file] of files.entries()) {
+        setAdding({ n: index + 1, total: files.length })
+        keepPhoto(await uploadPhoto(file, date))
+        added += 1
+      }
+    } catch (error) {
+      setProblem(error instanceof ApiError ? error.code : 'internal_error')
+    } finally {
+      setAdding(null)
+      if (added > 0) say(t('attachments.photos.added', { count: added }))
+    }
+  }
+
+  /** A photo of the own Immich, whenever it was shot, laid onto this day (copied now); the cover stays. */
+  const addFromImmich = async (entry: ImmichEntry) => {
+    keepPhoto(await immichApi.take(entry.id, date, false, true))
+    say(t('attachments.photos.added', { count: 1 }))
   }
 
   /** A photo of Immich becomes a photo of this day (copied now), then its cover. */
@@ -224,6 +261,23 @@ export function EntryPage() {
           <Markdown text={day.text} />
           {dayPhotos.length > 0 && (
             <PhotoGallery className="mt-6" photos={dayPhotos.map((photo) => ({ id: photo.id, src: photoUrl(photo.id, true), width: photo.width, height: photo.height }))} alt={t('photos.alt')} onOpen={openPhoto} />
+          )}
+          {adding && (
+            <p role="status" className="mt-4 flex items-center gap-2 text-sm text-muted" data-photos-adding>
+              <Loader2 size={15} className="animate-spin" aria-hidden /> {t('attachments.photos.uploading', { n: adding.n, total: adding.total })}
+            </p>
+          )}
+          {(!day.locked || attachments.items.length > 0) && (
+            <div className="mt-8 border-t border-line pt-6">
+              <Attachments
+                date={date}
+                items={attachments.items}
+                onChange={attachments.update}
+                editable={!day.locked}
+                onPhotos={day.locked ? undefined : (files) => void addPhotos(files)}
+                onImmichPhotos={!day.locked && immichReady ? () => setAddingImmich(true) : undefined}
+              />
+            </div>
           )}
           <div className="mt-8 flex flex-wrap gap-2">
             {day.tags.map((tag) => (
@@ -388,6 +442,7 @@ export function EntryPage() {
         />
       )}
       {collection && !day.locked && <ImmichPicker date={date} onClose={() => setCollection(false)} onPick={takeAny} />}
+      {addingImmich && !day.locked && <ImmichPicker date={date} onClose={() => setAddingImmich(false)} onPick={addFromImmich} />}
     </div>
   )
 }

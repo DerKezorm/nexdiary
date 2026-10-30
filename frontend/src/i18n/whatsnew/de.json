@@ -1,4 +1,30 @@
 {
+  "0.11.0": {
+    "lead": "Ein Tag hält jetzt mehr als Text und Fotos: Videos, Sprachaufnahmen, PDFs und Links. Und Fotos lassen sich auch an ältere Tage legen.",
+    "sections": [
+      {
+        "title": "Anhänge",
+        "where": "Tag lesen, Heute, Schreiben",
+        "body": "Unter den Fotos eines Tages steht der Abschnitt „Anhänge“. Über „Anhängen“ legst du ein Video, ein PDF oder einen Link dazu. Videos spielen direkt in nexdiary, ein PDF blätterst du Seite für Seite durch, ein Link öffnet sich erst, wenn du ihn antippst; nexdiary selbst ruft die Seite nie auf. Teilst du einen Tag, gehen die Anhänge mit, wie die Fotos. Ein Video vom iPhone im Format HEVC wandelt der Server auf Wunsch in H.264 um, dann läuft es überall."
+      },
+      {
+        "title": "Fotos an älteren Tagen dazulegen",
+        "where": "Tag lesen, Schreiben",
+        "body": "Im Menü „Anhängen“ steht „Fotos dazulegen“, an jedem Tag, der nicht verschlossen ist. Mehrere auf einmal gehen, auf dem Handy auch mit der Kamera, mit verbundenem Immich auch von dort. Die Fotos erscheinen unter dem Text, das Titelbild bleibt, wie es ist."
+      },
+      {
+        "title": "Sprachaufnahmen",
+        "where": "Heute, Schnellnotiz",
+        "body": "Neben dem Eingabefeld steht ein Mikrofon. Du nimmst auf, gibst der Aufnahme einen Namen und behältst sie, dann liegt sie bei den Anhängen des Tages. In der Schnellnotiz stehen die Aufnahmen von heute unter den Notizen. Eine Aufnahme dauert höchstens 30 Minuten. Das Mikrofon geht nur, wenn nexdiary über https läuft."
+      }
+    ],
+    "smallTitle": "Außerdem",
+    "small": [
+      "Unter „Meine Fotos“ gibt es den Reiter „Anhänge“: alle Videos, Aufnahmen, PDFs und Links, nach Art gefiltert, nach Datum oder Größe sortiert, zum Löschen. Die Speicheranzeige sagt, wie viel auf Fotos, Videos und den Rest fällt.",
+      "Der Betreiber legt unter Einstellungen, Anhänge fest, wie groß ein Video oder ein PDF sein darf und ob HEVC-Videos umgewandelt werden.",
+      "Die Suche findet Anhänge über ihren Namen."
+    ]
+  },
   "0.10.0": {
     "lead": "Vergangene Tage lassen sich jetzt nachtragen, auch ganz ohne Notizen, und mit ein paar Stichpunkten von der KI ausformulieren.",
     "sections": [

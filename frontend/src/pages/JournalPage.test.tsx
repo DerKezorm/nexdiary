@@ -195,6 +195,11 @@ describe('the journal', () => {
       ['2026-10-01', 'nur notiz', true],
     ])
   })
+
+  it('shows the name of an attachment the search found in place of the start of the page', () => {
+    const entries = searchEntries({ results: [{ date: '2026-10-04', kind: 'attachment', snippet: 'Elternbrief Kita.pdf' }], more: false, days: { '2026-10-04': FIRST[1] } })
+    expect(entries.map((entry) => entry.excerpt)).toEqual(['Elternbrief Kita.pdf'])
+  })
 })
 
 describe('a day read', () => {
@@ -206,7 +211,8 @@ describe('a day read', () => {
     expect(box.textContent).toContain('9/10')
     expect(box.querySelector('[aria-label="Tom hat ein Herz geschickt"]')).not.toBeNull()
     expect(box.textContent).not.toContain('see! wasser kalt')
-    await click(box.querySelector('button[aria-expanded]'))
+    // The notes fold out; the other button that opens something is the menu of the attachments.
+    await click(box.querySelector('button[aria-expanded]:not([aria-haspopup])'))
     expect(box.textContent).toContain('see! wasser kalt')
     expect(box.querySelector('a[href="/tag/2026-10-04/schreiben"]')?.textContent).toContain('Bearbeiten')
   })

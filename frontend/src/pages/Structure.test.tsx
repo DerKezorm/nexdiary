@@ -116,9 +116,9 @@ describe('My account', () => {
 })
 
 describe('Settings', () => {
-  it('has one row of ten tabs for the operator', async () => {
+  it('has one row of eleven tabs for the operator', async () => {
     await show('/einstellungen')
-    expect(tabs()).toEqual(['Konten', 'Anmeldung', 'Mail', 'KI', 'Immich', 'Web Push', 'Sicherung', 'Sprachen', 'Log', 'API'])
+    expect(tabs()).toEqual(['Konten', 'Anmeldung', 'Mail', 'KI', 'Immich', 'Web Push', 'Anhänge', 'Sicherung', 'Sprachen', 'Log', 'API'])
     expect(box.querySelectorAll('[role="tablist"]')).toHaveLength(1)
     expect(selected()).toBe('Konten')
   })

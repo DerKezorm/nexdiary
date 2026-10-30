@@ -55,7 +55,8 @@ MEDIA_PREFIX = "media/"
 #: The key the server encrypts its own secrets with (OIDC client secret, mail password): without it a restore on
 #: another machine would bring those back unreadable. Whoever holds a backup holds the database anyway.
 SECRET_ENTRY = "secret.key"
-#: Files in the media folder are named by their id, a smaller copy of a photo by its id and ``.p``.
+#: Files in the media folder are named by their id, a smaller copy of a photo (or the still of a video) by its id and
+#: ``.p``. The work folders of uploads (``.work-…``) and temporary files never match.
 MEDIA_NAME = re.compile(r"^[A-Za-z0-9_-]{8,40}(\.p)?$")
 PENDING = "restore-pending"
 MANUAL = "manual"
@@ -74,11 +75,12 @@ SQLITE_HEADER = b"SQLite format 3\x00"
 _CHUNK = 1024 * 1024
 #: What an archive may unpack to, counted while it is read, never taken from what the archive says about itself: a
 #: small ZIP can claim little and inflate to a full disk. The key is a line of text; one file of the media folder is a
-#: photo or a short video; the whole is what an upload may carry.
+#: photo or a video attached to a day (the largest the operator may allow, sealed); the whole is what an upload may
+#: carry (``middleware.LARGE_BODIES``): the videos of a family add up.
 SECRET_MAX = 4096
-MEDIA_ENTRY_MAX = 1024**3
+MEDIA_ENTRY_MAX = 5 * 1024**3
 DATABASE_MAX = 16 * 1024**3
-RESTORE_MAX = 64 * 1024**3
+RESTORE_MAX = 1024**4
 _lock = threading.Lock()
 
 
@@ -304,38 +306,43 @@ def create(*, kind: str = MANUAL, note: str = "") -> Path:
     partial = base / f".{name}.{unique}.part"
     database = base / f".{name}.{unique}.db"
     done = False
-    try:
-        # Both only the owner's before a byte is in them: the archive holds the key and everything else.
-        private.new_file(database)
-        private.new_file(partial)
-        accounts = _database_copy(database)
-        manifest = Manifest(version=__version__, created=moment.isoformat(timespec="seconds"), kind=kind, note=note,
-                            accounts=accounts)
-        with zipfile.ZipFile(partial, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
-            archive.write(database, DATABASE_ENTRY)
-            key = get_settings().data_dir / "secret.key"
-            if key.is_file():
-                archive.write(key, SECRET_ENTRY)
-            for rel, full in _media_files(media_root()):
-                try:
-                    size = full.stat().st_size
-                    # Photos are packed already; deflating them again only costs time.
-                    archive.write(full, MEDIA_PREFIX + rel, compress_type=zipfile.ZIP_STORED)
-                    manifest.media[rel] = [size, _hash_file(full)]
-                except OSError as exc:
-                    logger.warning("A file could not be backed up and was left out: %s", exc.strerror)
-                    continue
-                manifest.files += 1
-                manifest.bytes += size
-            # Last: an archive without its manifest is recognisably incomplete.
-            archive.writestr(MANIFEST, json.dumps(asdict(manifest), ensure_ascii=False))
-        os.replace(partial, target)
-        done = True
-    finally:
-        partial.unlink(missing_ok=True)
-        database.unlink(missing_ok=True)
-        if not done:
-            target.unlink(missing_ok=True)
+    from . import photos
+
+    # From before the copy of the database to the last media file: no file a row of that copy names is deleted
+    # meanwhile, so the archive never holds a photo or an attachment without its file.
+    with photos.files_kept():
+        try:
+            # Both only the owner's before a byte is in them: the archive holds the key and everything else.
+            private.new_file(database)
+            private.new_file(partial)
+            accounts = _database_copy(database)
+            manifest = Manifest(version=__version__, created=moment.isoformat(timespec="seconds"), kind=kind, note=note,
+                                accounts=accounts)
+            with zipfile.ZipFile(partial, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
+                archive.write(database, DATABASE_ENTRY)
+                key = get_settings().data_dir / "secret.key"
+                if key.is_file():
+                    archive.write(key, SECRET_ENTRY)
+                for rel, full in _media_files(media_root()):
+                    try:
+                        size = full.stat().st_size
+                        # Photos are packed already; deflating them again only costs time.
+                        archive.write(full, MEDIA_PREFIX + rel, compress_type=zipfile.ZIP_STORED)
+                        manifest.media[rel] = [size, _hash_file(full)]
+                    except OSError as exc:
+                        logger.warning("A file could not be backed up and was left out: %s", exc.strerror)
+                        continue
+                    manifest.files += 1
+                    manifest.bytes += size
+                # Last: an archive without its manifest is recognisably incomplete.
+                archive.writestr(MANIFEST, json.dumps(asdict(manifest), ensure_ascii=False))
+            os.replace(partial, target)
+            done = True
+        finally:
+            partial.unlink(missing_ok=True)
+            database.unlink(missing_ok=True)
+            if not done:
+                target.unlink(missing_ok=True)
     logger.info("Backup made kind=%s accounts=%s files=%s bytes=%s", kind, manifest.accounts, manifest.files,
                 manifest.bytes)
     return target

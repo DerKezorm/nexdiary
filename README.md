@@ -247,6 +247,7 @@ it is; it is not sealed with your password.
 | `NEXDIARY_LOG_LEVEL` | stored setting | `quiet`, `normal`, `detailed` or `trace`; overrides the setting |
 | `NEXDIARY_API_DOCS` | `false` | Serves `/api/docs` and `/api/openapi.json` |
 | `NEXDIARY_DECODE_SLOTS` | `1` | How many pictures are unpacked at the same moment (each takes some 150 MB while open) |
+| `NEXDIARY_FFMPEG`, `NEXDIARY_FFPROBE` | from the `PATH` | Where ffmpeg and ffprobe are, for videos and sounds attached to a day (the image has both) |
 | `NEXDIARY_UPDATE_URL` | GitHub | Where the update check asks for the newest release |
 | `NEXDIARY_ARGON2_TIME`, `NEXDIARY_ARGON2_MEMORY_KIB`, `NEXDIARY_ARGON2_PARALLELISM` | `3`, `65536`, `2` | Cost of the password hash; only the tests lower it |
 | `NEXDIARY_FRONTEND_DIST` | `/app/static` | Where the built interface lies (set by the image) |

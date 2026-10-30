@@ -44,7 +44,8 @@ def test_a_v10_database_comes_to_v11_whole(client: TestClient, account: Account,
         migrated = schema_of(connection)
         assert connection.execute("SELECT date, auto FROM drafts").fetchall() == [("2026-10-06", 0)]
         assert connection.execute("SELECT count(*) FROM auto_marks").fetchone() == (0,)
-        assert connection.execute("SELECT name FROM sqlite_master WHERE type = 'trigger'").fetchall() == [
+        assert connection.execute("SELECT name FROM sqlite_master WHERE type = 'trigger' "
+                                  "AND tbl_name = 'days'").fetchall() == [
             ("trg_days_locked_stays",)], "the trigger of the lock came through"
     with closing(sqlite3.connect(":memory:")) as connection:
         connection.executescript(fresh_schema_sql())

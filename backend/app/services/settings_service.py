@@ -83,6 +83,13 @@ DEFAULTS: dict[str, Any] = {
     "push_key_enc": "",
     "push_contact": "",
     "push_hosts": [],
+    #: Attachments of a day (``services/attachments.py``): the largest video and the largest sound or PDF one file may
+    #: be, in MB; whether a video in HEVC may be turned into H.264 on the server; and how long the last turning took
+    #: (``{"seconds_video": .., "seconds_took": ..}``), for the operator's card.
+    "attachment_video_max_mb": 500,
+    "attachment_other_max_mb": 100,
+    "attachment_convert": True,
+    "attachment_convert_last": None,
 }
 
 

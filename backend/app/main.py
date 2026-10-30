@@ -25,6 +25,7 @@ from .routers import (
     about,
     ai,
     apitokens,
+    attachments,
     auth,
     book,
     capsules,
@@ -56,6 +57,7 @@ from .services import (
     accounts,
     autowrite,
     backups,
+    conversions,
     locales,
     logs,
     media_sweep,
@@ -77,8 +79,8 @@ logger = logging.getLogger("nexdiary")
 
 ROUTERS = [
     health, about, locales_router, logs_router, auth, totp_router, oidc, invites, settings_router, backups_router,
-    avatars_router, apitokens, v1_router, diary, photos, sharing, ai, prompts, immich, push, passkeys, stats,
-    resets, templates, capsules, family, review, book,
+    avatars_router, apitokens, v1_router, diary, photos, attachments, sharing, ai, prompts, immich, push, passkeys,
+    stats, resets, templates, capsules, family, review, book,
 ]
 
 
@@ -150,6 +152,11 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         tasks.append(asyncio.create_task(capsules_service.run_forever(stop)))
         # Media files no row names (a crash between file and row): at the start, then once a day.
         tasks.append(asyncio.create_task(media_sweep.run_forever(stop)))
+        # Videos waiting to be turned into H.264, one at a time; what was converting when the last process ended
+        # waits again.
+        conversions.start()
+    else:
+        conversions.recover()
     logger.info("nexdiary %s started", __version__)
     with SessionLocal() as db:
         accounts.announce_setup_code(db)
@@ -160,6 +167,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        await asyncio.to_thread(conversions.stop)
         await asyncio.to_thread(notices.settle, 10)
         logger.info("nexdiary stopped")
 

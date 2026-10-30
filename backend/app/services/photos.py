@@ -19,6 +19,7 @@ came. A backup carries the sealed files and the database, never the master key.
 
 from __future__ import annotations
 
+import contextlib
 import functools
 import io
 import itertools
@@ -28,7 +29,7 @@ import re
 import secrets
 import threading
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -161,19 +162,27 @@ _writing_lock = threading.Lock()
 _writing_count = itertools.count()
 
 
+@contextlib.contextmanager
+def writing() -> Iterator[None]:
+    """Marks a stretch that writes media files (and work folders) before the rows that name them, for as long as it
+    runs: an upload of an attachment from its first byte on, a conversion."""
+    token = next(_writing_count)
+    with _writing_lock:
+        _writing[token] = time.time()
+    try:
+        yield
+    finally:
+        with _writing_lock:
+            _writing.pop(token, None)
+
+
 def writes[F: Callable[..., Any]](function: F) -> F:
     """Marks an operation that writes media files and then the rows that name them, for as long as it runs."""
 
     @functools.wraps(function)
     def wrapped(*args: Any, **kwargs: Any) -> Any:
-        token = next(_writing_count)
-        with _writing_lock:
-            _writing[token] = time.time()
-        try:
+        with writing():
             return function(*args, **kwargs)
-        finally:
-            with _writing_lock:
-                _writing.pop(token, None)
 
     return wrapped  # type: ignore[return-value]
 
@@ -184,15 +193,55 @@ def oldest_writing() -> float | None:
         return min(_writing.values(), default=None)
 
 
+#: While a backup copies the database and then the media folder (``files_kept``), no media file is deleted: the copy
+#: of the database may still name it. What would go is deleted when the last backup is done.
+_kept_lock = threading.Lock()
+_keeping = 0
+_kept: list[Path] = []
+
+
+@contextlib.contextmanager
+def files_kept() -> Iterator[None]:
+    """For as long as a backup runs: every media file a row named when it began stays on disk until it is done, so the
+    archive never holds a row without its file (a photo or attachment deleted, a video converted meanwhile)."""
+    global _keeping
+    with _kept_lock:
+        _keeping += 1
+    try:
+        yield
+    finally:
+        with _kept_lock:
+            _keeping -= 1
+            due = list(_kept) if _keeping == 0 else []
+            if _keeping == 0:
+                _kept.clear()
+        for path in due:
+            _unlink(path)
+
+
+def _unlink(path: Path) -> None:
+    try:
+        path.unlink(missing_ok=True)
+    except OSError as exc:
+        logger.warning("A media file could not be deleted: %s", exc.strerror)
+
+
+def discard(path: Path) -> None:
+    """A media file, gone: now, or when the backup that runs is done (``files_kept``). A file that is not there is
+    fine; one that cannot be deleted is said in the log (without anything that tells whose it was) and left for the
+    sweep."""
+    with _kept_lock:
+        if _keeping:
+            _kept.append(path)
+            return
+    _unlink(path)
+
+
 def remove_files(uids: Iterable[str]) -> None:
-    """The files of these photos, gone. A file that is not there is fine; one that cannot be deleted is said in the
-    log (without anything that tells whose it was) and left for the operator."""
+    """The files of these photos, gone (``discard``)."""
     for uid in uids:
         for preview in (False, True):
-            try:
-                _path(uid, preview).unlink(missing_ok=True)
-            except OSError as exc:
-                logger.warning("A photo file could not be deleted: %s", exc.strerror)
+            discard(_path(uid, preview))
 
 
 def uids_of(db: Session, account_id: int) -> list[str]:
@@ -590,6 +639,13 @@ def library(db: Session, account_id: int, dek: bytes, *, before: str | None, lim
 
 
 def storage(db: Session, account_id: int) -> dict[str, Any]:
-    """What the person holds (photos and sealed texts, as the limit counts it), the limit, and how many photos."""
+    """What the person holds (photos, attachments and sealed texts, as the limit counts it), the limit, how many photos;
+    and per kind the bytes of the photos and the attachments, and how many attachments."""
+    from . import attachments
+
     count = db.scalar(select(func.count()).select_from(Photo).where(Photo.user_id == account_id))
-    return {"used": quota.used(db, account_id), "limit": quota.limit_bytes(db), "count": int(count or 0)}
+    photo_bytes = db.scalar(select(func.coalesce(func.sum(Photo.size + Photo.preview_size), 0))
+                            .where(Photo.user_id == account_id))
+    kinds, held = attachments.bytes_by_kind(db, account_id)
+    return {"used": quota.used(db, account_id), "limit": quota.limit_bytes(db), "count": int(count or 0),
+            "by_kind": {"photos": int(photo_bytes or 0), **kinds}, "attachments": held}
