@@ -305,7 +305,8 @@ def test_a_save_that_meets_the_lock_in_between_is_refused_and_writes_nothing(cli
     monkeypatch.setattr(diary, "merge", merging)
     answer = client.put(f"/api/days/{DAY}", json={"text": "zu spät"})
     assert code(answer) == (409, "day_locked")
-    monkeypatch.undo()
+    # Only this one back: undo() would also take the fixed clock away, and the session of 7 October runs out.
+    monkeypatch.setattr(diary, "merge", real)
     assert client.get(f"/api/days/{DAY}").json()["text"] == page["text"]
 
 
@@ -328,7 +329,8 @@ def test_a_page_emptied_between_the_check_and_the_lock_is_not_locked(client: Tes
 
     monkeypatch.setattr(diary, "has_page", checking)
     assert code(lock(client)) == (409, "not_written")
-    monkeypatch.undo()
+    # Only this one back: undo() would also take the fixed clock away, and the session of 7 October runs out.
+    monkeypatch.setattr(diary, "has_page", real)
     assert client.get(f"/api/days/{DAY}").json()["locked"] is False
 
 
@@ -369,10 +371,12 @@ def test_a_write_that_meets_the_lock_in_between_is_refused_by_the_statement_itse
         "photos": sorted(item["id"] for item in client.get("/api/photos", params={"date": DAY}).json()),
     }
     # The photo meets the lock after the route's check and the check of the service, the only ones before its statement.
+    original = diary.ensure_open
     after_the_check(monkeypatch, nth=2 if name == "photo" else 1)
     answer = writes_between(name)(client, state)
     assert code(answer) == (409, "day_locked"), answer.text
-    monkeypatch.undo()
+    # Only this one back: undo() would also take the fixed clock away, and the session of 7 October runs out.
+    monkeypatch.setattr(diary, "ensure_open", original)
     assert client.get(f"/api/days/{DAY}").json()["locked"] is True
     assert sorted(item["id"] for item in client.get("/api/notes", params={"date": DAY}).json()) == before["notes"]
     assert sorted(item["id"] for item in client.get("/api/photos", params={"date": DAY}).json()) == before["photos"]
