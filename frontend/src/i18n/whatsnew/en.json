@@ -1,4 +1,16 @@
 {
+  "0.11.1": {
+    "lead": "Local models that think first now really write something.",
+    "sections": [
+      {
+        "title": "Local models that think first",
+        "where": "Settings, AI; Writing and Review",
+        "body": "A model such as Qwen3 through Ollama spent the room for the answer on thinking and gave back nothing, when a day was written up, in the review and when the AI asks first. nexdiary now asks a local model not to think. A local server that does not know the request is asked once more without it, and when a model used up its room all the same, the message says so."
+      }
+    ],
+    "smallTitle": "Also",
+    "small": []
+  },
   "0.11.0": {
     "lead": "A day now holds more than text and photos: videos, voice recordings, PDFs and links. And photos can be added to older days too.",
     "sections": [

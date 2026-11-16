@@ -1,4 +1,16 @@
 {
+  "0.11.1": {
+    "lead": "Lokale Modelle, die erst nachdenken, schreiben jetzt auch wirklich etwas.",
+    "sections": [
+      {
+        "title": "Lokale Modelle, die erst nachdenken",
+        "where": "Einstellungen, KI; Schreiben und Rückblick",
+        "body": "Ein Modell wie Qwen3 über Ollama verbrauchte den Platz für die Antwort mit Nachdenken und gab nichts zurück, beim Ausformulieren eines Tages, im Rückblick und bei den Rückfragen. nexdiary bittet ein lokales Modell jetzt, nicht nachzudenken. Ein lokaler Server, der das nicht kennt, wird einmal ohne die Bitte gefragt, und hat ein Modell seinen Platz trotzdem aufgebraucht, sagt die Meldung das."
+      }
+    ],
+    "smallTitle": "Außerdem",
+    "small": []
+  },
   "0.11.0": {
     "lead": "Ein Tag hält jetzt mehr als Text und Fotos: Videos, Sprachaufnahmen, PDFs und Links. Und Fotos lassen sich auch an ältere Tage legen.",
     "sections": [
