@@ -281,6 +281,9 @@ or one that speaks the Messages API. Every person can switch it off for their ac
   each person switches it on for themselves (My account, AI, off from the start, with a confirmation that says where
   the notes go). Then, each morning at the chosen time, yesterday's notes become a draft that waits for you: it is no
   page, in no streak and no statistics and cannot be shared until you accept it. Each day is tried once.
+- A local model is asked not to think (`reasoning_effort: "none"`): a thinking model such as Qwen3 or DeepSeek-R1
+  would otherwise spend the room for its answer on its thoughts and give back nothing. A local server that does not
+  know the field is asked once more without it.
 - A local service must lie in your own network and a service on the internet must be reached over https: an address
   that points elsewhere is refused, when it is saved and at every request. The API key is sealed and never shown again.
 

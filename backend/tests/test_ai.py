@@ -275,6 +275,65 @@ def test_a_model_that_turns_down_the_temperature_is_asked_once_more_without(clie
     assert len(model.requests) == 2 and "temperature" not in model.body()
 
 
+def probe(client: TestClient) -> httpx.Response:
+    return client.post("/api/settings/ai/probe")
+
+
+@pytest.mark.parametrize("provider", ["openai", "messages", "local"])
+def test_only_a_local_model_is_asked_not_to_think(client: TestClient, account: Account, model: Model,
+                                                  provider: str) -> None:
+    # A thinking model through Ollama spends the room of the answer on its thoughts and gives back nothing.
+    set_up(client, provider, LOCAL if provider == "local" else CLOUD)
+    note(client, "kastanien gesammelt")
+    assert probe(client).status_code == 200
+    assert formulate(client).status_code == 200
+    for body in (model.body(0), model.body(1)):
+        assert body.get("reasoning_effort") == ("none" if provider == "local" else None)
+
+
+def test_a_local_server_that_does_not_know_reasoning_effort_is_asked_once_more_without(
+        client: TestClient, account: Account, model: Model) -> None:
+    set_up(client, "local", LOCAL)
+
+    def strict(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        if "reasoning_effort" in body:
+            return httpx.Response(400, json={"error": {"message": "Unrecognized request argument: reasoning_effort"}})
+        if "temperature" in body:
+            return httpx.Response(400, json={"error": {"message": "`temperature` is not supported"}})
+        return model.write(request)
+
+    model.answer = strict
+    assert probe(client).status_code == 200
+    assert len(model.requests) == 3
+    assert "reasoning_effort" not in model.body() and "temperature" not in model.body()
+
+
+def test_a_refusal_for_another_reason_is_not_asked_again(client: TestClient, account: Account, model: Model) -> None:
+    set_up(client, "local", LOCAL)
+    model.answer = lambda request: httpx.Response(400, json={"error": {"message": "model not found"}})
+    assert probe(client).status_code != 200
+    assert len(model.requests) == 1
+
+
+@pytest.mark.parametrize(("provider", "answer", "code"), [
+    ("local", {"choices": [{"message": {"content": "", "reasoning": "Let me think"}, "finish_reason": "length"}]},
+     "ai_used_up"),
+    ("local", {"choices": [{"message": {"content": "", "reasoning": "Let me think"}, "finish_reason": "stop"}]},
+     "ai_empty"),
+    ("messages", {"content": [{"type": "thinking", "thinking": "Let me think"}], "stop_reason": "max_tokens"},
+     "ai_used_up"),
+    ("messages", {"content": [], "stop_reason": "end_turn"}, "ai_empty"),
+])
+def test_an_answer_used_up_by_thinking_says_so(client: TestClient, account: Account, model: Model, provider: str,
+                                               answer: dict[str, Any], code: str) -> None:
+    set_up(client, provider, LOCAL if provider == "local" else CLOUD)
+    note(client, "kastanien gesammelt")
+    model.answer = lambda request: httpx.Response(200, json=answer)
+    for failed in (probe(client), formulate(client)):
+        assert (failed.status_code, failed.json()["detail"]["code"]) == (502, code)
+
+
 @pytest.mark.parametrize(("written", "title", "text"), [
     ("Title: Ein Tag\n\nErster Absatz.\n\nZweiter.", "Ein Tag", "Erster Absatz.\n\nZweiter."),
     ("**Titel:** „Herbst“\n\nText.", "Herbst", "Text."),

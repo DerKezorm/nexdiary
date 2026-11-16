@@ -20,7 +20,7 @@ from app.models import Account
 from app.services import ai
 
 from .conftest import person
-from .test_ai import DAY, HOME_IP, INJECTION, PUBLIC_IP, Model, formulate, material_of, note, set_up, system_of
+from .test_ai import DAY, HOME_IP, INJECTION, LOCAL, PUBLIC_IP, Model, formulate, material_of, note, set_up, system_of
 
 
 def ready(client: TestClient) -> None:
@@ -114,6 +114,20 @@ def test_an_answer_that_is_not_the_json_asked_for_is_refused(client: TestClient,
     refused = ask(client)
     assert refused.status_code == 502
     assert refused.json()["detail"]["code"] == "ai_unreadable"
+
+
+def test_a_local_model_is_asked_not_to_think_and_says_when_thinking_used_it_up(client: TestClient, account: Account,
+                                                                               model: Model) -> None:
+    ready(client)
+    set_up(client, "local", LOCAL)
+    note(client, "kastanien")
+    said(model, [])
+    assert ask(client).status_code == 200
+    assert model.body()["reasoning_effort"] == "none"
+    model.answer = lambda request: httpx.Response(
+        200, json={"choices": [{"message": {"content": "", "reasoning": "Let me think"}, "finish_reason": "length"}]})
+    used_up = ask(client)
+    assert (used_up.status_code, used_up.json()["detail"]["code"]) == (502, "ai_used_up")
 
 
 def test_a_question_about_a_note_that_is_not_there_is_dropped(client: TestClient, account: Account,
