@@ -1,4 +1,16 @@
 {
+  "0.11.2": {
+    "lead": "Die neueren Modelle von OpenAI lassen sich jetzt für die KI nutzen.",
+    "sections": [
+      {
+        "title": "Neuere Modelle von OpenAI",
+        "where": "Einstellungen, KI; Schreiben und Rückblick",
+        "body": "Mit einem neueren Modell von OpenAI wie GPT-5 scheiterte jede Anfrage mit dem Fehler 400, schon beim Speichern der Einstellung. Diese Modelle wollen die Grenze für die Antwort unter einem anderen Namen. nexdiary fragt jetzt so, wie das Modell es verlangt, gibt ihm Platz zum Nachdenken und bittet es, sich dabei kurz zu fassen. Ältere Modelle wie GPT-4o laufen wie bisher."
+      }
+    ],
+    "smallTitle": "Außerdem",
+    "small": []
+  },
   "0.11.1": {
     "lead": "Lokale Modelle, die erst nachdenken, schreiben jetzt auch wirklich etwas.",
     "sections": [
