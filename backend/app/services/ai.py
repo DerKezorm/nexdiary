@@ -80,6 +80,8 @@ CONNECT_SECONDS = 10.0
 MAX_CHARS = 60_000
 #: What may come back, in the model's units and in bytes.
 MAX_OUT = {"short": 1_200, "long": 4_000}
+#: What a model that thinks before it answers gets on top: its thoughts count against ``max_completion_tokens``.
+THINKING_OUT = 4_000
 MAX_ANSWER = 2 * 1024 * 1024
 MAX_MODELS = 500
 #: How much of a service's own words about an error the person sees.
@@ -380,7 +382,10 @@ def _log(found: Service, what: str, status: str, started: float) -> None:
 
 
 #: What a request may carry that a service may turn down, and the word its refusal names it by: asked once more without.
-OPTIONAL_FIELDS = (("temperature", "temperature"), ("reasoning_effort", "reasoning"))
+#: ``max_tokens`` is not dropped but sent as ``max_completion_tokens`` (newer OpenAI models take only that name, and
+#: their refusal says so); the Messages API keeps ``max_tokens`` whatever its refusal says.
+OPTIONAL_FIELDS = (("temperature", "temperature"), ("reasoning_effort", "reasoning"),
+                   ("max_tokens", "max_completion_tokens"))
 
 
 def _exchange(found: Service, method: str, path: str, what: str, seconds: float,
@@ -395,12 +400,15 @@ def _exchange(found: Service, method: str, path: str, what: str, seconds: float,
             left_out: frozenset[str] = frozenset()
             sent = {"json": body(left_out)} if body else {}
             answer = _send(client, method, place, _headers(found), deadline, seconds, **sent)
-            # Newer models choose the temperature themselves and turn down a request that sets it; a local server that
-            # does not know ``reasoning_effort`` may turn that down: once more without, each at most once.
+            # Newer models choose the temperature themselves and turn down a request that sets it, and take the limit
+            # only as ``max_completion_tokens``; a local server that does not know ``reasoning_effort`` may turn that
+            # down: once more without, each at most once.
             while body and answer.status_code == 400:
                 said = _said(answer).lower()
                 carried = body(left_out)
-                field = next((name for name, word in OPTIONAL_FIELDS if name in carried and word in said), None)
+                # Only what changes the request: the Messages API keeps ``max_tokens``, a field left out stays out.
+                field = next((name for name, word in OPTIONAL_FIELDS
+                              if name in carried and word in said and body(left_out | {name}) != carried), None)
                 if field is None:
                     break
                 left_out = left_out | {field}
@@ -540,13 +548,23 @@ def material(notes: list[dict[str, Any]], zone: Any, sections: list[dict[str, st
 
 def _request(found: Service, system: str, user: str, max_tokens: int, left_out: frozenset[str]) -> dict[str, Any]:
     """The request in the format of the service, without the optional fields in ``left_out``."""
-    body: dict[str, Any] = {"model": found.model, "max_tokens": max_tokens}
+    body: dict[str, Any] = {"model": found.model}
+    thinks = found.provider != "messages" and "max_tokens" in left_out
+    if thinks:
+        # A model that wants ``max_completion_tokens`` thinks before it answers, and its thoughts count against the
+        # limit: room for them on top, and asked to keep them short (a model that does not take that is asked once
+        # more without).
+        body["max_completion_tokens"] = max_tokens + THINKING_OUT
+    else:
+        body["max_tokens"] = max_tokens
     if "temperature" not in left_out:
         body["temperature"] = 0.3
     if found.provider == "local" and "reasoning_effort" not in left_out:
         # A thinking model (Qwen3, DeepSeek-R1 through Ollama) would spend the tokens of an answer on its thoughts and
         # give back nothing; Ollama's OpenAI door does not take ``think: false``, but it takes this.
         body["reasoning_effort"] = "none"
+    elif thinks and "reasoning_effort" not in left_out:
+        body["reasoning_effort"] = "low"
     if found.provider == "messages":
         body["system"] = system
         body["messages"] = [{"role": "user", "content": user}]
