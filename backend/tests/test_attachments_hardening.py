@@ -67,12 +67,14 @@ def test_a_stalled_upload_answers_408_and_frees_its_place(client: TestClient, ac
     async def stalls(pieces: Any, seconds: float) -> bytes | None:
         raise attachments.Stalled
 
+    real = attachments.next_piece
     monkeypatch.setattr(attachments, "next_piece", stalls)
     answer = send(client, samples.pdf(), "pdf")
     assert answer.status_code == 408 and answer.json()["detail"]["code"] == "upload_stalled"
     assert attachments._admitted == 0 and attachments._uploading == set()
     assert media_files() == [] and work_folders() == []
-    monkeypatch.undo()
+    # Only this one back: undo() would also take the fixed clock away, and the session of 22 October runs out.
+    monkeypatch.setattr(attachments, "next_piece", real)
     assert send(client, samples.pdf(), "pdf").status_code == 201
 
 
