@@ -45,6 +45,25 @@
   --accent-soft: #e1e7f2;
 }
 
+/* The colours of the mark (components/Logo.tsx): a white tile in light mode, a dark one in dark mode. The same values
+   are in public/logo.svg and scripts/app-icons.mjs; the source is nexapps/icons-vergleich/neu.py. */
+:root {
+  --nd-logo-ground: #ffffff;
+  --nd-logo-rim: rgb(90 122 82 / 0.35);
+  --nd-logo-gradient-1: #a9c79f;
+  --nd-logo-gradient-2: #5a7a52;
+  --nd-logo-gradient-3: #2f4a2a;
+  --nd-logo-ink: #4a8c3c;
+}
+:root[data-theme='dark'] {
+  --nd-logo-ground: #0e140d;
+  --nd-logo-rim: rgb(152 187 142 / 0.45);
+  --nd-logo-gradient-1: #e3f0de;
+  --nd-logo-gradient-2: #98bb8e;
+  --nd-logo-gradient-3: #5f8a55;
+  --nd-logo-ink: #a3d98f;
+}
+
 :root[data-theme='dark'],
 .swatch[data-swatch='dark'] {
   --paper: #1b1613;

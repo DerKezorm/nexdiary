@@ -26,7 +26,7 @@ def test_the_policy_lets_the_service_worker_and_the_manifest_in(client: TestClie
 def test_the_manifest_has_the_shortcut_and_shares_into_the_quick_note() -> None:
     manifest = json.loads((PUBLIC / "manifest.webmanifest").read_text(encoding="utf-8"))
     assert manifest["start_url"] == "/" and manifest["display"] == "standalone"
-    assert manifest["icons"][0]["src"] == "/logo.svg"
+    assert manifest["icons"][0]["src"] == "/logo.svg?v=2"  # the version passes old copies in the browser by
     [shortcut] = manifest["shortcuts"]
     assert (shortcut["name"], shortcut["url"]) == ("Notiz", "/schnell")
     share = manifest["share_target"]
@@ -63,7 +63,9 @@ def test_the_built_app_serves_the_worker_and_the_manifest_fresh(tmp_path: Path) 
         assert worker.status_code == 200 and "javascript" in worker.headers["content-type"]
         assert worker.headers["cache-control"] == "no-cache"
         assert browser.get("/manifest.webmanifest").headers["cache-control"] == "no-cache"
-        assert "cache-control" not in browser.get("/logo.svg").headers
+        # The mark is asked for again too: a kept old one put the old mark on a freshly installed web app.
+        assert browser.get("/logo.svg?v=2").headers["cache-control"] == "no-cache"
+        assert browser.get("/logo.svg?v=2").text == "<svg/>"
 
 
 def test_a_share_that_no_service_worker_took_leads_to_the_quick_note_unread(tmp_path: Path) -> None:
@@ -96,13 +98,34 @@ def test_phones_get_png_symbols_and_notifications_a_png_icon_and_a_badge() -> No
     manifest = json.loads((PUBLIC / "manifest.webmanifest").read_text(encoding="utf-8"))
     pngs = {icon["src"]: icon for icon in manifest["icons"] if icon["type"] == "image/png"}
     assert {(src, icon["sizes"], icon["purpose"]) for src, icon in pngs.items()} == {
-        ("/icon-192.png", "192x192", "any"), ("/icon-512.png", "512x512", "any"),
-        ("/icon-maskable-512.png", "512x512", "maskable")}
+        ("/icon-192.png?v=2", "192x192", "any"), ("/icon-512.png?v=2", "512x512", "any"),
+        ("/icon-maskable-512.png?v=2", "512x512", "maskable")}
     for src, icon in pngs.items():
-        width, height = size_of(src.lstrip("/"))
+        width, height = size_of(src.lstrip("/").split("?")[0])
         assert f"{width}x{height}" == icon["sizes"], src
     assert size_of("apple-touch-icon.png") == (180, 180) and size_of("badge-96.png") == (96, 96)
     index = (PUBLIC.parent / "index.html").read_text(encoding="utf-8")
-    assert '<link rel="apple-touch-icon" href="/apple-touch-icon.png" />' in index
+    assert '<link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2" />' in index
+    assert '<link rel="icon" type="image/svg+xml" href="/logo.svg?v=2" />' in index
     worker = (PUBLIC / "sw.js").read_text(encoding="utf-8")
-    assert "icon: '/icon-192.png'" in worker and "badge: '/badge-96.png'" in worker
+    assert "icon: '/icon-192.png?v=2'" in worker and "badge: '/badge-96.png?v=2'" in worker
+
+
+def test_every_file_at_the_top_of_public_is_asked_for_again() -> None:
+    """A kept old icon put the old mark on a freshly installed web app (seen with a sister app)."""
+    files = {path.name for path in PUBLIC.iterdir() if path.is_file()}
+    assert files and files <= set(main.FRESH), sorted(files - set(main.FRESH))
+
+
+def test_other_built_files_keep_what_they_had(tmp_path: Path) -> None:
+    """Only the listed files: the header is no blanket over everything the build writes."""
+    dist = tmp_path / "dist"
+    (dist / "licenses").mkdir(parents=True)
+    (dist / "index.html").write_text("<!doctype html><title>nexdiary</title>", encoding="utf-8")
+    (dist / "licenses" / "fonts.txt").write_text("made up", encoding="utf-8")
+    built = FastAPI()
+    main._mount_frontend(built, dist)
+    with TestClient(built) as browser:
+        answer = browser.get("/licenses/fonts.txt")
+        assert answer.status_code == 200 and answer.text == "made up"
+        assert "cache-control" not in answer.headers

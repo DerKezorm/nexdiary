@@ -1,1 +1,23 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="m" gradientUnits="userSpaceOnUse" x1="8" y1="8" x2="56" y2="56"><stop offset="0" stop-color="#eef5ea"/><stop offset=".5" stop-color="#98bb8e"/><stop offset="1" stop-color="#4a6a43"/></linearGradient></defs><rect x="2" y="2" width="60" height="60" rx="16" fill="#0e140d"/><rect x="2" y="2" width="60" height="60" rx="16" fill="none" stroke="url(#m)" stroke-width="2.5" stroke-opacity=".55"/><path d="M47 13c-12 1.5-21 9.5-24.5 21.5L22 41c6-1.5 12-5.5 16-11-2.8-.2-5.4 0-7.6.8 5-3.2 9-7.6 12-12.4 1.8-2.4 3.4-4 4.6-5.4z" fill="none" stroke="url(#m)" stroke-width="2.8" stroke-linejoin="round" stroke-opacity=".85"/><path d="M22 42 36 27" fill="none" stroke="url(#m)" stroke-width="2.6" stroke-linecap="round" stroke-opacity=".7"/><path d="M13 52c6-2 10 2 16 0s9-3 15-1" fill="none" stroke="url(#m)" stroke-width="2.6" stroke-linecap="round" stroke-opacity=".7"/><circle cx="19.5" cy="46" r="3.6" fill="#98bb8e"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="nexdiary">
+  <!-- A quill drawing a line of ink, on a white tile; dark when the system is dark.
+       Same shape as components/Logo.tsx and scripts/app-icons.mjs; the source is nexapps/icons-vergleich/neu.py. -->
+  <style>
+    .ground { fill: #fff } .rim { stroke: #5a7a52; stroke-opacity: .35 } .ink { stroke: #4a8c3c } .drop { fill: #4a8c3c; stroke: #fff }
+    .v1 { stop-color: #a9c79f } .v2 { stop-color: #5a7a52 } .v3 { stop-color: #2f4a2a }
+    @media (prefers-color-scheme: dark) {
+      .ground { fill: #0e140d } .rim { stroke: #98bb8e; stroke-opacity: .45 } .ink { stroke: #a3d98f } .drop { fill: #a3d98f; stroke: #0e140d }
+      .v1 { stop-color: #e3f0de } .v2 { stop-color: #98bb8e } .v3 { stop-color: #5f8a55 }
+    }
+  </style>
+  <defs>
+    <linearGradient id="g" gradientUnits="userSpaceOnUse" x1="10" y1="10" x2="54" y2="54">
+      <stop offset="0" class="v1"/><stop offset=".5" class="v2"/><stop offset="1" class="v3"/>
+    </linearGradient>
+  </defs>
+  <rect class="ground" x="2" y="2" width="60" height="60" rx="16"/>
+  <rect class="rim" x="2.75" y="2.75" width="58.5" height="58.5" rx="15.3" fill="none" stroke-width="1.5"/>
+  <path class="ground" d="M48 12c-12.5 1.5-21.5 9.5-25 22l-.5 7c6.2-1.5 12.4-5.6 16.5-11.3-2.9-.2-5.6 0-7.8.8 5.2-3.3 9.3-7.8 12.4-12.8 1.8-2.4 3.5-4.2 4.4-5.7z" stroke="url(#g)" stroke-width="3.8" stroke-linejoin="round"/>
+  <path d="M21.5 43.5 37 27" stroke="url(#g)" stroke-width="3.2" stroke-linecap="round"/>
+  <path class="ink" d="M12.5 52.5c6-2 10 2 16 0s9-3 15-1" fill="none" stroke-width="3.6" stroke-linecap="round"/>
+  <circle class="drop" cx="19.5" cy="46.5" r="3.8" stroke-width="1.8"/>
+</svg>

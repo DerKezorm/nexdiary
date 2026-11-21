@@ -249,7 +249,10 @@ oidc_store.configure()
 
 #: Files a browser asks the server about again each time: the service worker (an old one would keep its old ways for a
 #: day) and the manifest.
-FRESH = ("sw.js", "manifest.webmanifest")
+# The mark, the icons and the theme script too: kept ones put the old mark on a freshly installed web app (seen with a
+# sister app after its new icon). test_pwa.py checks that every file at the top of public/ is listed.
+FRESH = ("sw.js", "manifest.webmanifest", "logo.svg", "theme.js", "icon-192.png", "icon-512.png",
+         "icon-maskable-512.png", "apple-touch-icon.png", "badge-96.png")
 
 
 def _mount_frontend(target: FastAPI, dist: Path) -> None:
