@@ -1,4 +1,24 @@
 {
+  "0.12.0": {
+    "lead": "nexdiary has a new mark: the quill with its line of ink, on a white tile in light mode and a dark one in dark mode.",
+    "sections": [
+      {
+        "title": "A new mark that follows light and dark",
+        "where": "Everywhere",
+        "body": "The logo in the sidebar, on the sign-in page, in the quick note and on the About page switches with the mode you chose. The browser tab shows the light or dark mark the way the system is set."
+      },
+      {
+        "title": "New icons for the home screen and notifications",
+        "where": "Home screen, notifications",
+        "body": "The icon on the home screen, the picture in every notification and the small badge in the status bar now show the new quill."
+      }
+    ],
+    "smallTitle": "Also",
+    "small": [
+      "Icons, favicon and the light and dark script are asked for again before use, and the icons have new addresses, so an installed web app shows the new mark. Windows may keep the old one in the taskbar for a while; pinning the app again helps.",
+      "No new variables, ports or paths."
+    ]
+  },
   "0.11.2": {
     "lead": "The newer OpenAI models can now be used for the AI.",
     "sections": [

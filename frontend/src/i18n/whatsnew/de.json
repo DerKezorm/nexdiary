@@ -1,4 +1,24 @@
 {
+  "0.12.0": {
+    "lead": "nexdiary hat ein neues Zeichen: die Feder mit ihrer Tintenlinie, im hellen Modus auf weißer Kachel, im dunklen auf dunkler.",
+    "sections": [
+      {
+        "title": "Ein neues Zeichen, das hell und dunkel folgt",
+        "where": "Überall",
+        "body": "Das Logo in der Seitenleiste, auf der Anmeldeseite, bei der Schnellnotiz und auf der Über-Seite wechselt mit dem Modus, den du eingestellt hast. Der Browser-Tab zeigt das helle oder dunkle Zeichen, je nachdem, wie das System eingestellt ist."
+      },
+      {
+        "title": "Neue Symbole für Startbildschirm und Mitteilungen",
+        "where": "Startbildschirm, Mitteilungen",
+        "body": "Das Symbol auf dem Startbildschirm, das Bild in jeder Mitteilung und das kleine Abzeichen in der Statusleiste zeigen jetzt die neue Feder."
+      }
+    ],
+    "smallTitle": "Außerdem",
+    "small": [
+      "Symbole, Favicon und das Skript für hell und dunkel werden vor jeder Nutzung neu nachgefragt, und die Symbole haben neue Adressen, damit auch eine installierte Web-App das neue Zeichen zeigt. Windows behält das alte in der Taskleiste womöglich noch eine Weile; die App neu anheften hilft.",
+      "Keine neuen Variablen, Ports oder Pfade."
+    ]
+  },
   "0.11.2": {
     "lead": "Die neueren Modelle von OpenAI lassen sich jetzt für die KI nutzen.",
     "sections": [
